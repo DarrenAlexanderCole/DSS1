@@ -121,6 +121,8 @@ reasons, and their work inspired this project. Go check them out:
 - [KillaVic Cheat Codes](https://killaviccheatcodes.app/julienne)
 - [Jsen Surreal](https://www.youtube.com/@jsensurreal1026)
 - [Fabe (Bouncy Nuts)](https://bouncynuts.com)
+- aleksey.malykh9
+- gwalakeyz
 
 ## Credits
 
