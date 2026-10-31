@@ -18,6 +18,12 @@ there: drops, breakdowns, vocal hits, loops, with nothing to set up at the booth
 add effects, and play it like an instrument. **Export for MPC** sends the slices to an MPC project, so you can
 carry the idea from your Mac into the hardware.
 
+**Live sets and recorded takes.** The Radio rack has a **Live Sampler** that records everything you hear, with the
+deck's EQ, compressors and effects included, to a WAV. Play a track through the Radio, ride the EQ and the opto
+compressor, hit RECORD, and what you keep is your *performance*: a live mix, a transition, a jam. Takes save as WAV files into a
+"Live Playback Records" folder in your crate (or anywhere you choose), ready to use like any other track. An input-pad lever (0, −10, −30, −60 dB) keeps
+the meters off the red.
+
 **Both.** The Performance pad and a USB controller (Akai MPD / MPK / MPC, or anything via MIDI Learn) let you
 rehearse live moves before you play them for an audience.
 
@@ -26,7 +32,8 @@ rehearse live moves before you play them for an audience.
 1. **Drop** your files in. DSS1 imports the audio into your crate.
 2. **Listen and sort** in the Crate and on the Radio deck: BPM, key, tape-style transport and a tube-style compressor.
 3. **Chop** the song into pads, loops and memories.
-4. **Export** to Serato DJ or to an MPC, or keep playing it on the Performance pad.
+4. **Record it live** (optional): hit RECORD on the Radio's Live Sampler to capture a performance as a WAV.
+5. **Export** to Serato DJ or to an MPC, or keep playing it on the Performance pad.
 
 ## What's inside
 
@@ -34,7 +41,8 @@ rehearse live moves before you play them for an audience.
   M4A) and files it in your crate, as WAV by default.
 - **Crate** — your library, sortable by BPM and Camelot key, with album art.
 - **Radio** — a tape deck with working transport (REW plays backwards, FF at 1.5x), tempo and key, VU meters,
-  a 3-knob compressor and a CL 1B-style tube opto compressor.
+  a 3-knob compressor and a CL 1B-style tube opto compressor, a 20-band graphic EQ with a spectrum analyzer, and a
+  **Live Sampler** that records everything you hear (effects and EQ included) to a WAV take with a waveform monitor.
 - **Chop** — 16 pads per bank, auto loops from 1/16 bar to 32 bars, five loop memories, pad FX, and exports:
   - **MPC** — an MPC project (`.xpj`) with your slices.
   - **Serato DJ** — a tagged copy of the song where pads 1–8 are hot cues and the loop memories are saved loops.
