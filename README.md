@@ -129,7 +129,7 @@ reasons, and their work inspired this project. Go check them out:
 DSS1 was developed with assistance from Claude (Anthropic).
 
 Claude was used to help explore ideas, design features, write and refine code, and troubleshoot implementation
-issues. I remain responsible for the project's design decisions, code review, testing, and maintenance.
+issues. I remain responsible for the project's design decisions, code review, testing, maintenance, and overall reasoning for the creation of this project, I have a problem I want to solve.
 
 This project is shared as an open-source learning and experimentation tool.
 
