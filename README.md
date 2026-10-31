@@ -115,16 +115,12 @@ then `git tag v1.6 && git push --tags && gh release create v1.6 dist/DSS1-1.6.dm
 
 ## Inspiration
 
-DSS1 wouldn't look or work the way it does without these creators. If you like DSS1, go check out their work:
+These people aren't part of DSS1. They're doing their own thing, building their own tools for many of the same
+reasons, and their work inspired this project. Go check them out:
 
-- **[Julienne 2](https://killaviccheatcodes.app/julienne)** by **KillaVic Cheat Codes**: a turntable sample chopper
-  with 128 chops across 8 banks (A–H), BPM stretch, warp markers and scratchable vinyl, exporting to MPC, Ableton,
-  FL Studio, Reason and Logic. Runs in the browser, as a Mac / Windows app, as a VST3 / AU plugin and on iOS.
-  A big influence on how Chop works in DSS1.
-- **[Jsen Surreal](https://www.youtube.com/@jsensurreal1026)**: MPC Sample videos and beat-making vlogs, like
-  [MPC Sample – SXL Mini Vlog 5](https://youtu.be/5IgcGPvpQ2U).
-- **[Bouncy Nuts](https://bouncynuts.com)** by **Fabe**, a DJ and producer with deep roots in the underground scene:
-  "Find Your Groove. Define Your Sound." Resources to help producers find their own groove.
+- [KillaVic Cheat Codes](https://killaviccheatcodes.app/julienne)
+- [Jsen Surreal](https://www.youtube.com/@jsensurreal1026)
+- [Fabe (Bouncy Nuts)](https://bouncynuts.com)
 
 ## Credits
 
