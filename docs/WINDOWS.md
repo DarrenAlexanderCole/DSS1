@@ -1,5 +1,11 @@
 # DSS1 on Windows
 
+> **Status: planned.** A Windows version is on the roadmap, with a first Windows beta planned before the start of
+> 2027. Until then, development and testing are focused on the Mac version.
+>
+> **Want to help or be a Windows tester?** [Open an issue](../../../issues/new) titled "Windows" and say what you'd like
+> to do. If you start a port yourself, open an issue first so we can work together rather than duplicate effort.
+
 There's no Windows `.exe` yet, and one can't be built from this code. DSS1 is written in SwiftUI and uses
 Apple's audio and MIDI frameworks (AVAudioEngine, Audio Units, CoreMIDI), which only exist on macOS. A Windows
 version means a port: the same app rebuilt on a cross-platform toolkit.
@@ -33,4 +39,4 @@ What ports with almost no change, because it's plain byte-writing:
 5. MIDI Learn, monitor, MMC.
 6. Windows installer (an `.exe` via Inno Setup or a `.msi`).
 
-Help is welcome — open an issue if you'd like to work on it.
+Help is welcome: open an issue if you'd like to work on it.

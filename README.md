@@ -86,7 +86,8 @@ to **System Settings → Privacy & Security**, scroll to "DSS1 was blocked…" a
 
 Needs macOS 14 (Sonoma) or newer, on Apple Silicon or Intel.
 
-Windows: there's no Windows version yet — see [docs/WINDOWS.md](docs/WINDOWS.md).
+**Windows:** not yet. A Windows version is planned before the start of 2027; see [docs/WINDOWS.md](docs/WINDOWS.md)
+for the plan and how to sign up as a tester or help build it.
 
 ## Build from source
 
