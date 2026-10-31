@@ -23,7 +23,7 @@ send the result to the tools you already use: Serato DJ for the set, or an MPC f
 
 ![Chop: waveform, 16 pads, looper and effects](docs/screenshots/chop.jpg)
 
-**Chop.** Pads 1–8 (outlined red) export to Serato as hot cues; the loop memories (outlined red) export as saved loops.
+**Chop.** Slice a song across up to **128 pads** (eight banks of 16, A–H) for the MPC side; pads 1–8 (outlined red) export to Serato as hot cues; the loop memories (outlined red) export as saved loops.
 
 ![The Radio: tape deck, opto compressor, graphic EQ and Live Sampler](docs/screenshots/radio.jpg)
 
