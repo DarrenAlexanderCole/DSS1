@@ -124,6 +124,15 @@ reasons, and their work inspired this project. Go check them out:
 - [aleksey.malykh9](https://www.instagram.com/aleksey.malykh9/)
 - [gwalakeyz](https://www.instagram.com/gwalakeyz/)
 
+## AI-assisted development
+
+DSS1 was developed with assistance from Claude (Anthropic).
+
+Claude was used to help explore ideas, design features, write and refine code, and troubleshoot implementation
+issues. I remain responsible for the project's design decisions, code review, testing, and maintenance.
+
+This project is shared as an open-source learning and experimentation tool.
+
 ## Credits
 
 - [Rubber Band Library](https://breakfastquay.com/rubberband/) by Particular Programs Ltd — time-stretching and
