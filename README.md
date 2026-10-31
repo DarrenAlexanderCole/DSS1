@@ -1,7 +1,32 @@
 # DSS1 — Digital Sample Station 1
 
-A macOS app for DJs and beatmakers: drop in your record-pool downloads, keep them in a crate, play them on a
-tape-style deck, chop them onto pads, and send the results to an MPC or to Serato DJ.
+**A place to get your music ready before the show or the session.**
+
+DSS1 is a Digital Sample Station: one macOS app where DJs and producers take the files they've just downloaded and
+turn them into things they can play. You drop the music in, hear it on a tape-style deck, chop it up on pads, and
+send the result to the tools you already use: Serato DJ for the set, or an MPC for the beat.
+
+## Who it's for
+
+**DJs preparing a set.** Record-pool downloads arrive as zips and folders. DSS1 unpacks them, keeps just the audio,
+and sorts the crate by BPM and Camelot key so you can plan the order. Audition a track on the deck with tempo and
+key changes, find the parts you want, and put them on pads 1–8. Then **Export for Serato** writes those pads into
+a copy of the song as hot cues, and your loop memories as saved loops. Load it in Serato and the cues are already
+there: drops, breakdowns, vocal hits, loops, with nothing to set up at the booth.
+
+**Producers sampling for a track.** Chop a song across 16 pads per bank, set loops from 1/16 bar up to 32 bars,
+add effects, and play it like an instrument. **Export for MPC** sends the slices to an MPC project, so you can
+carry the idea from your Mac into the hardware.
+
+**Both.** The Performance pad and a USB controller (Akai MPD / MPK / MPC, or anything via MIDI Learn) let you
+rehearse live moves before you play them for an audience.
+
+## How it fits together
+
+1. **Drop** your files in. DSS1 imports the audio into your crate.
+2. **Listen and sort** in the Crate and on the Radio deck: BPM, key, tape-style transport and a tube-style compressor.
+3. **Chop** the song into pads, loops and memories.
+4. **Export** to Serato DJ or to an MPC, or keep playing it on the Performance pad.
 
 ## What's inside
 
