@@ -113,6 +113,15 @@ git push
 For a new version: bump `Resources/Info.plist`, add it to [CHANGELOG.md](CHANGELOG.md), run `./make_dmg.sh`,
 then `git tag v1.6 && git push --tags && gh release create v1.6 dist/DSS1-1.6.dmg`.
 
+## Inspiration
+
+DSS1 wouldn't look or work the way it does without these developers. If you like DSS1, go check out their work:
+
+- **[Julienne 2](https://killaviccheatcodes.app/julienne)** by **KillaVic Cheat Codes**: a turntable sample chopper
+  with 128 chops across 8 banks (A–H), BPM stretch, warp markers and scratchable vinyl, exporting to MPC, Ableton,
+  FL Studio, Reason and Logic. Runs in the browser, as a Mac / Windows app, as a VST3 / AU plugin and on iOS.
+  A big influence on how Chop works in DSS1.
+
 ## Credits
 
 - [Rubber Band Library](https://breakfastquay.com/rubberband/) by Particular Programs Ltd — time-stretching and
