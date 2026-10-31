@@ -1,5 +1,10 @@
 # DSS1 — Digital Sample Station 1
 
+![Status: Beta](https://img.shields.io/badge/status-beta-orange) ![Platform: macOS 14+](https://img.shields.io/badge/platform-macOS%2014%2B-lightgrey) ![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue)
+
+> **Beta.** DSS1 is under active development. It works and is in daily use, but expect rough edges and changes
+> between versions. Please keep a copy of anything important, and [open an issue](../../issues) if something breaks.
+
 **A place to get your music ready before the show or the session.**
 
 DSS1 is a Digital Sample Station: one macOS app where DJs and producers take the files they've just downloaded and
