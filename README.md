@@ -6,6 +6,28 @@ DSS1 is a Digital Sample Station: one macOS app where DJs and producers take the
 turn them into things they can play. You drop the music in, hear it on a tape-style deck, chop it up on pads, and
 send the result to the tools you already use: Serato DJ for the set, or an MPC for the beat.
 
+## Screenshots
+
+![The Radio: tape deck, opto compressor, graphic EQ and Live Sampler](docs/screenshots/radio.jpg)
+
+**The Radio.** Tape deck with VU meters, both compressors, a 20-band EQ with spectrum analyzer, and the Live Sampler.
+
+![Chop: waveform, 16 pads, looper and effects](docs/screenshots/chop.jpg)
+
+**Chop.** Pads 1–8 (outlined red) export to Serato as hot cues; the loop memories (outlined red) export as saved loops.
+
+![The Crate and player](docs/screenshots/crate.jpg)
+
+**The Crate.** Sort by BPM, key, artist and more; the player shows tempo, key and EQ.
+
+![Performance pad](docs/screenshots/perform.jpg)
+
+**Performance pad.** Assign effects, then play them with the XY pad. Attack and release shape how they fade in and out.
+
+![Drop screen](docs/screenshots/drop.jpg)
+
+**Drop.** Files, folders or zips go straight into your crate.
+
 ## Who it's for
 
 **DJs preparing a set.** Record-pool downloads arrive as zips and folders. DSS1 unpacks them, keeps just the audio,
