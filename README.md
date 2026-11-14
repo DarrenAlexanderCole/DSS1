@@ -1,146 +1,71 @@
-# DSS1 — Digital Sample Station 1
+# DSS1 V2: Digital Sample Station
 
-![Status: Beta](https://img.shields.io/badge/status-beta-orange) ![Platform: macOS 14+](https://img.shields.io/badge/platform-macOS%2014%2B-lightgrey) ![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue)
+![Status: in development](https://img.shields.io/badge/status-in%20development-orange) ![Platform: macOS](https://img.shields.io/badge/platform-macOS-lightgrey) ![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue)
 
-> **Beta.** DSS1 is under active development. It works, but expect rough edges and changes
-> between versions. Please keep a copy of anything important, and [open an issue](../../issues) if something breaks.
+**A DJ prep tool: get your music ready before the gig.**
 
-**A place to get your music ready before the show or the session.**
+> This is the `v2` branch, a new app built from scratch. It is in early development and not usable yet.
+> The DSS1 v1.5 beta (SwiftUI) lives on the [`main` branch](../../tree/main) and the [`v1.5` tag](../../releases/tag/v1.5).
 
-DSS1 is a Digital Sample Station: one macOS app where DJs and producers take the files they've just downloaded and
-turn them into things they can play. You drop the music in, hear it on a tape-style deck, chop it up on pads, and
-send the result to the tools you already use: Serato DJ for the set, or an MPC for the beat.
+## The idea
 
-## Screenshots
+DSS1 V2 is organised around four stages:
 
-![Drop screen](docs/screenshots/drop.jpg)
+1. **Catalog** — bring music in (files, folders, record-pool zips) and keep it organised by BPM, key, loudness and tags.
+2. **Prep** — the heart of the app. Beat grids (constant or variable tempo), hot cues A–H, memory cues and saved loops,
+   set once and checked against what Rekordbox and Serato can hold.
+3. **Listen & Design** — a listening deck with real-time effects, a recorder, an XY performance pad and a pad sampler.
+4. **Deliver** — Rekordbox XML export and import, Serato-tagged copies, MPC projects and WAV slices.
 
-**Drop.** Files, folders or zips go straight into your crate.
+Rekordbox, Serato and MPC are *export targets*, not separate modes: every track has one set of cues, loops and grid,
+and each export takes what its software supports.
 
-![The Crate and player](docs/screenshots/crate.jpg)
+## Roadmap
 
-**The Crate.** Sort by BPM, key, artist and more; the player shows tempo, key and EQ.
+| Phase | What | Status |
+|---|---|---|
+| 1 | Foundations: project, CI, test harness, app shell, beat-grid and track-record core | In progress |
+| 2 | Track data & formats: library store, Rekordbox XML, Serato tags, track matching | |
+| 3 | Audio engine + Catalog | |
+| 4 | Prep | |
+| 5 | Deliver → **DJ prep beta** | |
+| 6 | Listen & Design → **1.0** | |
+| Later | Windows | |
 
-![Chop: waveform, 16 pads, looper and effects](docs/screenshots/chop.jpg)
+macOS comes first. The app is built on [JUCE](https://juce.com) so a Windows version can follow from the same code.
 
-**Chop.** Slice a song across up to **128 pads** (eight banks of 16, A–H) for the MPC side; pads 1–8 (outlined red) export to Serato as hot cues; the loop memories (outlined red) export as saved loops.
+## Building
 
-![The Radio: tape deck, opto compressor, graphic EQ and Live Sampler](docs/screenshots/radio.jpg)
+You need macOS 13 or later, the Xcode command line tools and CMake 3.22+ (`brew install cmake`).
 
-**The Radio.** Tape deck with VU meters, both compressors, a 20-band EQ with spectrum analyzer, and the Live Sampler.
-
-![Performance pad](docs/screenshots/perform.jpg)
-
-**Performance pad.** Assign effects, then play them with the XY pad. Attack and release shape how they fade in and out.
-
-## Who it's for
-
-**DJs preparing a set.** Record-pool downloads arrive as zips and folders. DSS1 unpacks them, keeps just the audio,
-and sorts the crate by BPM and Camelot key so you can plan the order. Audition a track on the deck with tempo and
-key changes, find the parts you want, and put them on pads 1–8. Then **Export for Serato** writes those pads into
-a copy of the song as hot cues, and your loop memories as saved loops. Load it in Serato and the cues are already
-there: drops, breakdowns, vocal hits, loops, with nothing to set up at the booth.
-
-**Producers sampling for a track.** Chop a song across 16 pads per bank, set loops from 1/16 bar up to 32 bars,
-add effects, and play it like an instrument. **Export for MPC** sends the slices to an MPC project, so you can
-carry the idea from your Mac into the hardware.
-
-**Live sets and recorded takes.** The Radio rack has a **Live Sampler** that records everything you hear, with the
-deck's EQ, compressors and effects included, to a WAV. Play a track through the Radio, ride the EQ and the opto
-compressor, hit RECORD, and what you keep is your *performance*: a live mix, a transition, a jam. Takes save as WAV files into a
-"Live Playback Records" folder in your crate (or anywhere you choose), ready to use like any other track. An input-pad lever (0, −10, −30, −60 dB) keeps
-the meters off the red.
-
-**Both.** The Performance pad and a USB controller (Akai MPD / MPK / MPC, or anything via MIDI Learn) let you
-rehearse live moves before you play them for an audience.
-
-## How it fits together
-
-1. **Drop** your files in. DSS1 imports the audio into your crate.
-2. **Listen and sort** in the Crate and on the Radio deck: BPM, key, tape-style transport and a tube-style compressor.
-3. **Chop** the song into pads, loops and memories.
-4. **Record it live** (optional): hit RECORD on the Radio's Live Sampler to capture a performance as a WAV.
-5. **Export** to Serato DJ or to an MPC, or keep playing it on the Performance pad.
-
-## What's inside
-
-- **Drop** — drop audio files, folders or record-pool zips; DSS1 pulls out the audio (MP3, WAV, FLAC, AIFF,
-  M4A) and files it in your crate, as WAV by default.
-- **Crate** — your library, sortable by BPM and Camelot key, with album art.
-- **Radio** — a tape deck with working transport (REW plays backwards, FF at 1.5x), tempo and key, VU meters,
-  a 3-knob compressor and a CL 1B-style tube opto compressor, a 20-band graphic EQ with a spectrum analyzer, and a
-  **Live Sampler** that records everything you hear (effects and EQ included) to a WAV take with a waveform monitor.
-- **Chop** — 16 pads per bank, auto loops from 1/16 bar to 32 bars, five loop memories, pad FX, and exports:
-  - **MPC** — an MPC project (`.xpj`) with your slices.
-  - **Serato DJ** — a tagged copy of the song where pads 1–8 are hot cues and the loop memories are saved loops.
-- **Performance** — an effects pad with latch, attack and release.
-- **MIDI** — USB controllers work out of the box (Akai MPD / MPK / MPC); MIDI Learn on any control, MMC
-  transport, and a MIDI Monitor window for seeing exactly what a controller sends.
-
-## Download
-
-Grab the latest `DSS1-x.y.dmg` from [Releases](../../releases), open it and drag DSS1 to Applications.
-
-The app isn't notarized by Apple, so the first time macOS will say it can't verify DSS1. Click **Done**, then go
-to **System Settings → Privacy & Security**, scroll to "DSS1 was blocked…" and click **Open Anyway**.
-
-Needs macOS 14 (Sonoma) or newer, on Apple Silicon or Intel.
-
-**Windows:** not yet. A Windows version is planned before the start of 2027; see [docs/WINDOWS.md](docs/WINDOWS.md)
-for the plan and how to sign up as a tester or help build it.
-
-## Build from source
-
-Needs Xcode or the Command Line Tools (Swift 5.9+).
-
-```bash
-./build.sh        # builds DSS1.app in this folder
-./make_dmg.sh     # builds a universal DSS1.app and packages dist/DSS1-<version>.dmg
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure      # run the tests
+open build/src/app/DSS1_artefacts/Release/DSS1.app
 ```
 
-`./build.sh test` also compiles the `CRATE_*` test hooks used for automated checks; never ship that build.
+The first configure downloads JUCE, Catch2 and nlohmann/json, so it takes a few minutes.
 
-The version number lives in `Resources/Info.plist`.
+Every push to `v2` is built and tested on GitHub Actions; the macOS app is attached to each run as `DSS1-macOS`.
+It isn't signed yet, so the first time you open a downloaded copy, right-click it and choose **Open**.
 
-## Saving progress (for the maintainer)
+## Project layout
 
-```bash
-git add -A
-git commit -m "What changed"
-git push
+```
+src/core/    Track data, beat grids, file formats — plain C++20, no UI or audio, fully unit-tested
+src/app/     The JUCE desktop app
+tests/       Unit tests (Catch2)
+docs/        Architecture notes
 ```
 
-For a new version: bump `Resources/Info.plist`, add it to [CHANGELOG.md](CHANGELOG.md), run `./make_dmg.sh`,
-then `git tag v1.6 && git push --tags && gh release create v1.6 dist/DSS1-1.6.dmg`.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design.
 
-## Inspiration
+## Contributing
 
-These people aren't part of DSS1. They're doing their own thing, building their own tools for many of the same
-reasons, and their work inspired this project. Go check them out:
-
-- [KillaVic Cheat Codes](https://killaviccheatcodes.app/julienne)
-- [Jsen Surreal](https://www.youtube.com/@jsensurreal1026)
-- [Fabe (Bouncy Nuts)](https://bouncynuts.com)
-- [aleksey.malykh9](https://www.instagram.com/aleksey.malykh9/)
-- [gwalakeyz](https://www.instagram.com/gwalakeyz/)
-
-## AI-assisted development
-
-DSS1 was developed with assistance from Claude (Anthropic).
-
-Claude was used to help explore ideas, design features, write and refine code, and troubleshoot implementation
-issues. I remain responsible for the project's design decisions, code review, testing, maintenance, and overall reasoning for the creation of this project, I have a problem I want to solve.
-
-This project is shared as an open-source learning and experimentation tool.
-
-## Credits
-
-- [Rubber Band Library](https://breakfastquay.com/rubberband/) by Particular Programs Ltd — time-stretching and
-  pitch-shifting (GPL v2 or later), in `Vendor/RubberBand`.
-- [AudioKit](https://github.com/AudioKit/AudioKit) and SoundpipeAudioKit (MIT).
-- Serato tag layout from the community documentation at
-  [Holzhaus/serato-tags](https://github.com/Holzhaus/serato-tags). DSS1 isn't affiliated with Serato or Akai.
+Ideas, bug reports and pull requests are welcome. Open an issue first for anything large, so we can agree on the
+approach before you start.
 
 ## License
 
-GPL-3.0 — see [LICENSE](LICENSE). Because DSS1 includes Rubber Band (GPL), the app as a whole is GPL too.
+DSS1 V2 is free software under the [GNU Affero General Public License v3.0](LICENSE). It uses JUCE under the AGPLv3.

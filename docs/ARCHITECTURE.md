@@ -1,0 +1,59 @@
+# DSS1 V2 architecture
+
+DSS1 V2 is a new DJ prep app, written in C++20 on JUCE 9 and built with CMake. macOS ships first; anything
+platform-specific sits behind small interfaces so a Windows build can follow without a rewrite.
+
+## Stages
+
+| Stage | Purpose |
+|---|---|
+| Catalog | Import (files, folders, zips), crate browsing, analysis (BPM, key, loudness, downbeats), folder watching |
+| Prep | Waveform editor with Grid, Cues and Loops lanes; a target switch (Rekordbox / Serato / Both) that flags what won't export |
+| Listen & Design | Listening deck with real-time effects, recorder, XY performance pad, pad sampler |
+| Deliver | Rekordbox XML export/import, Serato-tagged copies, MPC projects, WAV slices |
+
+Rules that keep them clean:
+
+- DJ cues (Prep) and sampler pads are separate data, linked only by explicit copy actions.
+- Saved loops are one list per track, used everywhere.
+- A user's main platform is a preference for defaults and labels; it never hides data.
+
+## Code modules
+
+| Module | Contents | Depends on | Status |
+|---|---|---|---|
+| `core` | Track record, beat-grid maths, library store, Rekordbox XML, Serato tags, MPC projects, track matching | C++20 standard library, nlohmann/json | Started |
+| `analysis` | Tempo, key, loudness, downbeats, waveform peaks | `core` | Phase 3 |
+| `io` | Decoding, import, folder watching | `core`, JUCE audio formats | Phase 3 |
+| `engine` | One audio device, decks, key lock (Signalsmith Stretch), effects, recorder | `io`, JUCE audio | Phase 3 |
+| `midi` | Controllers, MIDI learn, presets | `engine` | Phase 4 |
+| `app` | The four stages and the visual style | everything | Shell in place |
+
+`core` deliberately has no JUCE or OS dependency: it is the part that must be exactly right (cue positions,
+grids, file formats), and keeping it plain C++ makes it fast to test on any machine.
+
+## Track data
+
+One `TrackRecord` per prepared track (`src/core/TrackRecord.h`):
+
+- **Positions are frames** at the file's own sample rate. Seconds are only worked out at the edges
+  (display, Rekordbox, Serato), so nothing drifts through repeated conversions.
+- **Identity** is an audio fingerprint plus the last known path, so moved or renamed files keep their data.
+- **Beat grid** (`src/core/BeatGrid.h`): one or more tempo anchors. Each anchor starts a stretch of constant tempo
+  that runs to the next one; the first also runs backwards to the start of the track. Beats are numbered from the
+  first anchor and the bar count carries through tempo changes, so constant and variable grids are the same type.
+- **Hot cues A–H** (optionally hot loops), **memory cues** (any number, in order) and **saved loops** (8 slots).
+- Stored as JSON with a `schema` number. A record from a newer DSS1 is refused rather than misread.
+
+## Decoding
+
+Cue positions only line up across Rekordbox, Serato and other computers if every file decodes to the same
+samples. WAV, AIFF and FLAC use JUCE's readers; MP3 will use one bundled decoder with encoder-delay handling;
+AAC/M4A is converted to WAV on import.
+
+## Testing
+
+- `tests/` holds Catch2 unit tests for `core`; CI runs them on Linux and macOS for every push.
+- File formats will be checked against real Rekordbox, Serato and MPC behaviour with reference files.
+- Things only a person can judge (sound, controllers, exports opened in other software) get a short manual
+  checklist per phase.

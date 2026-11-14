@@ -1,13 +1,13 @@
 # Build output
-.build/
-DSS1.app/
-dist/
-*.dmg
+build*/
+cmake-build-*/
+out/
 
-# Xcode / SwiftPM local state
-.swiftpm/
-xcuserdata/
+# IDE state
+.vscode/
+.idea/
 *.xcodeproj/
+xcuserdata/
 
 # macOS
 .DS_Store
