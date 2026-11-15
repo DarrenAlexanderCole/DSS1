@@ -32,6 +32,9 @@ set(JSON_BuildTests OFF CACHE INTERNAL "")
 set(JSON_Install    OFF CACHE INTERNAL "")
 FetchContent_MakeAvailable(nlohmann_json)
 
+# SQLite comes with macOS (and with most Linux distributions). A Windows build will bundle the amalgamation.
+find_package(SQLite3 REQUIRED)
+
 FetchContent_Declare(pugixml
     GIT_REPOSITORY https://github.com/zeux/pugixml.git
     GIT_TAG        v1.16

@@ -1,0 +1,280 @@
+#include "core/LibraryStore.h"
+
+#include <nlohmann/json.hpp>
+#include <sqlite3.h>
+
+#include <stdexcept>
+
+namespace dss1
+{
+
+namespace
+{
+    [[noreturn]] void fail (sqlite3* db, const std::string& what)
+    {
+        throw std::runtime_error ("Library database: " + what + ": " + (db != nullptr ? sqlite3_errmsg (db) : "out of memory"));
+    }
+
+    /// A prepared statement that finalises itself.
+    class Statement
+    {
+    public:
+        Statement (sqlite3* db, const char* sql) : db_ (db)
+        {
+            if (sqlite3_prepare_v2 (db, sql, -1, &stmt_, nullptr) != SQLITE_OK)
+                fail (db, "couldn't prepare a query");
+        }
+
+        ~Statement() { sqlite3_finalize (stmt_); }
+        Statement (const Statement&) = delete;
+        Statement& operator= (const Statement&) = delete;
+
+        void bind (int index, const std::string& text)
+        {
+            if (sqlite3_bind_text (stmt_, index, text.data(), static_cast<int> (text.size()), SQLITE_TRANSIENT) != SQLITE_OK)
+                fail (db_, "couldn't bind a value");
+        }
+
+        void bind (int index, std::int64_t value)
+        {
+            if (sqlite3_bind_int64 (stmt_, index, value) != SQLITE_OK)
+                fail (db_, "couldn't bind a value");
+        }
+
+        /// True while there are rows.
+        bool step()
+        {
+            const auto rc = sqlite3_step (stmt_);
+            if (rc == SQLITE_ROW)
+                return true;
+            if (rc == SQLITE_DONE)
+                return false;
+            fail (db_, "a query failed");
+        }
+
+        std::int64_t integer (int column) const { return sqlite3_column_int64 (stmt_, column); }
+
+        std::string text (int column) const
+        {
+            const auto* p = reinterpret_cast<const char*> (sqlite3_column_text (stmt_, column));
+            return p != nullptr ? std::string (p, static_cast<std::size_t> (sqlite3_column_bytes (stmt_, column))) : std::string();
+        }
+
+    private:
+        sqlite3* db_;
+        sqlite3_stmt* stmt_ = nullptr;
+    };
+
+    StoredTrack readRow (const Statement& s)
+    {
+        StoredTrack t;
+        t.id = s.integer (0);
+        t.record = trackRecordFromJson (nlohmann::json::parse (s.text (1)));
+        t.record.identity.path = s.text (2);  // the path column is the truth (relink updates it)
+        return t;
+    }
+
+    std::vector<StoredTrack> readAll (Statement& s)
+    {
+        std::vector<StoredTrack> out;
+        while (s.step())
+            out.push_back (readRow (s));
+        return out;
+    }
+
+    sqlite3* openRaw (const std::string& file)
+    {
+        sqlite3* db = nullptr;
+        const auto rc = sqlite3_open_v2 (file.c_str(), &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr);
+        if (rc != SQLITE_OK)
+        {
+            const std::string message = db != nullptr ? sqlite3_errmsg (db) : "out of memory";
+            sqlite3_close (db);
+            throw std::runtime_error ("Library database: couldn't open " + file + ": " + message);
+        }
+        return db;
+    }
+} // namespace
+
+void LibraryStore::Closer::operator() (sqlite3* db) const noexcept
+{
+    sqlite3_close (db);
+}
+
+LibraryStore::LibraryStore (sqlite3* db) : db_ (db)
+{
+    exec ("PRAGMA foreign_keys = ON");
+    migrate();
+}
+
+LibraryStore::LibraryStore (LibraryStore&&) noexcept = default;
+LibraryStore& LibraryStore::operator= (LibraryStore&&) noexcept = default;
+LibraryStore::~LibraryStore() = default;
+
+LibraryStore LibraryStore::open (const std::string& file)
+{
+    LibraryStore store (openRaw (file));
+    store.exec ("PRAGMA journal_mode = WAL");
+    return store;
+}
+
+LibraryStore LibraryStore::inMemory()
+{
+    return LibraryStore (openRaw (":memory:"));
+}
+
+void LibraryStore::exec (const char* sql) const
+{
+    char* error = nullptr;
+    if (sqlite3_exec (db_.get(), sql, nullptr, nullptr, &error) != SQLITE_OK)
+    {
+        const std::string message = error != nullptr ? error : "unknown error";
+        sqlite3_free (error);
+        throw std::runtime_error (std::string ("Library database: ") + message);
+    }
+}
+
+void LibraryStore::migrate()
+{
+    Statement version (db_.get(), "PRAGMA user_version");
+    version.step();
+    const auto current = static_cast<int> (version.integer (0));
+
+    if (current > schemaVersion)
+        throw std::runtime_error ("Library database was made by a newer version of DSS1 (schema "
+                                  + std::to_string (current) + "); update DSS1 to open it");
+
+    if (current < 1)
+    {
+        transaction ([this] {
+            exec (R"SQL(
+                CREATE TABLE tracks (
+                    id          INTEGER PRIMARY KEY,
+                    path        TEXT NOT NULL UNIQUE,
+                    fingerprint TEXT NOT NULL DEFAULT '',
+                    record      TEXT NOT NULL,
+                    added_at    INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+                    updated_at  INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+                );
+                CREATE INDEX tracks_by_fingerprint ON tracks (fingerprint) WHERE fingerprint <> '';
+                PRAGMA user_version = 1;
+            )SQL");
+        });
+    }
+    // Later schema versions add their upgrade steps here, one `if (current < N)` each.
+}
+
+void LibraryStore::transaction (const std::function<void()>& work)
+{
+    if (sqlite3_get_autocommit (db_.get()) == 0)
+    {
+        work();  // already inside one: join it
+        return;
+    }
+    exec ("BEGIN IMMEDIATE");
+    try
+    {
+        work();
+        exec ("COMMIT");
+    }
+    catch (...)
+    {
+        sqlite3_exec (db_.get(), "ROLLBACK", nullptr, nullptr, nullptr);
+        throw;
+    }
+}
+
+std::int64_t LibraryStore::save (const TrackRecord& record)
+{
+    if (record.identity.path.empty())
+        throw std::runtime_error ("Library database: a track needs a path to be saved");
+
+    {
+        Statement s (db_.get(), R"SQL(
+            INSERT INTO tracks (path, fingerprint, record) VALUES (?1, ?2, ?3)
+            ON CONFLICT (path) DO UPDATE SET fingerprint = excluded.fingerprint,
+                                             record = excluded.record,
+                                             updated_at = strftime('%s', 'now'))SQL");
+        s.bind (1, record.identity.path);
+        s.bind (2, record.identity.fingerprint);
+        s.bind (3, toJson (record).dump());
+        s.step();
+    }
+
+    Statement id (db_.get(), "SELECT id FROM tracks WHERE path = ?1");
+    id.bind (1, record.identity.path);
+    if (! id.step())
+        fail (db_.get(), "a saved track went missing");
+    return id.integer (0);
+}
+
+std::optional<StoredTrack> LibraryStore::byId (std::int64_t id) const
+{
+    Statement s (db_.get(), "SELECT id, record, path FROM tracks WHERE id = ?1");
+    s.bind (1, id);
+    if (! s.step())
+        return std::nullopt;
+    return readRow (s);
+}
+
+std::optional<StoredTrack> LibraryStore::byPath (const std::string& path) const
+{
+    Statement s (db_.get(), "SELECT id, record, path FROM tracks WHERE path = ?1");
+    s.bind (1, path);
+    if (! s.step())
+        return std::nullopt;
+    return readRow (s);
+}
+
+std::vector<StoredTrack> LibraryStore::byFingerprint (const std::string& fingerprint) const
+{
+    if (fingerprint.empty())
+        return {};
+    Statement s (db_.get(), "SELECT id, record, path FROM tracks WHERE fingerprint = ?1 ORDER BY path");
+    s.bind (1, fingerprint);
+    return readAll (s);
+}
+
+std::vector<StoredTrack> LibraryStore::all() const
+{
+    Statement s (db_.get(), "SELECT id, record, path FROM tracks ORDER BY path");
+    return readAll (s);
+}
+
+std::size_t LibraryStore::count() const
+{
+    Statement s (db_.get(), "SELECT COUNT(*) FROM tracks");
+    s.step();
+    return static_cast<std::size_t> (s.integer (0));
+}
+
+void LibraryStore::relink (std::int64_t id, const std::string& newPath)
+{
+    if (newPath.empty())
+        throw std::runtime_error ("Library database: a track needs a path");
+
+    transaction ([&] {
+        auto track = byId (id);
+        if (! track)
+            throw std::runtime_error ("Library database: no track with id " + std::to_string (id));
+        if (const auto other = byPath (newPath); other && other->id != id)
+            throw std::runtime_error ("Library database: another track already uses " + newPath);
+
+        track->record.identity.path = newPath;
+        Statement s (db_.get(), "UPDATE tracks SET path = ?1, record = ?2, updated_at = strftime('%s', 'now') WHERE id = ?3");
+        s.bind (1, newPath);
+        s.bind (2, toJson (track->record).dump());
+        s.bind (3, id);
+        s.step();
+    });
+}
+
+bool LibraryStore::remove (std::int64_t id)
+{
+    Statement s (db_.get(), "DELETE FROM tracks WHERE id = ?1");
+    s.bind (1, id);
+    s.step();
+    return sqlite3_changes (db_.get()) > 0;
+}
+
+} // namespace dss1

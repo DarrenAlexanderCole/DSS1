@@ -22,7 +22,7 @@ Rules that keep them clean:
 
 | Module | Contents | Depends on | Status |
 |---|---|---|---|
-| `core` | Track record, beat-grid maths, library store, Rekordbox XML, Serato tags, MPC projects, track matching | C++20 standard library, nlohmann/json, pugixml | Track record, beat grid, Rekordbox XML, Serato tags done |
+| `core` | Track record, beat-grid maths, library store, Rekordbox XML, Serato tags, MPC projects, track matching | C++20 standard library, nlohmann/json, pugixml, SQLite | Track record, beat grid, library database, track matching, Rekordbox XML, Serato tags done |
 | `analysis` | Tempo, key, loudness, downbeats, waveform peaks | `core` | Phase 3 |
 | `io` | Decoding, import, folder watching | `core`, JUCE audio formats | Phase 3 |
 | `engine` | One audio device, decks, key lock (Signalsmith Stretch), effects, recorder | `io`, JUCE audio | Phase 3 |
@@ -44,6 +44,21 @@ One `TrackRecord` per prepared track (`src/core/TrackRecord.h`):
   first anchor and the bar count carries through tempo changes, so constant and variable grids are the same type.
 - **Hot cues A–H** (optionally hot loops), **memory cues** (any number, in order) and **saved loops** (8 slots).
 - Stored as JSON with a `schema` number. A record from a newer DSS1 is refused rather than misread.
+
+## Library database
+
+`src/core/LibraryStore.h`: one SQLite file (the copy that ships with macOS) holding each track's record as
+JSON, found by path or audio fingerprint. A moved file keeps its data through `relink`. The file carries a
+schema number (`PRAGMA user_version`): an older file is upgraded in place, a newer one is refused rather than
+risk damage. Catalog columns (title, artist, BPM, key) arrive with Phase 3 as schema 2.
+
+## Track matching
+
+`src/core/TrackMatcher.h` finds which library track an outside reference (a Rekordbox XML entry) means. It
+tries, in order: the exact path; the same path ignoring case and accents (composed or decomposed, as macOS
+file names often differ from other apps); the same file name elsewhere with the same length; the same name with
+another extension (an MP3 that was converted to WAV) with the same length. Two equally good candidates are
+reported as ambiguous, never guessed.
 
 ## Rekordbox XML
 

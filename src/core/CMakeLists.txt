@@ -3,13 +3,15 @@
 add_library(dss1_core STATIC
     BeatGrid.cpp
     Id3.cpp
+    LibraryStore.cpp
     RekordboxMapping.cpp
     RekordboxXml.cpp
     SeratoTags.cpp
+    TrackMatcher.cpp
     TrackRecord.cpp)
 
 target_include_directories(dss1_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
-target_link_libraries(dss1_core PUBLIC nlohmann_json::nlohmann_json PRIVATE pugixml::pugixml)
+target_link_libraries(dss1_core PUBLIC nlohmann_json::nlohmann_json PRIVATE pugixml::pugixml SQLite::SQLite3)
 
 if(MSVC)
     target_compile_options(dss1_core PRIVATE /W4)
