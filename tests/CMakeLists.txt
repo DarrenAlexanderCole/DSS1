@@ -1,6 +1,7 @@
 add_executable(dss1_tests
     BeatGridTests.cpp
     RekordboxTests.cpp
+    SeratoTests.cpp
     TrackRecordTests.cpp)
 
 target_link_libraries(dss1_tests PRIVATE dss1_core Catch2::Catch2WithMain)

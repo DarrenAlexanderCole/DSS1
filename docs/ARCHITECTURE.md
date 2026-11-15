@@ -22,7 +22,7 @@ Rules that keep them clean:
 
 | Module | Contents | Depends on | Status |
 |---|---|---|---|
-| `core` | Track record, beat-grid maths, library store, Rekordbox XML, Serato tags, MPC projects, track matching | C++20 standard library, nlohmann/json, pugixml | Track record, beat grid, Rekordbox XML done |
+| `core` | Track record, beat-grid maths, library store, Rekordbox XML, Serato tags, MPC projects, track matching | C++20 standard library, nlohmann/json, pugixml | Track record, beat grid, Rekordbox XML, Serato tags done |
 | `analysis` | Tempo, key, loudness, downbeats, waveform peaks | `core` | Phase 3 |
 | `io` | Decoding, import, folder watching | `core`, JUCE audio formats | Phase 3 |
 | `engine` | One audio device, decks, key lock (Signalsmith Stretch), effects, recorder | `io`, JUCE audio | Phase 3 |
@@ -62,6 +62,25 @@ without losing anything. `src/core/RekordboxMapping.h` converts to and from DSS1
 
 Rekordbox stores positions to the millisecond, so a position that goes out and comes back lands within half a
 millisecond. Positions are converted with the sample rate of the actual audio file, never the XML's hint.
+
+## Serato tags
+
+Serato keeps cues, loops and the grid inside the audio file as ID3 `GEOB` frames. `src/core/SeratoTags.h`
+builds and reads the "Serato Markers2" payload (cues, saved loops, track colour, BPM lock; Serato's own base64
+with a line feed every 72 characters, padded to 470 bytes) and the "Serato BeatGrid" payload, following the
+community-documented layout ([Holzhaus/serato-tags](https://github.com/Holzhaus/serato-tags)).
+`src/core/Id3.h` puts GEOB frames into WAV (`id3 ` chunk), AIFF (`ID3 ` chunk) and MP3 (tag at the front),
+keeping every other frame and chunk.
+
+| DSS1 | Serato |
+|---|---|
+| Hot cue A–H | Cue 1–8 (DSS1 colour, or Serato's default colour for that slot) |
+| Hot loop in A–H | Plain cue (Serato's hot cues can't loop), reported |
+| Memory cues | Not exported (Serato has none), reported |
+| Saved loops 1–8 | Loops 1–8, with colour and lock |
+| Beat grid | BeatGrid markers from the first downbeat in the track; tempo changes rounded to whole beats, reported if that moves anything by more than 1 ms |
+
+FLAC and M4A keep Serato data differently (Vorbis comments / MP4 atoms); for now those are exported as WAV.
 
 ## Decoding
 

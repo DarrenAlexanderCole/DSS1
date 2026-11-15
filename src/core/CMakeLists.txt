@@ -2,8 +2,10 @@
 # Plain C++20 with no JUCE or OS dependencies, so it is fast to test and portable to Windows.
 add_library(dss1_core STATIC
     BeatGrid.cpp
+    Id3.cpp
     RekordboxMapping.cpp
     RekordboxXml.cpp
+    SeratoTags.cpp
     TrackRecord.cpp)
 
 target_include_directories(dss1_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
