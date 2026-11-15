@@ -22,7 +22,7 @@ Rules that keep them clean:
 
 | Module | Contents | Depends on | Status |
 |---|---|---|---|
-| `core` | Track record, beat-grid maths, library store, Rekordbox XML, Serato tags, MPC projects, track matching | C++20 standard library, nlohmann/json | Started |
+| `core` | Track record, beat-grid maths, library store, Rekordbox XML, Serato tags, MPC projects, track matching | C++20 standard library, nlohmann/json, pugixml | Track record, beat grid, Rekordbox XML done |
 | `analysis` | Tempo, key, loudness, downbeats, waveform peaks | `core` | Phase 3 |
 | `io` | Decoding, import, folder watching | `core`, JUCE audio formats | Phase 3 |
 | `engine` | One audio device, decks, key lock (Signalsmith Stretch), effects, recorder | `io`, JUCE audio | Phase 3 |
@@ -44,6 +44,24 @@ One `TrackRecord` per prepared track (`src/core/TrackRecord.h`):
   first anchor and the bar count carries through tempo changes, so constant and variable grids are the same type.
 - **Hot cues A–H** (optionally hot loops), **memory cues** (any number, in order) and **saved loops** (8 slots).
 - Stored as JSON with a `schema` number. A record from a newer DSS1 is refused rather than misread.
+
+## Rekordbox XML
+
+`src/core/RekordboxXml.h` reads and writes the format faithfully (tracks, `TEMPO` grid markers, `POSITION_MARK`s,
+the playlist tree). TRACK attributes DSS1 doesn't use are kept, so a collection can be read and written back
+without losing anything. `src/core/RekordboxMapping.h` converts to and from DSS1 track data:
+
+| Rekordbox | DSS1 |
+|---|---|
+| `POSITION_MARK` Num 0–7, Type 0 | Hot cue A–H |
+| `POSITION_MARK` Num 0–7, Type 4 (with End) | Hot loop in A–H |
+| `POSITION_MARK` Num -1, Type 0 | Memory cue |
+| `POSITION_MARK` Num -1, Type 4 | Saved loop (slots filled in track order; extras reported) |
+| `POSITION_MARK` Type 1–3 (fades, load) | Not used; reported on import |
+| `TEMPO` (Inizio, Bpm, Metro, Battito) | Beat-grid anchor; markers that repeat the grid are merged away |
+
+Rekordbox stores positions to the millisecond, so a position that goes out and comes back lands within half a
+millisecond. Positions are converted with the sample rate of the actual audio file, never the XML's hint.
 
 ## Decoding
 

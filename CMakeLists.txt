@@ -32,6 +32,13 @@ set(JSON_BuildTests OFF CACHE INTERNAL "")
 set(JSON_Install    OFF CACHE INTERNAL "")
 FetchContent_MakeAvailable(nlohmann_json)
 
+FetchContent_Declare(pugixml
+    GIT_REPOSITORY https://github.com/zeux/pugixml.git
+    GIT_TAG        v1.16
+    GIT_SHALLOW    TRUE)
+set(PUGIXML_BUILD_TESTS OFF CACHE INTERNAL "")
+FetchContent_MakeAvailable(pugixml)
+
 add_subdirectory(src/core)
 
 if(DSS1_BUILD_APP)
