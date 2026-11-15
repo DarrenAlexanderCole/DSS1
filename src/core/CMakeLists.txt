@@ -7,6 +7,7 @@ add_library(dss1_core STATIC
     RekordboxMapping.cpp
     RekordboxXml.cpp
     SeratoTags.cpp
+    TestExport.cpp
     TrackMatcher.cpp
     TrackRecord.cpp)
 

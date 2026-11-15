@@ -1,0 +1,47 @@
+name: Release (macOS)
+
+# Pushing a tag like v2.0.0-test.1 builds the app, packages it as a disk image and publishes it as a
+# GitHub pre-release, so testers can download it without a GitHub account.
+
+on:
+  push:
+    tags: ['v2.*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish DSS1 for macOS
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Package disk image
+        run: |
+          APP=build/src/app/DSS1_artefacts/Release/DSS1.app
+          lipo -info "$APP/Contents/MacOS/DSS1"
+          # Not notarised yet: an ad-hoc signature lets macOS run it once the user allows it.
+          codesign --force --deep --sign - "$APP"
+          mkdir dmg
+          cp -R "$APP" dmg/
+          ln -s /Applications dmg/Applications
+          hdiutil create -volname "DSS1" -srcfolder dmg -ov -format UDZO "DSS1-${GITHUB_REF_NAME}.dmg"
+
+      - name: Publish pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "DSS1-${GITHUB_REF_NAME}.dmg" \
+            --prerelease \
+            --title "DSS1 V2 test build ${GITHUB_REF_NAME}" \
+            --notes-file docs/TEST-BUILD.md

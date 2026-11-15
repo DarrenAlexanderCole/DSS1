@@ -97,3 +97,31 @@ TEST_CASE ("problems() reports cues and loops that don't make sense", "[track]")
     CHECK (found[0] == "hot cue B is outside the track");
     CHECK (found[1] == "saved loop 3 ends before it starts");
 }
+
+#include "core/TestExport.h"
+
+TEST_CASE ("The test export puts cues on bar lines of a 120 BPM grid", "[testexport]")
+{
+    const auto r = makeTestRecord ("/x.wav", 48000.0, 48000 * 180);
+    REQUIRE (r.grid);
+    CHECK (r.problems().empty());
+
+    for (std::size_t i = 0; i < 8; ++i)
+    {
+        REQUIRE (r.hotCues[i]);
+        const auto frame = static_cast<double> (r.hotCues[i]->frame);
+        CHECK (frame == 48000.0 * 8.0 * static_cast<double> (i + 1));
+        CHECK (r.grid->nearestBeat (frame).beatInBar == 1);
+    }
+    CHECK (r.hotCues[7]->name == "H 1:04.000");
+    REQUIRE (r.savedLoops[0]);
+    CHECK (r.savedLoops[0]->end == 48000 * 40);
+    CHECK (testPositions (r).size() == 11);
+
+    // A 30-second track only gets what fits.
+    const auto shortTrack = makeTestRecord ("/x.wav", 44100.0, 44100 * 30);
+    CHECK (shortTrack.hotCues[2]);
+    CHECK_FALSE (shortTrack.hotCues[3]);
+    CHECK_FALSE (shortTrack.savedLoops[0]);
+    CHECK (formatTime (64.0) == "1:04.000");
+}

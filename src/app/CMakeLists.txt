@@ -12,6 +12,7 @@ target_sources(DSS1 PRIVATE
     MainComponent.cpp
     StagePanel.cpp
     GridPreview.cpp
+    TestExportPanel.cpp
     Theme.cpp)
 
 target_compile_definitions(DSS1 PRIVATE
@@ -24,6 +25,7 @@ target_compile_definitions(DSS1 PRIVATE
 target_link_libraries(DSS1
     PRIVATE
         dss1_core
+        juce::juce_audio_formats
         juce::juce_gui_extra
     PUBLIC
         juce::juce_recommended_config_flags

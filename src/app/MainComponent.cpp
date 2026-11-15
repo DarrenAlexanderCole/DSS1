@@ -1,6 +1,7 @@
 #include "MainComponent.h"
 #include "GridPreview.h"
 #include "StagePanel.h"
+#include "TestExportPanel.h"
 
 namespace dss1::ui
 {
@@ -33,6 +34,7 @@ MainComponent::MainComponent()
         juce::StringArray { "Rekordbox XML export and import",
                             "Serato-tagged copies",
                             "MPC projects and WAV slices" });
+    deliver->setShowcase (std::make_unique<TestExportPanel>());
 
     const auto bg = Colours::background;
     stages.setTabBarDepth (44);
@@ -40,7 +42,7 @@ MainComponent::MainComponent()
     stages.addTab ("Prep", bg, prep.release(), true);
     stages.addTab ("Listen & Design", bg, design.release(), true);
     stages.addTab ("Deliver", bg, deliver.release(), true);
-    stages.setCurrentTabIndex (1);
+    stages.setCurrentTabIndex (3);  // test builds open on Deliver, where the test export lives
     addAndMakeVisible (stages);
 
     setSize (1200, 760);

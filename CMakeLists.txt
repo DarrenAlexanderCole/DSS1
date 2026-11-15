@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.22)
 
 # Must be set before project() to take effect on Apple platforms.
 set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "Minimum macOS version")
+# One app for both Apple Silicon and Intel Macs.
+set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Mac architectures to build")
 
 project(DSS1 VERSION 2.0.0 LANGUAGES C CXX)
 
