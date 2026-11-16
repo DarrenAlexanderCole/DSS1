@@ -106,7 +106,9 @@ namespace
             // 1. A copy of the file itself.
             const auto name = stem + " (DSS1 timing)";
             const auto target = outputFolder.getChildFile (name + extension);
-            const auto record = makeTimingRecord (target.getFullPathName().toStdString(), rate, length, hits);
+            auto record = makeTimingRecord (target.getFullPathName().toStdString(), rate, length, hits);
+            // Serato and Rekordbox count an MP3's encoder delay; DSS1 removed it. (The WAV copy has none.)
+            record.exportOffsetFrames = decoded.info.encoderDelayFrames;
             out.tracks.push_back (makeCopy (target, record, name, extension, readBytes (source)));
             made << "\"" << target.getFileName() << "\"";
 
@@ -127,8 +129,8 @@ namespace
             for (const auto& p : testPositions (record))
                 text << p.what << ": " << formatTime (p.seconds) << "\n";
             if (decoded.info.encoderDelayFrames > 0)
-                text << "\n(MP3 detail for me: DSS1 removed " << static_cast<int> (decoded.info.encoderDelayFrames)
-                     << " samples of encoder silence from the start.)\n";
+                text << "\n(MP3 detail for me: the encoder added " << static_cast<int> (decoded.info.encoderDelayFrames)
+                     << " samples of silence at the start; DSS1 shifted the MP3's cues by that much for Serato and Rekordbox.)\n";
             text << "\n" << howToCheck;
             out.report = text;
         }

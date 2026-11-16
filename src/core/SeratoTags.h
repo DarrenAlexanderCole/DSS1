@@ -103,10 +103,12 @@ struct ExportOptions
 };
 
 /// Hot cues A–H → cues 1–8, saved loops → loops 1–8, and the beat grid → Serato's grid if asked for.
+/// Positions are shifted by the record's exportOffsetFrames (an MP3's encoder delay, which Serato counts).
 Export exportTrack (const TrackRecord& record, const ExportOptions& options = {});
 
 /// Serato cues, loops and grid → DSS1 track data, using the record's sample rate (the audio file's own).
-/// Replaces the record's hot cues and saved loops, and its grid when Serato has one.
+/// Replaces the record's hot cues and saved loops, and its grid when Serato has one. Set the record's
+/// exportOffsetFrames first: Serato's positions count an MP3's encoder delay and DSS1's don't.
 void importInto (TrackRecord& record, const Markers& markers, const std::optional<Grid>& grid);
 
 /// Serato grid ↔ DSS1 grid.

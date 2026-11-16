@@ -249,3 +249,27 @@ TEST_CASE ("An exported grid starts on the first beat inside the track", "[rekor
     CHECK (t2[0].inizio == Approx (0.125).margin (1e-4));
     CHECK (t2[0].battito == 1);
 }
+
+TEST_CASE ("MP3 positions are shifted by the encoder delay Rekordbox counts", "[rekordbox]")
+{
+    TrackRecord r;
+    r.identity.path = "/Music/a.mp3";
+    r.sampleRate = rate;
+    r.lengthFrames = static_cast<Frame> (60 * rate);
+    r.exportOffsetFrames = 1105;
+    r.grid = BeatGrid::constant (rate, 120.0, 0);
+    r.hotCues[0] = HotCue { 44100, std::nullopt, "", std::nullopt };
+
+    const auto t = exportTrack (r, {});
+    REQUIRE (t.marks.size() == 1);
+    CHECK (t.marks[0].start == Approx (1.0 + 1105.0 / rate));
+    REQUIRE (! t.tempos.empty());
+    CHECK (t.tempos[0].inizio == Approx (1105.0 / rate));
+
+    const auto back = importTrack (t, rate, r.lengthFrames, 1105);
+    REQUIRE (back.record.hotCues[0]);
+    CHECK (back.record.hotCues[0]->frame == 44100);
+    REQUIRE (back.record.grid);
+    CHECK (back.record.grid->anchors()[0].frame == 0);
+    CHECK (back.record.exportOffsetFrames == 1105);
+}

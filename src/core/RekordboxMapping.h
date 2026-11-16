@@ -36,11 +36,12 @@ struct ImportedTrack
     std::vector<std::string> notes;
 };
 
-/// Builds DSS1 track data from a Rekordbox TRACK. `sampleRate` and `lengthFrames` come from the audio file
-/// itself (the XML's values are only hints), so positions land on the right frames.
-ImportedTrack importTrack (const Track& track, double sampleRate, Frame lengthFrames);
+/// Builds DSS1 track data from a Rekordbox TRACK. `sampleRate`, `lengthFrames` and `exportOffsetFrames` (an
+/// MP3's encoder delay, which Rekordbox counts and DSS1 doesn't) come from the audio file itself, so positions
+/// land on the right frames.
+ImportedTrack importTrack (const Track& track, double sampleRate, Frame lengthFrames, Frame exportOffsetFrames = 0);
 
-/// Builds a Rekordbox TRACK from DSS1 track data.
+/// Builds a Rekordbox TRACK from DSS1 track data. Positions are shifted by the record's exportOffsetFrames.
 Track exportTrack (const TrackRecord& record, const TrackDetails& details);
 
 /// Rekordbox TEMPO markers → a DSS1 grid. Markers that only repeat what the grid already says (same tempo,

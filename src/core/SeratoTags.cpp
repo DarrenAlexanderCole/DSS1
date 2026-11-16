@@ -457,7 +457,7 @@ Export exportTrack (const TrackRecord& r, const ExportOptions& options)
         if (! r.hotCues[i])
             continue;
         const auto& c = *r.hotCues[i];
-        const auto ms = toMs (c.frame, rate);
+        const auto ms = toMs (c.frame + r.exportOffsetFrames, rate);
         if (! ms)
         {
             ++outOfRange;
@@ -474,7 +474,7 @@ Export exportTrack (const TrackRecord& r, const ExportOptions& options)
         if (! r.savedLoops[i])
             continue;
         const auto& l = *r.savedLoops[i];
-        const auto start = toMs (l.start, rate), end = toMs (l.end, rate);
+        const auto start = toMs (l.start + r.exportOffsetFrames, rate), end = toMs (l.end + r.exportOffsetFrames, rate);
         if (! start || ! end)
         {
             ++outOfRange;
@@ -495,6 +495,13 @@ Export exportTrack (const TrackRecord& r, const ExportOptions& options)
     {
         bool approximated = false;
         out.grid = toSeratoGrid (*r.grid, approximated);
+        if (out.grid && r.exportOffsetFrames != 0)
+        {
+            const auto shift = static_cast<float> (static_cast<double> (r.exportOffsetFrames) / rate);
+            for (auto& marker : out.grid->markers)
+                marker.positionSeconds += shift;
+            out.grid->lastPositionSeconds += shift;
+        }
         if (approximated)
             out.notes.push_back ("The beat grid was rounded to whole beats between tempo changes, which is all Serato can store");
     }
@@ -517,17 +524,24 @@ void importInto (TrackRecord& record, const Markers& m, const std::optional<Grid
     record.hotCues = {};
     for (const auto& c : m.cues)
         if (c.index >= 0 && c.index < static_cast<int> (TrackRecord::hotCueSlots))
-            record.hotCues[static_cast<std::size_t> (c.index)] = HotCue { toFrame (c.positionMs, rate), std::nullopt, c.name, c.colour };
+            record.hotCues[static_cast<std::size_t> (c.index)] = HotCue { toFrame (c.positionMs, rate) - record.exportOffsetFrames, std::nullopt, c.name, c.colour };
 
     record.savedLoops = {};
     for (const auto& l : m.loops)
         if (l.index >= 0 && l.index < static_cast<int> (TrackRecord::savedLoopSlots) && l.endMs > l.startMs)
             record.savedLoops[static_cast<std::size_t> (l.index)] =
-                SavedLoop { toFrame (l.startMs, rate), toFrame (l.endMs, rate), l.name, l.colour, l.locked };
+                SavedLoop { toFrame (l.startMs, rate) - record.exportOffsetFrames, toFrame (l.endMs, rate) - record.exportOffsetFrames, l.name, l.colour, l.locked };
 
     if (grid)
-        if (auto g = beatGridFromGrid (*grid, rate))
+    {
+        auto shifted = *grid;
+        const auto shift = static_cast<float> (static_cast<double> (record.exportOffsetFrames) / rate);
+        for (auto& marker : shifted.markers)
+            marker.positionSeconds -= shift;
+        shifted.lastPositionSeconds -= shift;
+        if (auto g = beatGridFromGrid (shifted, rate))
             record.grid = std::move (g);
+    }
 }
 
 } // namespace dss1::serato

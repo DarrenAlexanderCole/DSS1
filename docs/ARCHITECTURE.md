@@ -105,9 +105,10 @@ reads WAV and AIFF (dr_wav), FLAC (dr_flac) and MP3 (minimp3), all public domain
 
 MP3 encoders add silence at the start (encoder delay) and end (padding). When the file says how much (a
 LAME/Xing header, which almost every MP3 has), DSS1 removes it, so frame 0 is the first real sample and the
-file is exactly as long as the music that was encoded. The removed amount is kept (`encoderDelayFrames`) in
-case a DJ app turns out to count from the undelayed start (still to be checked against Serato and Rekordbox
-with real MP3s once DSS1 can play audio). `tests/fixtures` holds the same click track in every format, and the tests check
+file is exactly as long as the music that was encoded. Serato and Rekordbox don't: checked by hand with the
+timing test (v2.0.0-test.2), MP3 cues landed about 25 ms early in both, matching the usual 1105-frame delay
+(576 encoder + 529 decoder). So each track keeps `exportOffsetFrames` (the removed delay, 0 for lossless
+formats); Serato and Rekordbox exports add it to every position and imports subtract it. `tests/fixtures` holds the same click track in every format, and the tests check
 the clicks land on the same frames in each (exactly for lossless, within 4 frames for MP3).
 
 AAC/M4A will be converted to WAV on import.

@@ -138,14 +138,20 @@ std::vector<Tempo> temposFromGrid (const BeatGrid& grid)
     return tempos;
 }
 
-ImportedTrack importTrack (const Track& track, double sampleRate, Frame lengthFrames)
+ImportedTrack importTrack (const Track& track, double sampleRate, Frame lengthFrames, Frame exportOffsetFrames)
 {
     ImportedTrack out;
     auto& r = out.record;
+    r.exportOffsetFrames = exportOffsetFrames;
+    // Rekordbox's positions count the MP3 encoder delay; DSS1's don't.
+    const auto frameOf = [&] (double seconds) { return toFrame (seconds, sampleRate) - exportOffsetFrames; };
     r.identity.path = pathFromLocation (track.location);
     r.sampleRate = sampleRate;
     r.lengthFrames = lengthFrames;
-    r.grid = gridFromTempos (track.tempos, sampleRate);
+    auto tempos = track.tempos;
+    for (auto& t : tempos)
+        t.inizio -= static_cast<double> (exportOffsetFrames) / (sampleRate > 0 ? sampleRate : 1.0);
+    r.grid = gridFromTempos (tempos, sampleRate);
 
     std::vector<PositionMark> memoryLoops;
     std::size_t duplicateHotCues = 0, otherMarks = 0, badHotCueNumbers = 0;
@@ -173,9 +179,9 @@ ImportedTrack importTrack (const Track& track, double sampleRate, Frame lengthFr
                 continue;
             }
             HotCue cue;
-            cue.frame = toFrame (m.start, sampleRate);
+            cue.frame = frameOf (m.start);
             if (isLoop)
-                cue.loopEnd = toFrame (*m.end, sampleRate);
+                cue.loopEnd = frameOf (*m.end);
             cue.name = m.name;
             cue.colour = toCueColour (m.colour);
             slot = cue;
@@ -186,7 +192,7 @@ ImportedTrack importTrack (const Track& track, double sampleRate, Frame lengthFr
         }
         else
         {
-            r.addMemoryCue ({ toFrame (m.start, sampleRate), m.name, toCueColour (m.colour) });
+            r.addMemoryCue ({ frameOf (m.start), m.name, toCueColour (m.colour) });
         }
     }
 
@@ -199,8 +205,8 @@ ImportedTrack importTrack (const Track& track, double sampleRate, Frame lengthFr
         if (slot >= TrackRecord::savedLoopSlots)
             break;
         SavedLoop loop;
-        loop.start = toFrame (m.start, sampleRate);
-        loop.end = toFrame (*m.end, sampleRate);
+        loop.start = frameOf (m.start);
+        loop.end = frameOf (*m.end);
         loop.name = m.name;
         loop.colour = toCueColour (m.colour);
         r.savedLoops[slot++] = loop;
@@ -241,9 +247,15 @@ Track exportTrack (const TrackRecord& r, const TrackDetails& details)
             t.totalTime = std::floor (toSeconds (r.lengthFrames, rate));
     }
 
+    // Rekordbox counts an MP3's encoder delay; DSS1 doesn't.
+    const auto secondsOf = [&] (Frame f) { return toSeconds (f + r.exportOffsetFrames, rate); };
+
     if (r.grid && ! r.grid->isEmpty())
     {
         t.tempos = temposFromGrid (*r.grid);
+        if (rate > 0)
+            for (auto& tempo : t.tempos)
+                tempo.inizio += static_cast<double> (r.exportOffsetFrames) / rate;
         if (r.grid->isConstantTempo())
             t.averageBpm = r.grid->anchors().front().bpm;
     }
@@ -261,21 +273,21 @@ Track exportTrack (const TrackRecord& r, const TrackDetails& details)
         PositionMark m;
         m.name = c.name;
         m.type = c.loopEnd ? MarkType::loop : MarkType::cue;
-        m.start = toSeconds (c.frame, rate);
+        m.start = secondsOf (c.frame);
         if (c.loopEnd)
-            m.end = toSeconds (*c.loopEnd, rate);
+            m.end = secondsOf (*c.loopEnd);
         m.num = static_cast<int> (i);
         m.colour = toRgb (c.colour);
         t.marks.push_back (m);
     }
 
     for (const auto& c : r.memoryCues)
-        t.marks.push_back ({ c.name, MarkType::cue, toSeconds (c.frame, rate), std::nullopt, -1, toRgb (c.colour) });
+        t.marks.push_back ({ c.name, MarkType::cue, secondsOf (c.frame), std::nullopt, -1, toRgb (c.colour) });
 
     for (const auto& loop : r.savedLoops)
         if (loop)
-            t.marks.push_back ({ loop->name, MarkType::loop, toSeconds (loop->start, rate),
-                                 toSeconds (loop->end, rate), -1, toRgb (loop->colour) });
+            t.marks.push_back ({ loop->name, MarkType::loop, secondsOf (loop->start),
+                                 secondsOf (loop->end), -1, toRgb (loop->colour) });
     return t;
 }
 

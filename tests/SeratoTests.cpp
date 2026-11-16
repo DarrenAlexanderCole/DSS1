@@ -330,3 +330,24 @@ TEST_CASE ("Containers are recognised by extension and checked by content", "[id
     CHECK_THROWS_AS (id3::writeGeobFrames (makeAiff(), id3::Container::wav, {}), std::runtime_error);
     CHECK_THROWS_AS (id3::writeGeobFrames (makeWav(), id3::Container::aiff, {}), std::runtime_error);
 }
+
+TEST_CASE ("MP3 positions are shifted by the encoder delay Serato counts", "[serato]")
+{
+    TrackRecord r;
+    r.sampleRate = rate;
+    r.exportOffsetFrames = 1105;  // a typical LAME MP3: 576 encoder + 529 decoder delay
+    r.hotCues[0] = HotCue { 44100, std::nullopt, "", std::nullopt };
+    r.savedLoops[0] = SavedLoop { 88200, 176400, "", std::nullopt, false };
+
+    const auto e = exportTrack (r);
+    CHECK (e.markers.cues[0].positionMs == 1025);   // 1 s + 25.06 ms
+    CHECK (e.markers.loops[0].startMs == 2025);
+
+    TrackRecord back;
+    back.sampleRate = rate;
+    back.exportOffsetFrames = 1105;
+    importInto (back, e.markers, std::nullopt);
+    REQUIRE (back.hotCues[0]);
+    CHECK (std::abs (back.hotCues[0]->frame - 44100) <= 23);  // within Serato's 1 ms resolution
+    CHECK (std::abs (back.savedLoops[0]->end - 176400) <= 23);
+}

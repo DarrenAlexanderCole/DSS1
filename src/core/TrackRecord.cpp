@@ -131,6 +131,8 @@ json toJson (const TrackRecord& t)
     j["identity"] = { { "path", t.identity.path }, { "fingerprint", t.identity.fingerprint } };
     j["sampleRate"] = t.sampleRate;
     j["lengthFrames"] = t.lengthFrames;
+    if (t.exportOffsetFrames != 0)
+        j["exportOffsetFrames"] = t.exportOffsetFrames;
 
     if (t.grid)
         j["grid"] = gridToJson (*t.grid);
@@ -189,6 +191,7 @@ TrackRecord trackRecordFromJson (const json& j)
     }
     t.sampleRate = j.at ("sampleRate").get<double>();
     t.lengthFrames = j.value ("lengthFrames", Frame { 0 });
+    t.exportOffsetFrames = j.value ("exportOffsetFrames", Frame { 0 });
 
     if (const auto it = j.find ("grid"); it != j.end() && ! it->is_null())
         t.grid = gridFromJson (*it);

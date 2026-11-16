@@ -69,6 +69,11 @@ struct TrackRecord
     double sampleRate = 0;
     Frame lengthFrames = 0;
 
+    /// Frames other DJ apps count before DSS1's frame 0. DSS1 removes an MP3's encoder delay so frame 0 is the
+    /// first real sample; Serato and Rekordbox keep it (checked by hand: cues landed ~25 ms early until this
+    /// was added back). Exports add this to every position and imports subtract it. 0 for WAV, AIFF and FLAC.
+    Frame exportOffsetFrames = 0;
+
     std::optional<BeatGrid> grid;
     std::array<std::optional<HotCue>, hotCueSlots> hotCues {};
     std::vector<MemoryCue> memoryCues;  ///< kept in frame order

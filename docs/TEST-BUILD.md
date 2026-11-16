@@ -1,4 +1,7 @@
-**This is an early test build of DSS1 V2: the MP3 timing test.** It doesn't play audio yet. It runs on Apple
+**This is an early test build of DSS1 V2: the MP3 timing test.** The previous build showed MP3 cues landing
+about 25 ms early in Serato and Rekordbox, because both apps count the silence MP3 encoders add at the start and
+DSS1 didn't. This build adds it back, so MP3 cues should now sit right on the hits, just like the WAV's. It doesn't
+play audio yet. It runs on Apple
 Silicon and Intel Macs with macOS 13 or later.
 
 ## Install
