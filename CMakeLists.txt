@@ -44,7 +44,20 @@ FetchContent_Declare(pugixml
 set(PUGIXML_BUILD_TESTS OFF CACHE INTERNAL "")
 FetchContent_MakeAvailable(pugixml)
 
+# Audio decoders (public domain, single headers). Pinned to commits: neither project tags releases.
+# SOURCE_SUBDIR points nowhere so CMake only downloads them and doesn't build their own projects.
+FetchContent_Declare(dr_libs
+    GIT_REPOSITORY https://github.com/mackron/dr_libs.git
+    GIT_TAG        f12e197fd462e4c22873fbd70d11b1d2f2c1dc3c
+    SOURCE_SUBDIR  none)
+FetchContent_Declare(minimp3
+    GIT_REPOSITORY https://github.com/lieff/minimp3.git
+    GIT_TAG        a2ad968c94819fb98589cca8026e0a57958c963c
+    SOURCE_SUBDIR  none)
+FetchContent_MakeAvailable(dr_libs minimp3)
+
 add_subdirectory(src/core)
+add_subdirectory(src/io)
 
 if(DSS1_BUILD_APP)
     FetchContent_Declare(JUCE

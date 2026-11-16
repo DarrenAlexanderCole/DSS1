@@ -26,7 +26,7 @@ and each export takes what its software supports.
 |---|---|---|
 | 1 | Foundations: project, CI, test harness, app shell, beat-grid and track-record core | Done (signing and MP3 decoder still to do) |
 | 2 | Track data & formats: library store, Rekordbox XML, Serato tags, track matching | Done (core): library database, Rekordbox XML, Serato tags, track matching |
-| 3 | Audio engine + Catalog | |
+| 3 | Audio engine + Catalog | In progress: decoding done |
 | 4 | Prep | |
 | 5 | Deliver → **DJ prep beta** | |
 | 6 | Listen & Design → **1.0** | |

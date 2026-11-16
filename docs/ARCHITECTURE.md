@@ -24,7 +24,7 @@ Rules that keep them clean:
 |---|---|---|---|
 | `core` | Track record, beat-grid maths, library store, Rekordbox XML, Serato tags, MPC projects, track matching | C++20 standard library, nlohmann/json, pugixml, SQLite | Track record, beat grid, library database, track matching, Rekordbox XML, Serato tags done |
 | `analysis` | Tempo, key, loudness, downbeats, waveform peaks | `core` | Phase 3 |
-| `io` | Decoding, import, folder watching | `core`, JUCE audio formats | Phase 3 |
+| `io` | Decoding, import, folder watching | `core`, dr_wav, dr_flac, minimp3 | Decoding done |
 | `engine` | One audio device, decks, key lock (Signalsmith Stretch), effects, recorder | `io`, JUCE audio | Phase 3 |
 | `midi` | Controllers, MIDI learn, presets | `engine` | Phase 4 |
 | `app` | The four stages and the visual style | everything | Shell in place |
@@ -100,8 +100,17 @@ FLAC and M4A keep Serato data differently (Vorbis comments / MP4 atoms); for now
 ## Decoding
 
 Cue positions only line up across Rekordbox, Serato and other computers if every file decodes to the same
-samples. WAV, AIFF and FLAC use JUCE's readers; MP3 will use one bundled decoder with encoder-delay handling;
-AAC/M4A is converted to WAV on import.
+samples, so DSS1 bundles its own decoders rather than using the operating system's: `src/io/AudioDecoder.h`
+reads WAV and AIFF (dr_wav), FLAC (dr_flac) and MP3 (minimp3), all public domain, pinned to commits.
+
+MP3 encoders add silence at the start (encoder delay) and end (padding). When the file says how much (a
+LAME/Xing header, which almost every MP3 has), DSS1 removes it, so frame 0 is the first real sample and the
+file is exactly as long as the music that was encoded. The removed amount is kept (`encoderDelayFrames`) in
+case a DJ app turns out to count from the undelayed start (still to be checked against Serato and Rekordbox
+with real MP3s once DSS1 can play audio). `tests/fixtures` holds the same click track in every format, and the tests check
+the clicks land on the same frames in each (exactly for lossless, within 4 frames for MP3).
+
+AAC/M4A will be converted to WAV on import.
 
 ## Testing
 
