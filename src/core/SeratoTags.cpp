@@ -441,7 +441,7 @@ std::optional<BeatGrid> beatGridFromGrid (const Grid& g, double sampleRate)
     }
 }
 
-Export exportTrack (const TrackRecord& r)
+Export exportTrack (const TrackRecord& r, const ExportOptions& options)
 {
     Export out;
     const auto rate = r.sampleRate;
@@ -491,7 +491,7 @@ Export exportTrack (const TrackRecord& r)
         out.markers.loops.push_back (loop);
     }
 
-    if (r.grid)
+    if (r.grid && options.includeBeatGrid)
     {
         bool approximated = false;
         out.grid = toSeratoGrid (*r.grid, approximated);

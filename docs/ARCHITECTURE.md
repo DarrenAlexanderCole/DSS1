@@ -93,7 +93,7 @@ keeping every other frame and chunk.
 | Hot loop in A–H | Plain cue (Serato's hot cues can't loop), reported |
 | Memory cues | Not exported (Serato has none), reported |
 | Saved loops 1–8 | Loops 1–8, with colour and lock |
-| Beat grid | BeatGrid markers from the first downbeat in the track; tempo changes rounded to whole beats, reported if that moves anything by more than 1 ms |
+| Beat grid | Off by default (many Serato DJs don't use grids); when switched on, BeatGrid markers from the first downbeat in the track; tempo changes rounded to whole beats, reported if that moves anything by more than 1 ms |
 
 FLAC and M4A keep Serato data differently (Vorbis comments / MP4 atoms); for now those are exported as WAV.
 

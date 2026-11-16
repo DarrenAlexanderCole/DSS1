@@ -19,7 +19,7 @@ Use a track that's at least 70 seconds long. DSS1 leaves your original alone and
 - a copy of the track with Serato cues, loops and a beat grid inside it
 - `DSS1 test.xml`, with the same positions for Rekordbox
 
-Every position sits on a bar line of a 120 BPM grid that starts at 0:00 (bars every 2 seconds):
+Each cue and loop starts at exactly these times. In Rekordbox they also sit on bar lines of a 120 BPM grid from 0:00; Serato gets no grid, because DSS1 leaves Serato grids off unless you ask:
 
 | What | Where |
 |---|---|
@@ -28,7 +28,7 @@ Every position sits on a bar line of a 120 BPM grid that starts at 0:00 (bars ev
 | Saved loop 1 | 0:32 – 0:40 |
 | Saved loop 2 | 0:48 – 0:50 |
 
-**Serato DJ:** drag the test copy into your library, load it, and check the cues, loops and grid.
+**Serato DJ:** drag the test copy into your library, load it, and check the times of the cues and loops in the cue panel.
 
 **Rekordbox 6 or 7:** in Preferences → View → Layout, tick "rekordbox xml". In Preferences → Advanced → Database,
 set the rekordbox xml Imported Library to `DSS1 test.xml`. In the side panel, open rekordbox xml → Playlists →

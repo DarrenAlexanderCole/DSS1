@@ -96,8 +96,14 @@ struct Export
     std::vector<std::string> notes;
 };
 
-/// Hot cues A–H → cues 1–8, saved loops → loops 1–8, the beat grid → Serato's grid.
-Export exportTrack (const TrackRecord& record);
+struct ExportOptions
+{
+    /// Many Serato DJs don't use beat grids, so DSS1 only writes one when the user asks for it.
+    bool includeBeatGrid = false;
+};
+
+/// Hot cues A–H → cues 1–8, saved loops → loops 1–8, and the beat grid → Serato's grid if asked for.
+Export exportTrack (const TrackRecord& record, const ExportOptions& options = {});
 
 /// Serato cues, loops and grid → DSS1 track data, using the record's sample rate (the audio file's own).
 /// Replaces the record's hot cues and saved loops, and its grid when Serato has one.

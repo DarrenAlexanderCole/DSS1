@@ -27,9 +27,9 @@ namespace
 
     const char* const howToCheck =
         "HOW TO CHECK\n"
-        "Every position should sit exactly on a bar line: the grid is 120 BPM from 0:00, so bars fall every 2 seconds.\n\n"
+        "Each cue and loop should start at exactly the time listed. In Rekordbox they also sit on bar lines of a 120 BPM grid from 0:00; Serato gets no grid (DSS1 leaves Serato grids off unless you ask).\n\n"
         "Serato DJ: drag the test copy from Music > DSS1 Test Exports into your library and load it. "
-        "Look at cues 1-8, saved loops 1-2 and the grid.\n\n"
+        "Check the times of cues 1-8 and saved loops 1-2 in the cue panel.\n\n"
         "Rekordbox (6 or 7): in Preferences > View > Layout, tick \"rekordbox xml\". In Preferences > Advanced > "
         "Database, set the rekordbox xml Imported Library to \"DSS1 test.xml\" in the same folder. In the browser's "
         "side panel, open rekordbox xml > Playlists > DSS1 test, right-click the track and choose Import To "
@@ -210,7 +210,7 @@ void TestExportPanel::makeTestCopy (const juce::File& source)
                 text << " to " << formatTime (p.endSeconds);
             text << "\n";
         }
-        text << "Grid: 120 BPM, first downbeat at 0:00.000\n";
+        text << "Grid (Rekordbox only): 120 BPM, first downbeat at 0:00.000\n";
         if (! serato.notes.empty())
         {
             text << "\nSerato only: ";

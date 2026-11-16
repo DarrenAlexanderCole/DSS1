@@ -203,7 +203,10 @@ TEST_CASE ("DSS1 cues, loops and grid export to Serato with notes for what doesn
     r.addMemoryCue ({ 1000, "", std::nullopt });
     r.savedLoops[4] = SavedLoop { 882000, 970200, "2 bars", std::nullopt, true };
 
-    const auto e = exportTrack (r);
+    // No grid unless asked for.
+    CHECK_FALSE (exportTrack (r).grid);
+
+    const auto e = exportTrack (r, ExportOptions { true });
     REQUIRE (e.markers.cues.size() == 2);
     CHECK (e.markers.cues[0].positionMs == 31761);
     CHECK (e.markers.cues[0].colour == defaultCueColour (0));
