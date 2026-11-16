@@ -47,4 +47,7 @@ AudioInfo probe (const std::string& path);
 /// Decodes the whole file. Throws std::runtime_error with a readable message if the file can't be read.
 DecodedAudio decode (const std::string& path);
 
+/// Writes audio as a 24-bit PCM WAV file. Throws std::runtime_error if it can't.
+void writeWav (const std::string& path, const DecodedAudio& audio);
+
 } // namespace dss1::io

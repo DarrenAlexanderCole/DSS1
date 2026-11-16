@@ -112,3 +112,41 @@ TEST_CASE ("Unreadable files give a readable error", "[decoder]")
         CHECK (std::string (e.what()).find ("missing.flac") != std::string::npos);
     }
 }
+
+#include "core/Hits.h"
+
+TEST_CASE ("Hits are found on the frame where they start", "[hits]")
+{
+    for (const auto* name : { "clicks.wav", "clicks.flac", "clicks.mp3" })
+    {
+        INFO (name);
+        const auto audio = decode (fixture (name));
+        const auto mono = mixDown (audio.channels);
+        const auto hits = findHits (mono, audio.info.sampleRate, 2, 0, audio.info.lengthFrames);
+        REQUIRE (hits.size() == 2);
+        CHECK (std::abs (hits[0] - firstClick) <= 4);
+        CHECK (std::abs (hits[1] - secondClick) <= 4);
+    }
+
+    // Silence has no hits.
+    CHECK (findHits (std::vector<float> (44100, 0.0f), 44100.0, 4, 0, 44100).empty());
+}
+
+TEST_CASE ("Decoded audio is written to WAV and reads back the same", "[decoder]")
+{
+    const auto original = decode (fixture ("clicks.mp3"));
+    const auto path = (std::filesystem::temp_directory_path() / "dss1-writewav-test.wav").string();
+    writeWav (path, original);
+
+    const auto back = decode (path);
+    std::filesystem::remove (path);
+    CHECK (back.info.lengthFrames == original.info.lengthFrames);
+    CHECK (back.info.channels == original.info.channels);
+    CHECK (back.info.sampleRate == original.info.sampleRate);
+
+    float worst = 0;
+    for (std::size_t c = 0; c < back.channels.size(); ++c)
+        for (std::size_t i = 0; i < back.channels[c].size(); ++i)
+            worst = std::max (worst, std::abs (back.channels[c][i] - original.channels[c][i]));
+    CHECK (worst < 1.0e-6f);  // 24-bit rounding only
+}

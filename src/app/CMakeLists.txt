@@ -25,7 +25,7 @@ target_compile_definitions(DSS1 PRIVATE
 target_link_libraries(DSS1
     PRIVATE
         dss1_core
-        juce::juce_audio_formats
+        dss1_io
         juce::juce_gui_extra
     PUBLIC
         juce::juce_recommended_config_flags

@@ -28,6 +28,10 @@ struct TestPosition
 
 TrackRecord makeTestRecord (const std::string& path, double sampleRate, Frame lengthFrames);
 
+/// The timing test: hot cues A–H on the given frames (hits found in the music), named with their times.
+/// No grid, memory cues or loops.
+TrackRecord makeTimingRecord (const std::string& path, double sampleRate, Frame lengthFrames, const std::vector<Frame>& hits);
+
 /// The positions makeTestRecord used, for showing the user what to check.
 std::vector<TestPosition> testPositions (const TrackRecord& record);
 

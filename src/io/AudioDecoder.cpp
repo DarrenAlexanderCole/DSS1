@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <filesystem>
 #include <stdexcept>
 
@@ -259,6 +260,48 @@ DecodedAudio decode (const std::string& path)
         case AudioFormat::mp3:  return decodeMp3 (path);
     }
     unreadable (path, "unknown format");
+}
+
+void writeWav (const std::string& path, const DecodedAudio& audio)
+{
+    const auto channels = audio.channels.size();
+    if (channels == 0 || audio.info.sampleRate <= 0)
+        throw std::runtime_error ("Nothing to write to " + std::filesystem::path (path).filename().string());
+
+    drwav_data_format format {};
+    format.container = drwav_container_riff;
+    format.format = DR_WAVE_FORMAT_PCM;
+    format.channels = static_cast<drwav_uint32> (channels);
+    format.sampleRate = static_cast<drwav_uint32> (std::lround (audio.info.sampleRate));
+    format.bitsPerSample = 24;
+
+    drwav wav {};
+    if (drwav_init_file_write (&wav, path.c_str(), &format, nullptr) == DRWAV_FALSE)
+        throw std::runtime_error ("Couldn't create " + path);
+
+    const auto frames = audio.channels.front().size();
+    std::vector<std::uint8_t> block;
+    constexpr std::size_t framesPerBlock = 4096;
+    bool ok = true;
+    for (std::size_t start = 0; start < frames && ok; start += framesPerBlock)
+    {
+        const auto n = std::min (framesPerBlock, frames - start);
+        block.resize (n * channels * 3);
+        auto* out = block.data();
+        for (std::size_t f = start; f < start + n; ++f)
+            for (std::size_t c = 0; c < channels; ++c)
+            {
+                const auto x = std::clamp (audio.channels[c][f], -1.0f, 1.0f);
+                const auto v = static_cast<std::int32_t> (std::lround (static_cast<double> (x) * 8388607.0));
+                *out++ = static_cast<std::uint8_t> (v & 0xFF);
+                *out++ = static_cast<std::uint8_t> ((v >> 8) & 0xFF);
+                *out++ = static_cast<std::uint8_t> ((v >> 16) & 0xFF);
+            }
+        ok = drwav_write_pcm_frames (&wav, n, block.data()) == n;
+    }
+    drwav_uninit (&wav);
+    if (! ok)
+        throw std::runtime_error ("Couldn't write all of " + path);
 }
 
 } // namespace dss1::io

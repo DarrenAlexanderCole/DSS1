@@ -54,6 +54,21 @@ TrackRecord makeTestRecord (const std::string& path, double sampleRate, Frame le
     return r;
 }
 
+TrackRecord makeTimingRecord (const std::string& path, double sampleRate, Frame lengthFrames, const std::vector<Frame>& hits)
+{
+    TrackRecord r;
+    r.identity.path = path;
+    r.sampleRate = sampleRate;
+    r.lengthFrames = lengthFrames;
+    if (sampleRate <= 0)
+        return r;
+    for (std::size_t i = 0; i < hits.size() && i < TrackRecord::hotCueSlots; ++i)
+        r.hotCues[i] = HotCue { hits[i], std::nullopt,
+                                std::string (1, TrackRecord::hotCueLetter (i)) + " " + formatTime (static_cast<double> (hits[i]) / sampleRate),
+                                std::nullopt };
+    return r;
+}
+
 std::vector<TestPosition> testPositions (const TrackRecord& r)
 {
     std::vector<TestPosition> out;
