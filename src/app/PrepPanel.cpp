@@ -52,6 +52,39 @@ PrepPanel::PrepPanel (Session& s) : session (s), waveform (s)
     for (auto* b : { &zoomOut, &zoomIn, &wholeTrack })
         addAndMakeVisible (b);
 
+    // Transport: a CDJ-style CUE, play, and beat jumps.
+    startButton.setTooltip ("Back to the start (Home)");
+    startButton.onClick = [this] { session.deck().seek (0); };
+    jumpBackButton.setTooltip ("Jump back by the beat-jump size ([)");
+    jumpBackButton.onClick = [this] { jumpBeats (-jumpSizeBox.getSelectedId()); };
+    jumpForwardButton.setTooltip ("Jump forward by the beat-jump size (])");
+    jumpForwardButton.onClick = [this] { jumpBeats (jumpSizeBox.getSelectedId()); };
+    for (const int beats : { 1, 2, 4, 8, 16, 32, 64 })
+        jumpSizeBox.addItem (juce::String (beats) + (beats == 1 ? " beat" : " beats"), beats);
+    jumpSizeBox.setSelectedId (settings->getIntValue ("jumpBeats", 16), juce::dontSendNotification);
+    jumpSizeBox.onChange = [this] { settings->setValue ("jumpBeats", jumpSizeBox.getSelectedId()); };
+    cueButton.setTooltip ("Paused: set the cue point here, or hold to hear it from the cue. Playing: back to the cue "
+                          "point and stop. (Key Q)");
+    cueButton.onStateChange = [this] {
+        const bool down = cueButton.isDown();
+        if (down != cueWasDown)
+        {
+            cueWasDown = down;
+            cuePressed (down);
+        }
+    };
+    playButton.setTooltip ("Play or pause (Space)");
+    playButton.onClick = [this] {
+        cuePreviewing = false;
+        if (session.deck().isPlaying())
+            session.deck().pause();
+        else
+            session.deck().play();
+    };
+    for (auto* b : { &startButton, &jumpBackButton, &jumpForwardButton, &cueButton, &playButton })
+        addAndMakeVisible (b);
+    addAndMakeVisible (jumpSizeBox);
+
     for (std::size_t i = 0; i < hotButtons.size(); ++i)
     {
         auto& b = hotButtons[i];
@@ -130,7 +163,7 @@ PrepPanel::PrepPanel (Session& s) : session (s), waveform (s)
     session.addChangeListener (this);
     setWantsKeyboardFocus (true);
     refresh();
-    startTimerHz (10);
+    startTimerHz (20);
 }
 
 PrepPanel::~PrepPanel()
@@ -148,7 +181,16 @@ void PrepPanel::visibilityChanged()
 void PrepPanel::changeListenerCallback (juce::ChangeBroadcaster*)
 {
     if (session.state() == Session::State::loading)
+    {
         pendingLoopIn.reset();
+        cuePoint = -1;  // set from the track once it's loaded
+    }
+    if (session.state() == Session::State::loaded && cuePoint < 0)
+    {
+        // Like a CDJ: the cue starts at the first memory cue, or the start of the track.
+        const auto* r = session.record();
+        cuePoint = r != nullptr && ! r->memoryCues.empty() ? r->memoryCues.front().frame : 0;
+    }
     refresh();
 }
 
@@ -160,6 +202,7 @@ void PrepPanel::timerCallback()
         message.clear();
     if (! bpmEditor.hasKeyboardFocus (true))
         refresh();
+    repaint (jumpForwardButton.getRight(), cueButton.getY(), 340, cueButton.getHeight());
 }
 
 void PrepPanel::refresh()
@@ -189,6 +232,9 @@ void PrepPanel::refresh()
     for (auto* b : { &nudgeEarlier, &nudgeLater, &halveButton, &doubleButton, &clearGridButton })
         b->setEnabled (hasGrid);
     exitLoopButton.setEnabled (session.deck().isLooping());
+    for (auto* b : { &startButton, &jumpBackButton, &jumpForwardButton, &cueButton, &playButton })
+        b->setEnabled (ready);
+    playButton.setButtonText (session.deck().isPlaying() && ! cuePreviewing ? "Pause" : "Play");
     loopOutButton.setEnabled (ready && pendingLoopIn.has_value());
     loopInButton.setToggleState (pendingLoopIn.has_value(), juce::dontSendNotification);
     bpmEditor.setEnabled (ready);
@@ -388,6 +434,72 @@ void PrepPanel::stepBeats (double beats)
     session.deck().seek (std::clamp<Frame> (static_cast<Frame> (std::llround (target)), 0, std::max<Frame> (0, r->lengthFrames - 1)));
 }
 
+void PrepPanel::jumpBeats (double beats)
+{
+    const auto* r = session.record();
+    if (r == nullptr || session.state() != Session::State::loaded)
+        return;
+    // Keeps the playhead's place within the beat, like beat jump on a DJ app.
+    const auto now = static_cast<double> (playhead());
+    const auto target = r->grid && ! r->grid->isEmpty() ? r->grid->frameAt (r->grid->beatAt (now) + beats)
+                                                         : now + beats * 60.0 / r->info.bpm.value_or (120.0) * r->sampleRate;
+    session.deck().seek (std::clamp<Frame> (static_cast<Frame> (std::llround (target)), 0, std::max<Frame> (0, r->lengthFrames - 1)));
+}
+
+void PrepPanel::cuePressed (bool down)
+{
+    if (session.state() != Session::State::loaded)
+        return;
+    auto& deck = session.deck();
+    if (down)
+    {
+        if (deck.isPlaying() && ! cuePreviewing)
+        {
+            // Playing: back to the cue point, stopped.
+            deck.pause();
+            deck.seek (cuePoint);
+            return;
+        }
+        const auto here = playhead();
+        const auto rate = session.record()->sampleRate;
+        if (std::abs (here - cuePoint) > static_cast<Frame> (0.005 * rate))
+        {
+            // Paused somewhere new: that's the cue point now.
+            cuePoint = snapped (here);
+            deck.seek (cuePoint);
+            return;
+        }
+        // Paused on the cue point: play while it's held.
+        cuePreviewing = true;
+        deck.play();
+        return;
+    }
+    if (cuePreviewing)
+    {
+        cuePreviewing = false;
+        deck.pause();
+        deck.seek (cuePoint);
+    }
+}
+
+juce::String PrepPanel::positionText() const
+{
+    const auto* r = session.record();
+    if (r == nullptr || session.state() != Session::State::loaded || r->sampleRate <= 0)
+        return {};
+    const auto pos = session.deck().position();
+    juce::String text = formatTime (pos / r->sampleRate);
+    if (r->grid && ! r->grid->isEmpty())
+    {
+        const auto beat = r->grid->nearestBeat (pos);
+        const auto perBar = r->grid->beatsPerBarAt (pos);
+        const auto bar = static_cast<long long> (std::floor (static_cast<double> (beat.index) / perBar));
+        const auto inBar = static_cast<long long> (beat.index) - bar * static_cast<long long> (perBar);
+        text << "   Bar " << (bar + 1) << "." << (inBar + 1);
+    }
+    return text;
+}
+
 // --- Grid ---------------------------------------------------------------------------------------------------
 
 void PrepPanel::setDownbeat (Frame at)
@@ -582,9 +694,13 @@ void PrepPanel::paint (juce::Graphics& g)
     // Labels for the control rows.
     g.setColour (Colours::dimText);
     g.setFont (juce::FontOptions (12.0f));
-    for (const auto& [y, text] : { std::pair { hotButtons[0]->getY(), "HOT CUES" }, std::pair { addMemoryButton.getY(), "CUES & LOOPS" },
+    for (const auto& [y, text] : { std::pair { cueButton.getY(), "TRANSPORT" }, std::pair { hotButtons[0]->getY(), "HOT CUES" }, std::pair { addMemoryButton.getY(), "CUES & LOOPS" },
                                     std::pair { downbeatButton.getY(), "GRID" } })
         g.drawText (text, 16, y, 90, 28, juce::Justification::centredLeft);
+
+    g.setColour (Colours::text);
+    g.setFont (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), 16.0f, juce::Font::plain));
+    g.drawText (positionText(), jumpForwardButton.getRight() + 24, cueButton.getY(), 300, cueButton.getHeight(), juce::Justification::centredLeft);
 }
 
 void PrepPanel::resized()
@@ -604,11 +720,26 @@ void PrepPanel::resized()
     area.removeFromTop (22);  // notes line
 
     constexpr int rowHeight = 30, gap = 8, labelWidth = 100;
-    auto controls = area.removeFromBottom (3 * rowHeight + 2 * gap + 4);
+    auto controls = area.removeFromBottom (4 * (rowHeight + gap) + 6);
     area.removeFromBottom (10);
     waveform.setBounds (area);
 
-    auto row = controls.removeFromTop (rowHeight);
+    auto row = controls.removeFromTop (rowHeight + 6);
+    row.removeFromLeft (labelWidth);
+    cueButton.setBounds (row.removeFromLeft (80));
+    row.removeFromLeft (6);
+    playButton.setBounds (row.removeFromLeft (80));
+    row.removeFromLeft (20);
+    startButton.setBounds (row.removeFromLeft (40));
+    row.removeFromLeft (6);
+    jumpBackButton.setBounds (row.removeFromLeft (44));
+    row.removeFromLeft (4);
+    jumpSizeBox.setBounds (row.removeFromLeft (100).reduced (0, 3));
+    row.removeFromLeft (4);
+    jumpForwardButton.setBounds (row.removeFromLeft (44));
+
+    controls.removeFromTop (gap);
+    row = controls.removeFromTop (rowHeight);
     row.removeFromLeft (labelWidth);
     const auto hotWidth = std::min (80, (row.getWidth() - 7 * 6) / 8);
     for (auto& b : hotButtons)
@@ -669,6 +800,7 @@ bool PrepPanel::keyPressed (const juce::KeyPress& key)
     const bool shift = key.getModifiers().isShiftDown();
     if (key == juce::KeyPress::spaceKey)
     {
+        cuePreviewing = false;
         if (session.deck().isPlaying())
             session.deck().pause();
         else
@@ -677,6 +809,28 @@ bool PrepPanel::keyPressed (const juce::KeyPress& key)
     }
     if (key.getModifiers().isCommandDown() || key.getModifiers().isCtrlDown())
         return false;
+    if (c == 'q')
+    {
+        // A key press can't be held like the button, so Q acts as a tap: set the cue, or return to it.
+        cuePressed (true);
+        cuePressed (false);
+        return true;
+    }
+    if (c == '[' || c == ']')
+    {
+        jumpBeats ((c == '[' ? -1.0 : 1.0) * jumpSizeBox.getSelectedId());
+        return true;
+    }
+    if (c == '=' || c == '+' || c == '-')
+    {
+        waveform.zoomBy (c == '-' ? 2.0 : 0.5);
+        return true;
+    }
+    if (key.getKeyCode() == juce::KeyPress::homeKey)
+    {
+        session.deck().seek (0);
+        return true;
+    }
     if (c >= 'a' && c <= 'h')
     {
         hotCuePressed (static_cast<std::size_t> (c - 'a'), shift);

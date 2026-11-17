@@ -35,8 +35,12 @@ DSS1 opens on **Catalog**.
 
 Double-click a track in Catalog, then open **Prep**.
 
-- **Waveform:** the grid is drawn on it (bar numbers on beat 1). Click to jump, drag to scroll, Command +
-  scroll or pinch to zoom, **-** / **+** / **Whole Track** too. Drag a cue to move it.
+- **Waveform:** the grid is drawn on it (bar numbers on beat 1). Scroll up and down (or pinch) to zoom
+  smoothly around the mouse; swipe sideways or drag to move through the track. **-** / **+** (or the - and =
+  keys) and **Whole Track** too. Click to jump; drag a cue to move it.
+- **Transport:** **CUE** works like a CDJ: paused, it sets the cue point (or plays while held if you're on
+  it); playing, it goes back to the cue and stops (Q taps it). **|<** goes to the start (Home). **<<** and
+  **>>** beat-jump by the size you pick (16 beats to start; [ and ] keys). The time and bar.beat are shown.
 - **Hot cues A-H:** click a letter (or press A-H) to set it at the playhead; click again to jump to it.
   Shift-click (or Shift + letter) deletes. Right-click a cue on the waveform to rename, recolour or delete.
 - **Memory cues:** **+ Memory Cue** (or M). **<** and **>** (or Up and Down) jump between them.

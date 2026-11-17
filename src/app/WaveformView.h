@@ -10,8 +10,9 @@ namespace dss1::ui
 {
 
 /// Prep's big waveform: zoomable and scrollable, with the beat grid, hot cues, memory cues, saved loops and the
-/// playhead drawn on it. Click to jump, drag the background to scroll, drag a cue to move it, Command + scroll
-/// (or pinch) to zoom, right-click for actions at that spot. While the deck plays, the view follows it.
+/// playhead drawn on it. Scroll up and down (or pinch) to zoom smoothly around the mouse; swipe sideways, Shift +
+/// scroll or drag the background to move through the track; drag a cue to move it; click to jump; right-click
+/// for actions at that spot. While the deck plays, the view follows it.
 class WaveformView : public juce::Component, private juce::Timer, private juce::ChangeListener
 {
 public:
@@ -23,8 +24,9 @@ public:
     /// Builds the right-click menu for a spot with no marker under it.
     std::function<void (juce::PopupMenu&, Frame)> addBackgroundActions;
 
-    /// Frames per pixel: smaller is closer in.
-    void zoomBy (double factor);
+    /// Zooms smoothly by `factor` (frames per pixel: below 1 is closer in), keeping the spot at `anchorX` (or the
+    /// playhead while it plays and is in view) where it is.
+    void zoomBy (double factor, std::optional<float> anchorX = std::nullopt);
     void showWholeTrack();
 
     void paint (juce::Graphics&) override;
@@ -64,6 +66,12 @@ private:
     double viewStart = 0;          ///< frame at the left edge
     double framesPerPixel = 200;
     bool following = true;         ///< keep the playhead in view while playing
+    juce::uint32 followAgainAt = 0;  ///< after scrolling by wheel, follow the playhead again from this time
+    double targetFramesPerPixel = 200;  ///< the zoom is easing towards this
+    double zoomAnchorFrame = 0;
+    double zoomAnchorX = 0;
+    double minFramesPerPixel() const noexcept { return 2.0; }
+    double maxFramesPerPixel() const;
     Session::State lastState = Session::State::empty;
 
     // Mouse gestures.

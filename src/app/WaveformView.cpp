@@ -46,6 +46,7 @@ void WaveformView::changeListenerCallback (juce::ChangeBroadcaster*)
         const auto rate = r != nullptr && r->sampleRate > 0 ? r->sampleRate : 44100.0;
         const auto seconds = r != nullptr && r->info.bpm ? 16.0 * 60.0 / *r->info.bpm : 8.0;
         framesPerPixel = seconds * rate / std::max (1, getWidth());
+        targetFramesPerPixel = framesPerPixel;
         viewStart = -visibleFrames() / 3.0;
         following = true;
     }
@@ -57,6 +58,27 @@ void WaveformView::changeListenerCallback (juce::ChangeBroadcaster*)
 void WaveformView::timerCallback()
 {
     auto& deck = session.deck();
+    if (! following && followAgainAt != 0 && juce::Time::getMillisecondCounter() >= followAgainAt && ! dragging)
+    {
+        following = true;
+        followAgainAt = 0;
+    }
+
+    // Ease the zoom towards its target (in proportion, so zooming in and out feel the same), holding the
+    // anchor spot still under the mouse.
+    if (std::abs (std::log (targetFramesPerPixel / framesPerPixel)) > 0.002)
+    {
+        framesPerPixel *= std::pow (targetFramesPerPixel / framesPerPixel, 0.35);
+        viewStart = zoomAnchorFrame - zoomAnchorX * framesPerPixel;
+        clampView();
+    }
+    else if (std::abs (framesPerPixel - targetFramesPerPixel) > 1e-9)
+    {
+        framesPerPixel = targetFramesPerPixel;
+        viewStart = zoomAnchorFrame - zoomAnchorX * framesPerPixel;
+        clampView();
+    }
+
     if (deck.isPlaying() && following && ! dragging && getWidth() > 0)
     {
         // Keep the playhead a third of the way across, so what's coming is in view.
@@ -80,27 +102,37 @@ void WaveformView::clampView()
     viewStart = juce::jlimit (-visibleFrames() / 3.0, std::max (0.0, length - visibleFrames() * 2.0 / 3.0), viewStart);
 }
 
-void WaveformView::zoomBy (double factor)
+double WaveformView::maxFramesPerPixel() const
 {
-    const auto playhead = session.deck().position();
-    const auto anchorX = xForFrame (playhead);
-    const bool playheadVisible = anchorX >= 0 && anchorX <= static_cast<float> (getWidth());
-    const auto anchorFrame = playheadVisible ? playhead : viewStart + visibleFrames() / 2.0;
-    const auto anchorPixel = playheadVisible ? static_cast<double> (anchorX) : getWidth() / 2.0;
-    framesPerPixel *= factor;
-    clampView();
-    viewStart = anchorFrame - anchorPixel * framesPerPixel;
-    clampView();
-    repaint();
+    const auto length = static_cast<double> (session.deck().length());
+    return std::max (minFramesPerPixel(), length / std::max (1, getWidth()) * 1.05);
+}
+
+void WaveformView::zoomBy (double factor, std::optional<float> anchorX)
+{
+    auto& deck = session.deck();
+    const auto playheadX = xForFrame (deck.position());
+    const bool playheadInView = playheadX >= 0 && playheadX <= static_cast<float> (getWidth());
+    float x;
+    if (deck.isPlaying() && following && playheadInView)
+        x = playheadX;  // while playing, the playhead stays put
+    else if (anchorX)
+        x = *anchorX;
+    else
+        x = playheadInView ? playheadX : static_cast<float> (getWidth()) / 2.0f;
+
+    zoomAnchorX = x;
+    zoomAnchorFrame = frameAtX (x);
+    targetFramesPerPixel = juce::jlimit (minFramesPerPixel(), maxFramesPerPixel(), targetFramesPerPixel * factor);
 }
 
 void WaveformView::showWholeTrack()
 {
-    framesPerPixel = 1e12;
-    viewStart = 0;
-    clampView();
-    viewStart = 0;
-    repaint();
+    zoomAnchorX = 0;
+    zoomAnchorFrame = 0;
+    targetFramesPerPixel = maxFramesPerPixel();
+    following = false;
+    followAgainAt = juce::Time::getMillisecondCounter() + 1500;
 }
 
 double WaveformView::frameAtX (float x) const
@@ -420,6 +452,7 @@ void WaveformView::mouseDrag (const juce::MouseEvent& e)
     following = false;
     viewStart = dragStartView - static_cast<double> (e.getDistanceFromDragStartX()) * framesPerPixel;
     clampView();
+    zoomAnchorFrame = frameAtX (static_cast<float> (zoomAnchorX));
     repaint();
 }
 
@@ -456,25 +489,31 @@ void WaveformView::mouseMove (const juce::MouseEvent& e)
     setMouseCursor (markerAt (e.position) ? juce::MouseCursor::LeftRightResizeCursor : juce::MouseCursor::NormalCursor);
 }
 
-void WaveformView::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& wheel)
+void WaveformView::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
 {
-    if (juce::ModifierKeys::currentModifiers.isCommandDown() || juce::ModifierKeys::currentModifiers.isCtrlDown())
+    // Up and down zoom around the mouse (like Rekordbox and Serato); sideways swipes, or Shift / Command with
+    // the wheel, move through the track.
+    const bool sideways = std::abs (wheel.deltaX) > std::abs (wheel.deltaY);
+    const auto mods = juce::ModifierKeys::currentModifiers;
+    if (! sideways && ! mods.isShiftDown() && ! mods.isCommandDown())
     {
-        zoomBy (std::pow (2.0, -static_cast<double> (wheel.deltaY) * 2.0));
+        const auto amount = static_cast<double> (wheel.deltaY) * (wheel.isSmooth ? 1.5 : 1.0);
+        zoomBy (std::pow (2.0, -amount * 1.5), e.position.x);
         return;
     }
-    // Sideways (or vertical) scrolling moves through the track.
-    const auto delta = std::abs (wheel.deltaX) > std::abs (wheel.deltaY) ? wheel.deltaX : wheel.deltaY;
+    const auto delta = sideways ? wheel.deltaX : wheel.deltaY;
     following = false;
-    viewStart -= static_cast<double> (delta) * visibleFrames() * 0.5;
+    followAgainAt = juce::Time::getMillisecondCounter() + 1500;
+    viewStart -= static_cast<double> (delta) * visibleFrames() * 0.4;
+    zoomAnchorFrame = frameAtX (static_cast<float> (zoomAnchorX));
     clampView();
     repaint();
 }
 
-void WaveformView::mouseMagnify (const juce::MouseEvent&, float scaleFactor)
+void WaveformView::mouseMagnify (const juce::MouseEvent& e, float scaleFactor)
 {
     if (scaleFactor > 0)
-        zoomBy (1.0 / static_cast<double> (scaleFactor));
+        zoomBy (1.0 / static_cast<double> (scaleFactor), e.position.x);
 }
 
 // --- Menus --------------------------------------------------------------------------------------------------
