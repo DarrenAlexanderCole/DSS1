@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.24)
 
 # Must be set before project() to take effect on Apple platforms.
 set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "Minimum macOS version")
@@ -56,8 +56,16 @@ FetchContent_Declare(minimp3
     SOURCE_SUBDIR  none)
 FetchContent_MakeAvailable(dr_libs minimp3)
 
+# Key lock and time-stretching (MIT). Brings in signalsmith-linear itself.
+FetchContent_Declare(signalsmith_stretch
+    GIT_REPOSITORY https://github.com/Signalsmith-Audio/signalsmith-stretch.git
+    GIT_TAG        1.4.0
+    GIT_SHALLOW    TRUE)
+FetchContent_MakeAvailable(signalsmith_stretch)
+
 add_subdirectory(src/core)
 add_subdirectory(src/io)
+add_subdirectory(src/engine)
 
 if(DSS1_BUILD_APP)
     FetchContent_Declare(JUCE
