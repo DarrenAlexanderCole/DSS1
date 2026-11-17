@@ -36,7 +36,7 @@ macOS comes first. The app is built on [JUCE](https://juce.com) so a Windows ver
 
 ## Building
 
-You need macOS 13 or later, the Xcode command line tools and CMake 3.22+ (`brew install cmake`).
+You need macOS 13 or later, the Xcode command line tools and CMake 3.24+ (`brew install cmake`).
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -45,17 +45,24 @@ ctest --test-dir build --output-on-failure      # run the tests
 open build/src/app/DSS1_artefacts/Release/DSS1.app
 ```
 
-The first configure downloads JUCE, Catch2 and nlohmann/json, so it takes a few minutes.
+The first configure downloads JUCE and the other libraries (Catch2, nlohmann/json, pugixml, dr_libs, minimp3,
+Signalsmith Stretch), so it takes a few minutes.
 
 Every push to `v2` is built and tested on GitHub Actions; the macOS app is attached to each run as `DSS1-macOS`.
 It isn't signed yet, so the first time you open a downloaded copy, right-click it and choose **Open**.
 
+**Test builds:** pushing to the `test-build` branch builds a `.dmg` and publishes it as a GitHub pre-release
+(`v2.0.0-test.<n>`), with the notes in [docs/TEST-BUILD.md](docs/TEST-BUILD.md). The build number shows in the
+window title.
+
 ## Project layout
 
 ```
-src/core/    Track data, beat grids, file formats — plain C++20, no UI or audio, fully unit-tested
+src/core/    Track data, beat grids, file formats, analysis — plain C++20, no UI or audio, fully unit-tested
+src/io/      Audio decoding (bundled decoders, same samples on every platform)
+src/engine/  Playback decks with key lock (no JUCE; rendered offline in tests)
 src/app/     The JUCE desktop app
-tests/       Unit tests (Catch2)
+tests/       Unit tests (Catch2) and test audio
 docs/        Architecture notes
 ```
 
