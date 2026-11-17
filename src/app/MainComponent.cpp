@@ -1,6 +1,6 @@
 #include "MainComponent.h"
 #include "CatalogPanel.h"
-#include "GridPreview.h"
+#include "PrepPanel.h"
 #include "StagePanel.h"
 #include "TestExportPanel.h"
 #include "Theme.h"
@@ -51,14 +51,8 @@ MainComponent::MainComponent()
 {
     setLookAndFeel (&theme);
 
-    auto catalog = std::make_unique<CatalogPanel> (crate, audio);
-
-    auto prep = std::make_unique<StagePanel> (
-        "Prep", "Get every track gig-ready: grid, cues and loops, set once.",
-        juce::StringArray { "Beat grids, constant or variable tempo",
-                            "Hot cues A-H and unlimited memory cues",
-                            "Saved loops, checked against Rekordbox and Serato limits" });
-    prep->setShowcase (std::make_unique<GridPreview>());
+    auto catalog = std::make_unique<CatalogPanel> (session);
+    auto prep = std::make_unique<PrepPanel> (session);
 
     auto design = std::make_unique<StagePanel> (
         "Listen & Design", "Hear it, shape it, make your own samples.",
@@ -81,8 +75,9 @@ MainComponent::MainComponent()
     stages.addTab ("Deliver", bg, deliver.release(), true);
     stages.setCurrentTabIndex (0);
     addAndMakeVisible (stages);
+    addAndMakeVisible (transport);
 
-    setSize (1200, 760);
+    setSize (1280, 860);
 }
 
 MainComponent::~MainComponent()
@@ -92,7 +87,9 @@ MainComponent::~MainComponent()
 
 void MainComponent::resized()
 {
-    stages.setBounds (getLocalBounds());
+    auto area = getLocalBounds();
+    transport.setBounds (area.removeFromBottom (130));
+    stages.setBounds (area);
 }
 
 } // namespace dss1::ui

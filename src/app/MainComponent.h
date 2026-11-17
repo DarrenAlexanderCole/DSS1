@@ -2,6 +2,8 @@
 
 #include "AudioEngine.h"
 #include "Crate.h"
+#include "Session.h"
+#include "TransportBar.h"
 #include "Theme.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -22,6 +24,8 @@ private:
     Theme theme;
     AudioEngine audio;
     Crate crate;
+    Session session { crate, audio };
+    TransportBar transport { session };
     juce::TabbedComponent stages { juce::TabbedButtonBar::TabsAtTop };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)

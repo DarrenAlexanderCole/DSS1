@@ -131,12 +131,24 @@ FLAC and M4A keep Serato data differently (Vorbis comments / MP4 atoms); for now
 About 2 seconds per 5-minute track on a laptop (release build). The Crate runs analysis on a background
 thread, one track at a time, and saves results with the track.
 
+## Prep
+
+`src/app/Session.h` holds the track on the deck for every stage: Catalog loads it, Prep edits it, the
+transport bar plays it. Edits replace the whole `TrackRecord` and are saved straight away (the Crate updates
+that one track in its snapshot rather than re-reading the library). Analysis results that arrive while a track
+is loaded are taken in, but never over the user's cues and loops, and a grid only when the track has none.
+
+`src/app/WaveformView.h` draws min/max peaks per 64-frame block, the grid (beats hidden when closer than 5 px),
+tempo changes, hot cues, memory cues, saved loops and the deck's active loop. `src/app/PrepPanel.h` holds the
+controls and keys. Snapping is off by default; the setting and the chosen target are kept in DSS1.settings.
+
 ## Playback
 
 `src/engine/Deck.h`: plays a decoded track at 0.5–1.5x. With key lock, Signalsmith Stretch time-stretches
 (same pitch); without, cubic resampling behaves like a turntable. Either way it converts the track's sample rate
 to the device's. The message thread loads, seeks and sets tempo; the audio callback only renders, and old audio
-is always freed on the message thread.
+is always freed on the message thread. A loop wraps the read position inside [start, end) before samples
+reach the stretcher, so key-locked loops are seamless.
 
 ## Decoding
 

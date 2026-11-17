@@ -27,8 +27,10 @@ std::vector<float> overviewPeaks (const std::vector<std::vector<float>>& channel
     return peaks;
 }
 
-TransportBar::TransportBar (engine::Deck& d) : deck (d)
+TransportBar::TransportBar (Session& s) : session (s), deck (s.deck())
 {
+    session.addChangeListener (this);
+    changeListenerCallback (nullptr);
     playButton.onClick = [this] { togglePlay(); };
     addAndMakeVisible (playButton);
 
@@ -56,23 +58,25 @@ TransportBar::TransportBar (engine::Deck& d) : deck (d)
 
 TransportBar::~TransportBar()
 {
+    session.removeChangeListener (this);
     stopTimer();
 }
 
-void TransportBar::showTrack (const juce::String& title, const juce::String& details, std::vector<float> peaks)
+void TransportBar::changeListenerCallback (juce::ChangeBroadcaster*)
 {
-    trackTitle = title;
-    trackDetails = details;
-    overview = std::move (peaks);
+    trackTitle = session.title();
+    switch (session.state())
+    {
+        case Session::State::empty:   trackTitle = "No track loaded";
+                                       trackDetails = session.audioProblem().isNotEmpty() ? "Audio: " + session.audioProblem()
+                                                                                          : juce::String ("Double-click a track to play it");
+                                       break;
+        case Session::State::loading: trackDetails = "Loading..."; break;
+        case Session::State::failed:  trackDetails = session.problem(); break;
+        case Session::State::loaded:  trackDetails = session.details(); break;
+    }
+    overview = session.overview();
     updatePlayButton();
-    repaint();
-}
-
-void TransportBar::showLoading (const juce::String& title)
-{
-    trackTitle = title;
-    trackDetails = "Loading...";
-    overview.clear();
     repaint();
 }
 

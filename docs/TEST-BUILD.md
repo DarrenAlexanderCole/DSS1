@@ -26,16 +26,37 @@ DSS1 opens on **Catalog**.
 5. **Remove:** select tracks (Shift or Command for several) and press Delete, or right-click → **Remove from
    DSS1**. Only DSS1's entry goes; the audio files stay. Right-click also has **Show in Finder**.
 6. **Analysis:** BPM, key (Camelot and name) and loudness fill in, a couple of seconds per track. DSS1 also
-   finds where the beats and bars fall; you'll see that grid in Prep, coming next.
-7. **Play:** double-click a track (or select it and press Return). Space plays and pauses. Click or drag on the
-   waveform to jump. The slider changes tempo by up to ±8% (double-click to reset); **Key lock** keeps the
-   pitch.
+   finds where the beats and bars fall, and that becomes the track's first grid.
+7. **Play:** double-click a track (or select it and press Return). The player along the bottom stays on every
+   tab. Space plays and pauses. The slider changes tempo by up to ±8% (double-click to reset); **Key lock**
+   keeps the pitch.
+
+## Prep (new)
+
+Double-click a track in Catalog, then open **Prep**.
+
+- **Waveform:** the grid is drawn on it (bar numbers on beat 1). Click to jump, drag to scroll, Command +
+  scroll or pinch to zoom, **-** / **+** / **Whole Track** too. Drag a cue to move it.
+- **Hot cues A-H:** click a letter (or press A-H) to set it at the playhead; click again to jump to it.
+  Shift-click (or Shift + letter) deletes. Right-click a cue on the waveform to rename, recolour or delete.
+- **Memory cues:** **+ Memory Cue** (or M). **<** and **>** (or Up and Down) jump between them.
+- **Loops:** pick a length and **Save Loop** (or L), or **Loop In** then **Loop Out**. The numbers 1-8 play a
+  saved loop; **Exit Loop** (or Escape) carries on. Shift-click a number to delete that loop.
+- **Grid:** **Downbeat Here** makes the playhead beat 1. **Nudge** moves the grid 2 ms (Shift: 0.5 ms).
+  **/2** and **x2** fix half or double tempo. Type a BPM and press Return. **Tempo Change Here** starts a new
+  tempo for tracks that drift (live drums, edits); type its BPM with the playhead after it.
+- **Snap to grid** is off unless you turn it on. **Left / Right** move a beat (Shift: four).
+- **Prepare for Rekordbox / Serato:** the line under the title says what that app can't take (Serato has no
+  memory cues, for instance).
+- Everything saves as you go.
 
 The MP3 timing test has moved: **Deliver → Export Timing Check...** (the MP3 question is settled: cues land on
 the same beat in Serato and Rekordbox for WAV and MP3).
 
 ## What to tell me
 
+- In Prep: is the grid on the beat, and is bar 1 on the real beat 1? Was anything awkward when setting cues
+  and loops?
 - Did titles and artists come through from your tags? Any garbled accents?
 - Did a moved folder get found again?
 - Do BPM and key look right for tracks you know? Where they're off, is the BPM half or double, or just wrong?

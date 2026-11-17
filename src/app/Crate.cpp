@@ -178,6 +178,30 @@ void Crate::findMissingIn (const juce::File& folder)
     });
 }
 
+void Crate::save (const TrackRecord& record)
+{
+    post ([this, record] {
+        try
+        {
+            const std::lock_guard lock (storeLock);
+            store->save (record);
+        }
+        catch (const std::exception& e)
+        {
+            setStatus ("Couldn't save " + juce::String::fromUTF8 (record.info.title.c_str()) + ": " + e.what());
+            return;
+        }
+        // Update just this track in the snapshot (re-reading the whole library for every cue would be slow).
+        {
+            const std::lock_guard lock (stateLock);
+            for (auto& t : snapshot)
+                if (t.record.identity.path == record.identity.path)
+                    t.record = record;
+        }
+        sendChangeMessage();
+    });
+}
+
 void Crate::remove (const std::vector<std::int64_t>& ids)
 {
     post ([this, ids] {

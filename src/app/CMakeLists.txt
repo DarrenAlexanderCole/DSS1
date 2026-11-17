@@ -13,11 +13,13 @@ target_sources(DSS1 PRIVATE
     Crate.cpp
     Main.cpp
     MainComponent.cpp
+    PrepPanel.cpp
+    Session.cpp
     StagePanel.cpp
-    GridPreview.cpp
     TestExportPanel.cpp
     Theme.cpp
-    TransportBar.cpp)
+    TransportBar.cpp
+    WaveformView.cpp)
 
 target_compile_definitions(DSS1 PRIVATE
     JUCE_WEB_BROWSER=0

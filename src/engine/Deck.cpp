@@ -77,6 +77,7 @@ void Deck::load (std::shared_ptr<const io::DecodedAudio> audio)
         pending = std::move (audio);
         hasPending = true;
     }
+    clearLoop();
     seekRequest.store (0.0);
     heardPosition.store (0.0);
     loadedLength.store (length);
@@ -97,6 +98,32 @@ void Deck::play()
 void Deck::pause()
 {
     playing.store (false);
+}
+
+void Deck::setLoop (Frame start, Frame end)
+{
+    const auto rate = loadedRate.load();
+    if (end <= start || (rate > 0 && static_cast<double> (end - start) < 0.01 * rate))
+    {
+        clearLoop();
+        return;
+    }
+    loopEnd.store (0.0);  // off while the two halves change, so the audio thread never sees a mixed pair
+    loopStart.store (static_cast<double> (start));
+    loopEnd.store (static_cast<double> (end));
+}
+
+void Deck::clearLoop()
+{
+    loopEnd.store (0.0);
+    loopStart.store (0.0);
+}
+
+double Deck::wrap (double position, double start, double end) const noexcept
+{
+    if (end <= start || position < end)
+        return position;
+    return start + std::fmod (position - start, end - start);
 }
 
 void Deck::seek (Frame frame)
@@ -220,11 +247,12 @@ void Deck::renderTurntable (float* const* outputs, int outputChannels, int frame
 {
     stretcherWasOn = false;
     const auto sourceChannels = current->channels.size();
+    const auto start = loopStart.load(), end = loopEnd.load();
     for (int i = 0; i < frames; ++i)
     {
         for (int c = 0; c < outputChannels; ++c)
             outputs[c][i] = sampleAt (std::min (static_cast<std::size_t> (c), sourceChannels - 1), readPosition);
-        readPosition += step;
+        readPosition = wrap (readPosition + step, start, end);
     }
     heardPosition.store (readPosition);
 }
@@ -243,10 +271,13 @@ void Deck::renderKeyLocked (float* const* outputs, int outputChannels, int frame
     tempoCarry = wanted - inputCount;
 
     const auto sourceChannels = current->channels.size();
+    const auto start = loopStart.load(), end = loopEnd.load();
     for (int i = 0; i < inputCount; ++i)
+    {
         for (std::size_t c = 0; c < stretchChannels; ++c)
-            s.in[c][static_cast<std::size_t> (i)] = sampleAt (std::min (c, sourceChannels - 1), readPosition + i * fileStep);
-    readPosition += inputCount * fileStep;
+            s.in[c][static_cast<std::size_t> (i)] = sampleAt (std::min (c, sourceChannels - 1), readPosition);
+        readPosition = wrap (readPosition + fileStep, start, end);
+    }
 
     s.stretch.process (s.inPointers.data(), inputCount, s.outPointers.data(), frames);
 
@@ -255,7 +286,10 @@ void Deck::renderKeyLocked (float* const* outputs, int outputChannels, int frame
 
     // What's heard lags what's read by the stretcher's delay.
     const auto delayFrames = (s.stretch.inputLatency() + s.stretch.outputLatency() * tempoNow) * fileStep;
-    heardPosition.store (std::max (0.0, readPosition - delayFrames));
+    auto heard = readPosition - delayFrames;
+    if (end > start && heard < start && readPosition >= start && readPosition < end)
+        heard += end - start;  // just after a wrap, what's heard is still the end of the loop
+    heardPosition.store (std::max (0.0, heard));
 }
 
 } // namespace dss1::engine

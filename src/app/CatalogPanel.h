@@ -1,8 +1,7 @@
 #pragma once
 
-#include "AudioEngine.h"
 #include "Crate.h"
-#include "TransportBar.h"
+#include "Session.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -20,7 +19,7 @@ class CatalogPanel : public juce::Component,
                      private juce::ChangeListener
 {
 public:
-    CatalogPanel (Crate& crate, AudioEngine& audio);
+    CatalogPanel (Session& session);
     ~CatalogPanel() override;
 
     void paint (juce::Graphics&) override;
@@ -54,13 +53,12 @@ private:
     void showFoldersMenu();
     void chooseMissingFolder();
 
+    Session& session;
     Crate& crate;
-    AudioEngine& audio;
     std::vector<StoredTrack> rows;
     std::set<std::int64_t> missing;
     int sortColumn = 1;
     bool sortAscending = true;
-    int loadGeneration = 0;
     bool dragOver = false;
 
     juce::TableListBox table { "Crate", this };
@@ -68,7 +66,6 @@ private:
     juce::TextButton foldersButton { "Folders" };
     juce::TextButton findButton { "Find Missing..." };
     juce::Label statusLabel;
-    TransportBar transport;
     std::unique_ptr<juce::FileChooser> chooser;
     juce::ScopedMessageBox messageBox;
 

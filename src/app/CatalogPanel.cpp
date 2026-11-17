@@ -1,11 +1,8 @@
 #include "CatalogPanel.h"
 #include "Theme.h"
 
-#include "core/TestExport.h"
-#include "io/AudioDecoder.h"
 
 #include <algorithm>
-#include <thread>
 
 namespace dss1::ui
 {
@@ -35,7 +32,7 @@ namespace
     }
 }
 
-CatalogPanel::CatalogPanel (Crate& c, AudioEngine& a) : crate (c), audio (a), transport (a.deck())
+CatalogPanel::CatalogPanel (Session& s) : session (s), crate (s.library())
 {
     auto& header = table.getHeader();
     const auto columnFlags = juce::TableHeaderComponent::defaultFlags;
@@ -80,11 +77,6 @@ CatalogPanel::CatalogPanel (Crate& c, AudioEngine& a) : crate (c), audio (a), tr
     statusLabel.setJustificationType (juce::Justification::centredLeft);
     addAndMakeVisible (statusLabel);
 
-    addAndMakeVisible (transport);
-
-    if (audio.problem().isNotEmpty())
-        statusLabel.setText ("Audio: " + audio.problem(), juce::dontSendNotification);
-
     crate.addChangeListener (this);
     setWantsKeyboardFocus (true);
     refreshRows();
@@ -123,8 +115,6 @@ void CatalogPanel::refreshRows()
     if (status.isEmpty())
         status = rows.empty() ? "Drop music here, or click Add Music: files, folders or record-pool zips."
                               : juce::String (rows.size()) + (rows.size() == 1 ? " track" : " tracks");
-    if (audio.problem().isNotEmpty())
-        status = "Audio: " + audio.problem() + "  |  " + status;
     statusLabel.setText (status, juce::dontSendNotification);
     repaint();
 }
@@ -318,7 +308,10 @@ bool CatalogPanel::keyPressed (const juce::KeyPress& key)
 {
     if (key == juce::KeyPress::spaceKey)
     {
-        transport.togglePlay();
+        if (session.deck().isPlaying())
+            session.deck().pause();
+        else
+            session.deck().play();
         return true;
     }
     return false;
@@ -328,51 +321,13 @@ void CatalogPanel::play (int row)
 {
     if (row < 0 || row >= static_cast<int> (rows.size()))
         return;
-    const auto track = rows[static_cast<std::size_t> (row)];
+    const auto& track = rows[static_cast<std::size_t> (row)];
     if (missing.count (track.id) != 0)
     {
         chooseMissingFolder();
         return;
     }
-    const auto name = juce::String::fromUTF8 (track.record.info.title.c_str());
-    transport.showLoading (name);
-    audio.deck().pause();
-
-    const auto generation = ++loadGeneration;
-    std::thread ([weak = juce::WeakReference<CatalogPanel> (this), track, name, generation] {
-        std::shared_ptr<const io::DecodedAudio> decoded;
-        std::vector<float> peaks;
-        juce::String problem;
-        try
-        {
-            auto audioData = std::make_shared<io::DecodedAudio> (io::decode (track.record.identity.path));
-            peaks = overviewPeaks (audioData->channels, 1400);
-            decoded = std::move (audioData);
-        }
-        catch (const std::exception& e)
-        {
-            problem = e.what();
-        }
-        juce::MessageManager::callAsync ([weak, decoded, peaks = std::move (peaks), track, name, problem, generation]() mutable {
-            auto* panel = weak.get();
-            if (panel == nullptr || generation != panel->loadGeneration)
-                return;  // closed, or another track was chosen meanwhile
-            if (! decoded)
-            {
-                panel->transport.showTrack (name, problem, {});
-                return;
-            }
-            const auto& info = track.record.info;
-            juce::String details = juce::String::fromUTF8 (info.artist.c_str());
-            if (info.bpm)
-                details << (details.isEmpty() ? "" : "  |  ") << juce::String (*info.bpm, 1) << " BPM";
-            if (! info.camelot.empty())
-                details << "  |  " << info.camelot << " " << info.key;
-            panel->audio.deck().load (decoded);
-            panel->audio.deck().play();
-            panel->transport.showTrack (name, details, std::move (peaks));
-        });
-    }).detach();
+    session.load (track, true);
 }
 
 void CatalogPanel::paint (juce::Graphics& g)
@@ -400,7 +355,6 @@ void CatalogPanel::paintOverChildren (juce::Graphics& g)
 void CatalogPanel::resized()
 {
     auto area = getLocalBounds();
-    transport.setBounds (area.removeFromBottom (130));
 
     auto top = area.removeFromTop (52).reduced (16, 10);
     addButton.setBounds (top.removeFromLeft (130));

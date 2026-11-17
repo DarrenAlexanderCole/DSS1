@@ -35,6 +35,9 @@ public:
     /// Searches `folder` (and inside it) for tracks that are missing, by file name and length.
     void findMissingIn (const juce::File& folder);
 
+    /// Saves a track's record (its path says which track). The snapshot updates once it's written.
+    void save (const TrackRecord& record);
+
     /// Takes tracks out of the library. Files on disk are never touched.
     void remove (const std::vector<std::int64_t>& ids);
 

@@ -147,3 +147,48 @@ TEST_CASE ("Loading a new track replaces the old one safely", "[deck]")
     renderFor (deck, 0.1);
     CHECK (deck.length() == 0);
 }
+
+TEST_CASE ("A loop plays round and round, with and without key lock", "[deck]")
+{
+    for (const bool keyLock : { false, true })
+    {
+        CAPTURE (keyLock);
+        Deck deck;
+        deck.prepare (deviceRate, block);
+        deck.load (sine (440.0, 4.0));
+        deck.setKeyLock (keyLock);
+        const auto start = static_cast<Frame> (0.5 * fileRate), end = static_cast<Frame> (1.0 * fileRate);
+        deck.setLoop (start, end);
+        CHECK (deck.isLooping());
+        deck.play();
+
+        // Two seconds from the start: past the loop's end three times over, and still playing inside it.
+        double lowest = 1e12, highest = 0;
+        for (int i = 0; i < 40; ++i)
+        {
+            renderFor (deck, 0.05);
+            if (i >= 25)
+            {
+                lowest = std::min (lowest, deck.position());
+                highest = std::max (highest, deck.position());
+            }
+        }
+        CHECK (deck.isPlaying());
+        CHECK (lowest >= static_cast<double> (start) - 0.01 * fileRate);
+        CHECK (highest < static_cast<double> (end) + 0.01 * fileRate);
+        CHECK (frequencyOf (renderFor (deck, 0.5)) == Approx (440.0).epsilon (0.02));
+
+        deck.clearLoop();
+        CHECK_FALSE (deck.isLooping());
+        renderFor (deck, 1.0);
+        CHECK (deck.position() > static_cast<double> (end) + 0.2 * fileRate);
+    }
+
+    Deck deck;
+    deck.prepare (deviceRate, block);
+    deck.load (sine (440.0, 1.0));
+    deck.setLoop (1000, 1100);  // too short to be a loop
+    CHECK_FALSE (deck.isLooping());
+    deck.setLoop (2000, 1000);
+    CHECK_FALSE (deck.isLooping());
+}

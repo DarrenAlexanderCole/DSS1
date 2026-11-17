@@ -36,6 +36,14 @@ public:
 
     void seek (Frame frame);
 
+    /// Plays [start, end) round and round until cleared. A loop of under 10 ms, or with end <= start, clears it.
+    /// Turning a loop on doesn't move the playhead: it loops once it reaches the loop.
+    void setLoop (Frame start, Frame end);
+    void clearLoop();
+    bool isLooping() const noexcept { return loopEnd.load() > loopStart.load(); }
+    double loopStartFrame() const noexcept { return loopStart.load(); }
+    double loopEndFrame() const noexcept { return loopEnd.load(); }
+
     /// 1.0 = normal speed. Clamped to 0.5 … 1.5.
     void setTempo (double ratio);
     double tempo() const noexcept { return tempoRatio.load(); }
@@ -64,6 +72,8 @@ private:
     void renderTurntable (float* const* outputs, int outputChannels, int frames, double step) noexcept;
     void renderKeyLocked (float* const* outputs, int outputChannels, int frames, double tempoNow) noexcept;
     float sampleAt (std::size_t channel, double position) const noexcept;
+    /// Brings a read position that ran past the loop end back into the loop.
+    double wrap (double position, double start, double end) const noexcept;
     void restartStretcher() noexcept;
 
     // Track handover between threads.
@@ -87,6 +97,8 @@ private:
     std::atomic<bool> keyLockOn { true };
     std::atomic<double> seekRequest { -1.0 };
     std::atomic<double> heardPosition { 0.0 };
+    std::atomic<double> loopStart { 0.0 };
+    std::atomic<double> loopEnd { 0.0 };   ///< <= loopStart: no loop
     std::atomic<Frame> loadedLength { 0 };
     std::atomic<double> loadedRate { 0.0 };
 };
