@@ -57,6 +57,19 @@ struct TrackIdentity
     bool operator== (const TrackIdentity&) const = default;
 };
 
+/// What the crate shows about a track: from its tags or file name, and from DSS1's analysis.
+struct TrackInfo
+{
+    std::string title;
+    std::string artist;
+    std::optional<double> bpm;
+    std::string key;            ///< e.g. "F minor"
+    std::string camelot;        ///< e.g. "4A"
+    std::optional<double> loudnessLufs;
+    bool analysed = false;
+    bool operator== (const TrackInfo&) const = default;
+};
+
 /// Everything DSS1 knows about one track that the user has prepared: its grid, cues and loops.
 /// Positions are frames at `sampleRate`, the file's own rate.
 struct TrackRecord
@@ -66,6 +79,7 @@ struct TrackRecord
     static constexpr std::size_t savedLoopSlots = 8;
 
     TrackIdentity identity;
+    TrackInfo info;
     double sampleRate = 0;
     Frame lengthFrames = 0;
 

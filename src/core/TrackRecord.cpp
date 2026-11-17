@@ -129,6 +129,18 @@ json toJson (const TrackRecord& t)
     json j;
     j["schema"] = TrackRecord::schemaVersion;
     j["identity"] = { { "path", t.identity.path }, { "fingerprint", t.identity.fingerprint } };
+    {
+        json info = { { "title", t.info.title }, { "artist", t.info.artist }, { "analysed", t.info.analysed } };
+        if (t.info.bpm)
+            info["bpm"] = *t.info.bpm;
+        if (! t.info.key.empty())
+            info["key"] = t.info.key;
+        if (! t.info.camelot.empty())
+            info["camelot"] = t.info.camelot;
+        if (t.info.loudnessLufs)
+            info["loudnessLufs"] = *t.info.loudnessLufs;
+        j["info"] = info;
+    }
     j["sampleRate"] = t.sampleRate;
     j["lengthFrames"] = t.lengthFrames;
     if (t.exportOffsetFrames != 0)
@@ -188,6 +200,18 @@ TrackRecord trackRecordFromJson (const json& j)
     {
         t.identity.path = it->value ("path", std::string());
         t.identity.fingerprint = it->value ("fingerprint", std::string());
+    }
+    if (const auto it = j.find ("info"); it != j.end() && it->is_object())
+    {
+        t.info.title = it->value ("title", std::string());
+        t.info.artist = it->value ("artist", std::string());
+        t.info.analysed = it->value ("analysed", false);
+        if (it->contains ("bpm"))
+            t.info.bpm = it->at ("bpm").get<double>();
+        t.info.key = it->value ("key", std::string());
+        t.info.camelot = it->value ("camelot", std::string());
+        if (it->contains ("loudnessLufs"))
+            t.info.loudnessLufs = it->at ("loudnessLufs").get<double>();
     }
     t.sampleRate = j.at ("sampleRate").get<double>();
     t.lengthFrames = j.value ("lengthFrames", Frame { 0 });

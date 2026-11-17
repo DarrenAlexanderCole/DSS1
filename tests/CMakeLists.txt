@@ -1,4 +1,5 @@
 add_executable(dss1_tests
+    AnalysisTests.cpp
     AudioDecoderTests.cpp
     BeatGridTests.cpp
     LibraryTests.cpp
