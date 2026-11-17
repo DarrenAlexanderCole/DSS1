@@ -164,19 +164,22 @@ namespace
         return b;
     }
 
-    Bytes retag (const std::optional<Bytes>& existing, const std::vector<GeobFrame>& frames)
+    Bytes retag (const std::optional<Bytes>& existing, const std::vector<GeobFrame>& frames, const std::vector<std::string>& remove)
     {
         Tag t;
         if (existing)
             if (auto parsed = parseTag (*existing))
                 t = std::move (*parsed);
 
-        // Drop GEOB frames we're replacing, keep everything else.
+        // Drop GEOB frames we're replacing or were asked to remove; keep everything else.
         t.frames.erase (std::remove_if (t.frames.begin(), t.frames.end(), [&] (const Frame& f) {
             if (f.id != "GEOB")
                 return false;
             const auto g = parseGeob (f.body);
-            return g && std::any_of (frames.begin(), frames.end(), [&] (const GeobFrame& n) { return n.description == g->description; });
+            if (! g)
+                return false;
+            return std::any_of (frames.begin(), frames.end(), [&] (const GeobFrame& n) { return n.description == g->description; })
+                || std::find (remove.begin(), remove.end(), g->description) != remove.end();
         }), t.frames.end());
 
         for (const auto& g : frames)
@@ -291,7 +294,8 @@ std::optional<Container> containerForExtension (std::string extension)
     return std::nullopt;
 }
 
-Bytes writeGeobFrames (const Bytes& file, Container container, const std::vector<GeobFrame>& frames)
+Bytes writeGeobFrames (const Bytes& file, Container container, const std::vector<GeobFrame>& frames,
+                       const std::vector<std::string>& remove)
 {
     if (container == Container::mp3)
     {
@@ -299,7 +303,7 @@ Bytes writeGeobFrames (const Bytes& file, Container container, const std::vector
         std::optional<Bytes> existing;
         if (length > 0)
             existing = Bytes (file.begin(), file.begin() + static_cast<std::ptrdiff_t> (length));
-        auto out = retag (existing, frames);
+        auto out = retag (existing, frames, remove);
         out.insert (out.end(), file.begin() + static_cast<std::ptrdiff_t> (length), file.end());
         return out;
     }
@@ -312,7 +316,7 @@ Bytes writeGeobFrames (const Bytes& file, Container container, const std::vector
             existing = c.body;
     cf.chunks.erase (std::remove_if (cf.chunks.begin(), cf.chunks.end(), [] (const Chunk& c) { return isId3Chunk (c.id); }),
                      cf.chunks.end());
-    cf.chunks.push_back ({ bigEndian ? "ID3 " : "id3 ", retag (existing, frames) });
+    cf.chunks.push_back ({ bigEndian ? "ID3 " : "id3 ", retag (existing, frames, remove) });
     return writeChunks (cf, bigEndian);
 }
 

@@ -24,7 +24,10 @@ DSS1 opens on **Catalog**.
    on, the pitch stays the same; turn it off to hear it like a turntable.
 5. **Sort:** click a column header (click again to reverse).
 
-The **Deliver** tab still has the MP3 timing test from the last build.
+The **Deliver** tab still has the MP3 timing test. In this build it gives the copies new names every run (with
+the time in them), removes Serato's older cue tag from the MP3 copy, and ends its report with **READ BACK FROM
+THE FILES**: the Serato tags in your original and in each copy, and where cue A is stored. The window title
+shows the build number.
 
 ## What to tell me
 

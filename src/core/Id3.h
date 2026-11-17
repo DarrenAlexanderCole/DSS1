@@ -28,10 +28,12 @@ struct GeobFrame
     bool operator== (const GeobFrame&) const = default;
 };
 
-/// Returns `file` with an ID3 tag holding `frames`. GEOB frames with the same description are replaced; all
-/// other frames are kept. An ID3 tag DSS1 can't safely edit (ID3v2.2, unsynchronised or with an extended
-/// header) is replaced by a new one. Throws std::runtime_error if the bytes aren't that kind of file.
-Bytes writeGeobFrames (const Bytes& file, Container container, const std::vector<GeobFrame>& frames);
+/// Returns `file` with an ID3 tag holding `frames`. GEOB frames with the same description are replaced, and
+/// GEOB frames described in `remove` are dropped; all other frames are kept. An ID3 tag DSS1 can't safely edit
+/// (ID3v2.2, unsynchronised or with an extended header) is replaced by a new one. Throws std::runtime_error if
+/// the bytes aren't that kind of file.
+Bytes writeGeobFrames (const Bytes& file, Container container, const std::vector<GeobFrame>& frames,
+                       const std::vector<std::string>& remove = {});
 
 /// The GEOB frames in a file's ID3 tag (empty if it has none).
 std::vector<GeobFrame> readGeobFrames (const Bytes& file, Container container);

@@ -58,8 +58,8 @@ namespace
         if (! container)
             throw std::runtime_error ("unsupported file type " + extension.toStdString());
         const auto serato = serato::exportTrack (record);
-        const std::vector<id3::GeobFrame> frames { { "Serato Markers2", serato::wrapMarkersForGeob (serato::encodeMarkers (serato.markers)) } };
-        const auto tagged = id3::writeGeobFrames (audioFileBytes, *container, frames);
+        const std::vector<id3::GeobFrame> frames { { serato::markers2Description, serato::wrapMarkersForGeob (serato::encodeMarkers (serato.markers)) } };
+        const auto tagged = id3::writeGeobFrames (audioFileBytes, *container, frames, { serato::legacyMarkersDescription });
         if (! target.replaceWithData (tagged.data(), tagged.size()))
             throw std::runtime_error ("couldn't write " + target.getFullPathName().toStdString());
 
@@ -67,6 +67,37 @@ namespace
         details.name = name.toStdString();
         details.kind = rekordboxKind (extension).toStdString();
         return rekordbox::exportTrack (record, details);
+    }
+
+    /// What a file's Serato tags say, read straight back from disk: the GEOB frames present, and cue A.
+    juce::String describeSeratoTags (const juce::File& file, const juce::String& extension, double rate, Frame offset)
+    {
+        const auto container = id3::containerForExtension (extension.toStdString());
+        if (! container)
+            return "(not readable)";
+        juce::StringArray names;
+        juce::String cueA = "no cue A";
+        try
+        {
+            for (const auto& g : id3::readGeobFrames (readBytes (file), *container))
+            {
+                names.add (juce::String (g.description));
+                if (g.description == serato::markers2Description)
+                    for (const auto& cue : serato::decodeMarkers (serato::unwrapMarkersFromGeob (g.content)).cues)
+                        if (cue.index == 0)
+                        {
+                            cueA = "cue A stored at " + juce::String (formatTime (cue.positionMs / 1000.0));
+                            if (offset != 0 && rate > 0)
+                                cueA << " (DSS1 position " << formatTime (cue.positionMs / 1000.0 - static_cast<double> (offset) / rate)
+                                     << " + " << juce::String (static_cast<double> (offset) * 1000.0 / rate, 1) << " ms MP3 shift)";
+                        }
+            }
+        }
+        catch (const std::exception& e)
+        {
+            return "couldn't read back: " + juce::String (e.what());
+        }
+        return (names.isEmpty() ? juce::String ("no Serato tags") : "Serato tags: " + names.joinIntoString (", ")) + "; " + cueA;
     }
 
     /// The whole test for one file. Runs on a background thread.
@@ -102,9 +133,11 @@ namespace
 
             juce::String made;
             const auto stem = source.getFileNameWithoutExtension();
+            // A new name every run, so Serato can't show cues it remembers from an earlier copy.
+            const auto stamp = juce::Time::getCurrentTime().formatted ("%H%M%S");
 
             // 1. A copy of the file itself.
-            const auto name = stem + " (DSS1 timing)";
+            const auto name = stem + " (DSS1 timing " + stamp + ")";
             const auto target = outputFolder.getChildFile (name + extension);
             auto record = makeTimingRecord (target.getFullPathName().toStdString(), rate, length, hits);
             // Serato and Rekordbox count an MP3's encoder delay; DSS1 removed it. (The WAV copy has none.)
@@ -115,7 +148,7 @@ namespace
             // 2. For an MP3, the same music decoded by DSS1 and saved as WAV, with the same cues.
             if (extension.equalsIgnoreCase (".mp3"))
             {
-                const auto wavName = stem + " (DSS1 timing, WAV)";
+                const auto wavName = stem + " (DSS1 timing " + stamp + ", WAV)";
                 const auto wavTarget = outputFolder.getChildFile (wavName + ".wav");
                 io::writeWav (wavTarget.getFullPathName().toStdString(), decoded);
                 const auto wavRecord = makeTimingRecord (wavTarget.getFullPathName().toStdString(), rate, length, hits);
@@ -131,6 +164,13 @@ namespace
             if (decoded.info.encoderDelayFrames > 0)
                 text << "\n(MP3 detail for me: the encoder added " << static_cast<int> (decoded.info.encoderDelayFrames)
                      << " samples of silence at the start; DSS1 shifted the MP3's cues by that much for Serato and Rekordbox.)\n";
+
+            // Read back exactly what's in the files, for checking against what Serato shows.
+            text << "\nREAD BACK FROM THE FILES\n";
+            text << "Your original: " << describeSeratoTags (source, extension, rate, 0) << "\n";
+            text << "Copy: " << describeSeratoTags (target, extension, rate, record.exportOffsetFrames) << "\n";
+            if (extension.equalsIgnoreCase (".mp3"))
+                text << "WAV copy: " << describeSeratoTags (outputFolder.getChildFile (stem + " (DSS1 timing " + stamp + ", WAV).wav"), ".wav", rate, 0) << "\n";
             text << "\n" << howToCheck;
             out.report = text;
         }

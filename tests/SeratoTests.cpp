@@ -351,3 +351,18 @@ TEST_CASE ("MP3 positions are shifted by the encoder delay Serato counts", "[ser
     CHECK (std::abs (back.hotCues[0]->frame - 44100) <= 23);  // within Serato's 1 ms resolution
     CHECK (std::abs (back.savedLoops[0]->end - 176400) <= 23);
 }
+
+TEST_CASE ("Old Serato Markers_ frames can be removed while writing Markers2", "[id3]")
+{
+    const auto mp3 = makeMp3WithTitle();
+    const id3::GeobFrame legacy { legacyMarkersDescription, Bytes { 2, 5, 0, 0 } };
+    const auto withLegacy = id3::writeGeobFrames (mp3, id3::Container::mp3, { legacy });
+    REQUIRE (id3::readGeobFrames (withLegacy, id3::Container::mp3).size() == 1);
+
+    const id3::GeobFrame markers { markers2Description, wrapMarkersForGeob (encodeMarkers (sampleMarkers())) };
+    const auto cleaned = id3::writeGeobFrames (withLegacy, id3::Container::mp3, { markers }, { legacyMarkersDescription });
+    const auto frames = id3::readGeobFrames (cleaned, id3::Container::mp3);
+    REQUIRE (frames.size() == 1);
+    CHECK (frames[0].description == markers2Description);
+    CHECK (contains (cleaned, bytesOf ("My Title")));
+}

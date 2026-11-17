@@ -67,6 +67,13 @@ struct Grid
     bool operator== (const Grid&) const = default;
 };
 
+/// The ID3 GEOB descriptions DSS1 writes, and the old one it removes. For MP3s Serato also keeps cues in an
+/// older binary "Serato Markers_" frame; a stale copy of it (from a file Serato had seen before) could disagree
+/// with the new Markers2 data, so DSS1 drops it whenever it writes Markers2.
+inline constexpr const char* markers2Description = "Serato Markers2";
+inline constexpr const char* beatGridDescription = "Serato BeatGrid";
+inline constexpr const char* legacyMarkersDescription = "Serato Markers_";
+
 /// Serato's default hot-cue colours, by cue number, used when a DSS1 cue has no colour of its own.
 CueColour defaultCueColour (int index);
 

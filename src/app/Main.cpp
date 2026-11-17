@@ -37,7 +37,7 @@ public:
 
     void initialise (const juce::String&) override
     {
-        window = std::make_unique<MainWindow> (getApplicationName());
+        window = std::make_unique<MainWindow> (getApplicationName() + " V2  (" + juce::String (DSS1_BUILD_LABEL) + ")");
     }
 
     void shutdown() override { window.reset(); }

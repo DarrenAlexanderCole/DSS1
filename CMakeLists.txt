@@ -7,6 +7,9 @@ set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Mac architectures to bu
 
 project(DSS1 VERSION 2.0.0 LANGUAGES C CXX)
 
+# Shown in the window title so testers can tell builds apart; the release workflow sets it to test.<n>.
+set(DSS1_BUILD_LABEL "dev" CACHE STRING "Build name shown in the app")
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
