@@ -23,11 +23,11 @@ Rules that keep them clean:
 | Module | Contents | Depends on | Status |
 |---|---|---|---|
 | `core` | Track record, beat-grid maths, library store, Rekordbox XML, Serato tags, MPC projects, track matching | C++20 standard library, nlohmann/json, pugixml, SQLite | Track record, beat grid, library database, track matching, Rekordbox XML, Serato tags done |
-| `analysis` | Tempo, key, loudness, downbeats, waveform peaks | `core` | Phase 3 |
+| `analysis` (in `core/Analysis.h`) | Tempo, key, loudness; downbeats next | `core` | Tempo, key, loudness done |
 | `io` | Decoding, import, folder watching | `core`, dr_wav, dr_flac, minimp3 | Decoding done |
-| `engine` | One audio device, decks, key lock (Signalsmith Stretch), effects, recorder | `io`, JUCE audio | Phase 3 |
+| `engine` | Decks with key lock (Signalsmith Stretch 1.4.0); effects and recorder later. No JUCE: the app's audio callback drives it | `io`, signalsmith-stretch | Deck done |
 | `midi` | Controllers, MIDI learn, presets | `engine` | Phase 4 |
-| `app` | The four stages and the visual style | everything | Shell in place |
+| `app` | The four stages and the visual style; audio device (JUCE), Crate (import + background analysis) | everything | Catalog playable |
 
 `core` deliberately has no JUCE or OS dependency: it is the part that must be exactly right (cue positions,
 grids, file formats), and keeping it plain C++ makes it fast to test on any machine.
@@ -96,6 +96,28 @@ keeping every other frame and chunk.
 | Beat grid | Off by default (many Serato DJs don't use grids); when switched on, BeatGrid markers from the first downbeat in the track; tempo changes rounded to whole beats, reported if that moves anything by more than 1 ms |
 
 FLAC and M4A keep Serato data differently (Vorbis comments / MP4 atoms); for now those are exported as WAV.
+
+## Analysis
+
+`src/core/Analysis.h`, plain C++ so results match on every platform:
+
+- **Tempo:** spectral-flux onset envelope, autocorrelated; a gentle preference for tempos near 120 BPM picks the
+  danceable reading, a backbeat check stops 174 BPM drum & bass reading as 87, and the estimate is refined on
+  the peak 16 beats away. Folded into 70–180 BPM. Steady sounds with no pulse give no tempo.
+- **Key:** a chromagram (55–2000 Hz) correlated with Krumhansl–Kessler profiles; reported as a name and a
+  Camelot code.
+- **Loudness:** integrated LUFS per ITU-R BS.1770 / EBU R128 (K-weighting coefficients derived for any sample
+  rate, as libebur128 does; 400 ms blocks, absolute and relative gates).
+
+About 2 seconds per 5-minute track on a laptop (release build). The Crate runs analysis on a background
+thread, one track at a time, and saves results with the track.
+
+## Playback
+
+`src/engine/Deck.h`: plays a decoded track at 0.5–1.5x. With key lock, Signalsmith Stretch time-stretches
+(same pitch); without, cubic resampling behaves like a turntable. Either way it converts the track's sample rate
+to the device's. The message thread loads, seeks and sets tempo; the audio callback only renders, and old audio
+is always freed on the message thread.
 
 ## Decoding
 

@@ -1,4 +1,5 @@
 #include "MainComponent.h"
+#include "CatalogPanel.h"
 #include "GridPreview.h"
 #include "StagePanel.h"
 #include "TestExportPanel.h"
@@ -10,11 +11,7 @@ MainComponent::MainComponent()
 {
     setLookAndFeel (&theme);
 
-    auto catalog = std::make_unique<StagePanel> (
-        "Catalog", "Bring music in and keep it organised.",
-        juce::StringArray { "Drop files, folders and record-pool zips",
-                            "Browse by BPM, key, loudness and tags",
-                            "Moved or renamed files keep their cues" });
+    auto catalog = std::make_unique<CatalogPanel> (crate, audio);
 
     auto prep = std::make_unique<StagePanel> (
         "Prep", "Get every track gig-ready: grid, cues and loops, set once.",
@@ -42,7 +39,7 @@ MainComponent::MainComponent()
     stages.addTab ("Prep", bg, prep.release(), true);
     stages.addTab ("Listen & Design", bg, design.release(), true);
     stages.addTab ("Deliver", bg, deliver.release(), true);
-    stages.setCurrentTabIndex (3);  // test builds open on Deliver, where the test export lives
+    stages.setCurrentTabIndex (0);
     addAndMakeVisible (stages);
 
     setSize (1200, 760);

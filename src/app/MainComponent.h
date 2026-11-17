@@ -1,5 +1,7 @@
 #pragma once
 
+#include "AudioEngine.h"
+#include "Crate.h"
 #include "Theme.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -18,6 +20,8 @@ public:
 
 private:
     Theme theme;
+    AudioEngine audio;
+    Crate crate;
     juce::TabbedComponent stages { juce::TabbedButtonBar::TabsAtTop };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)

@@ -8,12 +8,16 @@ juce_add_gui_app(DSS1
     MICROPHONE_PERMISSION_ENABLED FALSE)
 
 target_sources(DSS1 PRIVATE
+    AudioEngine.cpp
+    CatalogPanel.cpp
+    Crate.cpp
     Main.cpp
     MainComponent.cpp
     StagePanel.cpp
     GridPreview.cpp
     TestExportPanel.cpp
-    Theme.cpp)
+    Theme.cpp
+    TransportBar.cpp)
 
 target_compile_definitions(DSS1 PRIVATE
     JUCE_WEB_BROWSER=0
@@ -26,6 +30,8 @@ target_link_libraries(DSS1
     PRIVATE
         dss1_core
         dss1_io
+        dss1_engine
+        juce::juce_audio_devices
         juce::juce_gui_extra
     PUBLIC
         juce::juce_recommended_config_flags

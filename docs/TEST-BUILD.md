@@ -1,8 +1,5 @@
-**This is an early test build of DSS1 V2: the MP3 timing test.** The previous build showed MP3 cues landing
-about 25 ms early in Serato and Rekordbox, because both apps count the silence MP3 encoders add at the start and
-DSS1 didn't. This build adds it back, so MP3 cues should now sit right on the hits, just like the WAV's. It doesn't
-play audio yet. It runs on Apple
-Silicon and Intel Macs with macOS 13 or later.
+**This is an early test build of DSS1 V2: the first one that plays music.** It runs on Apple Silicon and Intel Macs
+with macOS 13 or later.
 
 ## Install
 
@@ -13,24 +10,25 @@ Silicon and Intel Macs with macOS 13 or later.
      and click **Open Anyway**, then confirm.
    - **macOS 13–14:** right-click (or Control-click) DSS1 in Applications, choose **Open**, then **Open** again.
 
-## Test
+## Try it
 
-DSS1 opens on the **Deliver** tab. Drop a track onto the box (or click **Choose a track...**). An **MP3 with a
-strong kick or snare**, at least 30 seconds long, is the most useful. DSS1 finds 8 sharp hits in the music and
-puts hot cues A–H exactly on them. It leaves your original alone and writes to **Music → DSS1 Test Exports**:
+DSS1 opens on **Catalog**.
 
-- a copy of the track with the cues inside it, for Serato
-- for an MP3, a second copy saved as WAV by DSS1 itself, with the same cues
-- `DSS1 timing.xml`, with the same cues for Rekordbox
+1. **Add music:** drag files, a folder or a record-pool zip onto the window, or click **Add Music...**. WAV, AIFF,
+   FLAC and MP3 work. Zips are unpacked into Music → DSS1 Imports. Your files aren't changed or moved.
+2. **Wait for analysis:** BPM, key (Camelot and name) and loudness fill in, a couple of seconds per track. The
+   crate is saved, so it's still there next time you open DSS1.
+3. **Play:** double-click a track (or select it and press Return). Space plays and pauses. Click or drag on the
+   waveform to jump.
+4. **Tempo and key lock:** the slider changes tempo by up to ±8% (double-click it to reset). With **Key lock**
+   on, the pitch stays the same; turn it off to hear it like a turntable.
+5. **Sort:** click a column header (click again to reverse).
 
-**What to look for:** zoom the waveform in as far as it goes. Each cue should sit at the very start of a hit,
-where the waveform jumps up. Load the MP3 copy and the WAV copy side by side: if the WAV's cues sit on the hits
-but the MP3's are a little early or late, that's the timing difference this test is looking for.
+The **Deliver** tab still has the MP3 timing test from the last build.
 
-**Serato DJ:** drag the copies into your library and load them.
+## What to tell me
 
-**Rekordbox 6 or 7:** in Preferences → Advanced → Database, set the rekordbox xml Imported Library to
-`DSS1 timing.xml`. In the side panel, open rekordbox xml → Playlists → DSS1 timing, right-click each track and
-choose **Import To Collection**, then load them.
-
-Please report what you saw, ideally with a zoomed-in screenshot of one cue in each app.
+- Do BPM and key look right for tracks you know? Where they're off, is the BPM half or double, or just wrong?
+  How do they compare with Serato and Rekordbox?
+- Does playback sound clean, with and without key lock, at 0% and at ±8%?
+- Anything confusing, slow or broken, ideally with a screenshot.
