@@ -1,4 +1,4 @@
-**This is an early test build of DSS1 V2: the first one that plays music.** It runs on Apple Silicon and Intel Macs
+**This is an early test build of DSS1 V2.** It runs on Apple Silicon and Intel Macs
 with macOS 13 or later.
 
 ## Install
@@ -16,21 +16,28 @@ DSS1 opens on **Catalog**.
 
 1. **Add music:** drag files, a folder or a record-pool zip onto the window, or click **Add Music...**. WAV, AIFF,
    FLAC and MP3 work. Zips are unpacked into Music → DSS1 Imports. Your files aren't changed or moved.
-2. **Wait for analysis:** BPM, key (Camelot and name) and loudness fill in, a couple of seconds per track. The
-   crate is saved, so it's still there next time you open DSS1.
-3. **Play:** double-click a track (or select it and press Return). Space plays and pauses. Click or drag on the
-   waveform to jump.
-4. **Tempo and key lock:** the slider changes tempo by up to ±8% (double-click it to reset). With **Key lock**
-   on, the pitch stays the same; turn it off to hear it like a turntable.
-5. **Sort:** click a column header (click again to reverse).
+2. **Tags:** title, artist, album and genre now come from the files' tags (the file name is used when a tag is
+   empty). Tracks you added in earlier test builds pick up their tags a moment after DSS1 opens.
+3. **Watched folders:** a folder you add is watched. Put a new track in it and DSS1 adds it within three
+   minutes, or straight away with **Folders → Look for New Music Now**. **Folders** also lists them, and
+   **Stop Watching** forgets one (its tracks stay).
+4. **Missing files:** move or rename a folder of tracks in Finder. Those tracks show as *Missing*. If they're in
+   a watched folder DSS1 finds them by itself; otherwise click **Find Missing...** and pick where they are now.
+5. **Remove:** select tracks (Shift or Command for several) and press Delete, or right-click → **Remove from
+   DSS1**. Only DSS1's entry goes; the audio files stay. Right-click also has **Show in Finder**.
+6. **Analysis:** BPM, key (Camelot and name) and loudness fill in, a couple of seconds per track. DSS1 also
+   finds where the beats and bars fall; you'll see that grid in Prep, coming next.
+7. **Play:** double-click a track (or select it and press Return). Space plays and pauses. Click or drag on the
+   waveform to jump. The slider changes tempo by up to ±8% (double-click to reset); **Key lock** keeps the
+   pitch.
 
-The **Deliver** tab still has the MP3 timing test. In this build it gives the copies new names every run (with
-the time in them), removes Serato's older cue tag from the MP3 copy, and ends its report with **READ BACK FROM
-THE FILES**: the Serato tags in your original and in each copy, and where cue A is stored. The window title
-shows the build number.
+The MP3 timing test has moved: **Deliver → Export Timing Check...** (the MP3 question is settled: cues land on
+the same beat in Serato and Rekordbox for WAV and MP3).
 
 ## What to tell me
 
+- Did titles and artists come through from your tags? Any garbled accents?
+- Did a moved folder get found again?
 - Do BPM and key look right for tracks you know? Where they're off, is the BPM half or double, or just wrong?
   How do they compare with Serato and Rekordbox?
 - Does playback sound clean, with and without key lock, at 0% and at ±8%?

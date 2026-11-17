@@ -15,6 +15,18 @@ namespace dss1::analysis
 /// steady pulse (or silence).
 std::optional<double> detectBpm (const std::vector<float>& mono, double sampleRate, double minBpm = 70.0, double maxBpm = 180.0);
 
+/// Where the beats and bars fall, for a tempo already found.
+struct BeatPlacement
+{
+    double firstBeat = 0;       ///< frame of the first beat at or after the start of the track
+    double firstDownbeat = 0;   ///< frame of the first beat 1 at or after the start
+    double downbeatConfidence = 0;  ///< 0 … 1: how much beat 1 stood out from the other beats of the bar
+};
+
+/// Finds the beat phase (where the beats fall at `bpm`) and which beat starts the bar, assuming 4/4: beat 1 is
+/// the beat where the bass hits hardest and the harmony changes most. nullopt if there's no pulse to place.
+std::optional<BeatPlacement> placeBeats (const std::vector<float>& mono, double sampleRate, double bpm);
+
 struct Key
 {
     int tonic = 0;        ///< 0 = C, 1 = C#, … 11 = B

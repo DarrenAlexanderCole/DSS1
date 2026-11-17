@@ -1,7 +1,8 @@
 # dss1_io: reading audio files (and, later, importing folders and zips).
 # Bundles its own decoders so every platform decodes to the same samples. No JUCE.
 add_library(dss1_io STATIC
-    AudioDecoder.cpp)
+    AudioDecoder.cpp
+    TagReader.cpp)
 
 target_include_directories(dss1_io PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
 target_include_directories(dss1_io SYSTEM PRIVATE ${dr_libs_SOURCE_DIR} ${minimp3_SOURCE_DIR})

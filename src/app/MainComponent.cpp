@@ -3,9 +3,49 @@
 #include "GridPreview.h"
 #include "StagePanel.h"
 #include "TestExportPanel.h"
+#include "Theme.h"
 
 namespace dss1::ui
 {
+
+namespace
+{
+    /// Tools that check DSS1's exports by hand. Kept out of the way: the MP3 timing question is settled
+    /// (docs/ARCHITECTURE.md), but the check stays useful when a new DJ app or file type comes along.
+    class ExportCheckLauncher : public juce::Component
+    {
+    public:
+        ExportCheckLauncher()
+        {
+            button.onClick = [] {
+                juce::DialogWindow::LaunchOptions o;
+                auto panel = std::make_unique<TestExportPanel>();
+                panel->setSize (900, 560);
+                o.content.setOwned (panel.release());
+                o.dialogTitle = "Export timing check";
+                o.dialogBackgroundColour = Colours::background;
+                o.escapeKeyTriggersCloseButton = true;
+                o.useNativeTitleBar = true;
+                o.resizable = true;
+                o.launchAsync();
+            };
+            addAndMakeVisible (button);
+        }
+
+        void paint (juce::Graphics& g) override
+        {
+            g.setColour (Colours::dimText);
+            g.setFont (juce::FontOptions (13.0f));
+            g.drawFittedText ("Checks that cues land on the same beat in Serato and Rekordbox for a file you choose.",
+                              getLocalBounds().withTrimmedTop (40), juce::Justification::topLeft, 2);
+        }
+
+        void resized() override { button.setBounds (0, 0, 220, 30); }
+
+    private:
+        juce::TextButton button { "Export Timing Check..." };
+    };
+} // namespace
 
 MainComponent::MainComponent()
 {
@@ -31,7 +71,7 @@ MainComponent::MainComponent()
         juce::StringArray { "Rekordbox XML export and import",
                             "Serato-tagged copies",
                             "MPC projects and WAV slices" });
-    deliver->setShowcase (std::make_unique<TestExportPanel>());
+    deliver->setShowcase (std::make_unique<ExportCheckLauncher>());
 
     const auto bg = Colours::background;
     stages.setTabBarDepth (44);

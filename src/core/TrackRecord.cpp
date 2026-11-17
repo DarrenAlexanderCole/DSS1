@@ -131,6 +131,10 @@ json toJson (const TrackRecord& t)
     j["identity"] = { { "path", t.identity.path }, { "fingerprint", t.identity.fingerprint } };
     {
         json info = { { "title", t.info.title }, { "artist", t.info.artist }, { "analysed", t.info.analysed } };
+        if (! t.info.album.empty())
+            info["album"] = t.info.album;
+        if (! t.info.genre.empty())
+            info["genre"] = t.info.genre;
         if (t.info.bpm)
             info["bpm"] = *t.info.bpm;
         if (! t.info.key.empty())
@@ -205,6 +209,8 @@ TrackRecord trackRecordFromJson (const json& j)
     {
         t.info.title = it->value ("title", std::string());
         t.info.artist = it->value ("artist", std::string());
+        t.info.album = it->value ("album", std::string());
+        t.info.genre = it->value ("genre", std::string());
         t.info.analysed = it->value ("analysed", false);
         if (it->contains ("bpm"))
             t.info.bpm = it->at ("bpm").get<double>();

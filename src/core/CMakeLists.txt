@@ -5,6 +5,7 @@ add_library(dss1_core STATIC
     BeatGrid.cpp
     Hits.cpp
     Id3.cpp
+    Tags.cpp
     LibraryStore.cpp
     RekordboxMapping.cpp
     RekordboxXml.cpp

@@ -161,7 +161,44 @@ void LibraryStore::migrate()
             )SQL");
         });
     }
+    if (current < 2)
+    {
+        // 2: folders DSS1 keeps an eye on for new music.
+        transaction ([this] {
+            exec (R"SQL(
+                CREATE TABLE watched_folders (
+                    path     TEXT PRIMARY KEY,
+                    added_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+                );
+                PRAGMA user_version = 2;
+            )SQL");
+        });
+    }
     // Later schema versions add their upgrade steps here, one `if (current < N)` each.
+}
+
+void LibraryStore::addWatchedFolder (const std::string& path)
+{
+    Statement s (db_.get(), "INSERT OR IGNORE INTO watched_folders (path) VALUES (?1)");
+    s.bind (1, path);
+    s.step();
+}
+
+bool LibraryStore::removeWatchedFolder (const std::string& path)
+{
+    Statement s (db_.get(), "DELETE FROM watched_folders WHERE path = ?1");
+    s.bind (1, path);
+    s.step();
+    return sqlite3_changes (db_.get()) > 0;
+}
+
+std::vector<std::string> LibraryStore::watchedFolders() const
+{
+    Statement s (db_.get(), "SELECT path FROM watched_folders ORDER BY path");
+    std::vector<std::string> out;
+    while (s.step())
+        out.push_back (s.text (0));
+    return out;
 }
 
 void LibraryStore::transaction (const std::function<void()>& work)

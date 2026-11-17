@@ -1,6 +1,7 @@
 #include "core/Analysis.h"
 
 #include <algorithm>
+#include <deque>
 #include <array>
 #include <cmath>
 #include <numbers>
@@ -280,6 +281,209 @@ std::optional<double> detectBpm (const std::vector<float>& mono, double sampleRa
     while (bpm >= maxBpm)
         bpm /= 2;
     return std::round (bpm * 100.0) / 100.0;
+}
+
+// --- Beats and bars -------------------------------------------------------------------------------------
+
+std::optional<BeatPlacement> placeBeats (const std::vector<float>& mono, double sampleRate, double bpm)
+{
+    if (sampleRate <= 0 || bpm <= 0 || mono.size() < static_cast<std::size_t> (sampleRate * 4))
+        return std::nullopt;
+
+    // At a fine hop: overall onsets (spectral flux), bass onsets (flux below ~150 Hz), bass power, and a chroma
+    // vector (12 pitch classes, 100 Hz - 2 kHz) for finding where the harmony changes.
+    constexpr std::size_t size = 1024, hop = 128;
+    const auto binHz = sampleRate / static_cast<double> (size);
+    const auto bassTop = std::max<std::size_t> (2, static_cast<std::size_t> (150.0 / binHz));
+    const auto chromaBottom = std::max<std::size_t> (1, static_cast<std::size_t> (100.0 / binHz));
+    const auto chromaTop = std::min<std::size_t> (size / 2, static_cast<std::size_t> (2000.0 / binHz));
+    const auto hopsPerBeat = 60.0 * sampleRate / bpm / static_cast<double> (hop);
+
+    std::vector<int> pitchClass (size / 2, -1);
+    for (auto k = chromaBottom; k < chromaTop; ++k)
+    {
+        const auto midi = 69.0 + 12.0 * std::log2 (static_cast<double> (k) * binHz / 440.0);
+        pitchClass[k] = static_cast<int> (std::lround (midi)) % 12;
+    }
+
+    std::vector<double> flux, bass, bassPower;
+    std::vector<std::array<double, 12>> chroma;
+    std::vector<double> previous;
+    spectra (mono, size, hop, [&] (const std::vector<double>& mag) {
+        std::vector<double> level (mag.size());
+        for (std::size_t k = 0; k < mag.size(); ++k)
+            level[k] = std::log1p (100.0 * mag[k]);
+        double all = 0, low = 0, power = 0;
+        if (! previous.empty())
+            for (std::size_t k = 1; k < level.size(); ++k)
+            {
+                const auto rise = std::max (0.0, level[k] - previous[k]);
+                all += rise;
+                if (k < bassTop)
+                    low += rise;
+            }
+        for (std::size_t k = 1; k < bassTop; ++k)
+            power += mag[k] * mag[k];
+        std::array<double, 12> c {};
+        for (auto k = chromaBottom; k < chromaTop; ++k)
+            c[static_cast<std::size_t> (pitchClass[k])] += mag[k] * mag[k];
+        flux.push_back (all);
+        bass.push_back (low);
+        bassPower.push_back (power);
+        chroma.push_back (c);
+        previous = std::move (level);
+    });
+    if (flux.size() < static_cast<std::size_t> (hopsPerBeat * 8))
+        return std::nullopt;
+
+    // Where in time a flux peak sits: an onset raises the (log) flux most when it first enters the window, near
+    // the window's end, so a peak at index i means an onset about this far into frame i. Only roughly (it
+    // depends on the sound); the beats are refined on the waveform below.
+    const auto frameOf = [&] (double hopIndex) { return hopIndex * static_cast<double> (hop) + static_cast<double> (size) - 160.0; };
+
+    const auto at = [] (const std::vector<double>& v, double i) {
+        if (i < 0 || i >= static_cast<double> (v.size() - 1))
+            return 0.0;
+        const auto lo = static_cast<std::size_t> (i);
+        const auto f = i - static_cast<double> (lo);
+        return v[lo] * (1 - f) + v[lo + 1] * f;
+    };
+
+    // Beat phase: the offset within one beat where the onsets line up best across the whole track. Bass onsets
+    // count as much as all the others together: hi-hats on the off-beat (house, techno) are broadband and would
+    // otherwise pull the grid half a beat late, while kicks and bass notes mark the beat itself.
+    const auto phaseScores = [&] (const std::vector<double>& v) {
+        std::vector<double> out;
+        double sum = 0;
+        for (double phase = 0; phase < hopsPerBeat; phase += 0.1)
+        {
+            double score = 0;
+            for (double i = phase; i < static_cast<double> (v.size()); i += hopsPerBeat)
+                score += at (v, i);
+            out.push_back (score);
+            sum += score;
+        }
+        if (sum > 0)
+            for (auto& x : out)
+                x *= static_cast<double> (out.size()) / sum;  // mean 1
+        return out;
+    };
+    const auto fluxScores = phaseScores (flux);
+    const auto bassScores = phaseScores (bass);
+    double bestPhase = 0, bestScore = -1;
+    for (std::size_t k = 0; k < fluxScores.size(); ++k)
+    {
+        const auto score = fluxScores[k] + bassScores[k];
+        if (score > bestScore)
+        {
+            bestScore = score;
+            bestPhase = 0.1 * static_cast<double> (k);
+        }
+    }
+    if (bestScore < 2.6)
+        return std::nullopt;  // nothing lines up well above average (2 = no pulse): no beat to place
+
+    // Refine the phase on the waveform: near each beat, find where the energy jumps (in 32-frame blocks) and
+    // take the median distance from the predicted beat. This pins beats to within a millisecond or so.
+    {
+        constexpr std::size_t block = 32;
+        std::vector<double> energy (mono.size() / block);
+        for (std::size_t k = 0; k < energy.size(); ++k)
+        {
+            double e = 0;
+            for (std::size_t n = 0; n < block; ++n)
+                e += static_cast<double> (mono[k * block + n]) * mono[k * block + n];
+            energy[k] = std::log (e + 1e-9);
+        }
+        const auto beatFramesNow = hopsPerBeat * static_cast<double> (hop);
+        const auto reach = static_cast<long> (std::min (beatFramesNow / 4.0, 0.015 * sampleRate) / block);
+        std::vector<double> offsets;
+        for (double beatFrame = frameOf (bestPhase); beatFrame < static_cast<double> (mono.size()); beatFrame += beatFramesNow)
+        {
+            const auto centre = static_cast<long> (beatFrame / block);
+            long bestK = -1;
+            double bestRise = 1.0;  // at least e (x2.7) louder than the 4 blocks before: a real hit
+            for (auto k = std::max (centre - reach, 4L); k <= centre + reach && k < static_cast<long> (energy.size()); ++k)
+            {
+                const auto ku = static_cast<std::size_t> (k);
+                const auto before = std::max ({ energy[ku - 1], energy[ku - 2], energy[ku - 3], energy[ku - 4] });
+                const auto rise = energy[ku] - before;
+                if (rise > bestRise)
+                {
+                    bestRise = rise;
+                    bestK = k;
+                }
+            }
+            if (bestK >= 0)
+                offsets.push_back (static_cast<double> (bestK) * block - beatFrame);
+        }
+        if (offsets.size() >= 8)
+        {
+            std::nth_element (offsets.begin(), offsets.begin() + static_cast<std::ptrdiff_t> (offsets.size() / 2), offsets.end());
+            bestPhase += offsets[offsets.size() / 2] / static_cast<double> (hop);
+        }
+    }
+
+    // Beat 1 of 4: where bass notes start (bass power rises from the half beat before to the half beat after)
+    // and the harmony changes (the chroma of the half beat after differs from the half beat before), counted
+    // for each of the four beats of the bar across the whole track. Power and chroma use the half beats either
+    // side rather than single frames, so short hits (claps, snares) don't count as changes.
+    const auto half = std::max<std::size_t> (1, static_cast<std::size_t> (hopsPerBeat / 2));
+    std::array<double, 4> bassAt {}, changeAt {};
+    for (int b = 0;; ++b)
+    {
+        const auto i = static_cast<std::size_t> (std::lround (bestPhase + b * hopsPerBeat));
+        if (i + half >= flux.size())
+            break;
+        if (i < half)
+            continue;
+        double before = 0, after = 0;
+        std::array<double, 12> cBefore {}, cAfter {};
+        for (std::size_t d = 0; d < half; ++d)
+        {
+            before += bassPower[i - 1 - d];
+            after += bassPower[i + d];
+            for (std::size_t p = 0; p < 12; ++p)
+            {
+                cBefore[p] += chroma[i - 1 - d][p];
+                cAfter[p] += chroma[i + d][p];
+            }
+        }
+        double dot = 0, na = 0, nb = 0;
+        for (std::size_t p = 0; p < 12; ++p)
+        {
+            dot += cBefore[p] * cAfter[p];
+            na += cBefore[p] * cBefore[p];
+            nb += cAfter[p] * cAfter[p];
+        }
+        const auto j = static_cast<std::size_t> (b % 4);
+        bassAt[j] += std::max (0.0, after - before);
+        changeAt[j] += na > 0 && nb > 0 ? 1.0 - dot / std::sqrt (na * nb) : 0.0;
+    }
+    const auto normalise = [] (std::array<double, 4>& v) {
+        const auto sum = v[0] + v[1] + v[2] + v[3];
+        if (sum > 0)
+            for (auto& x : v)
+                x /= sum;
+    };
+    normalise (bassAt);
+    normalise (changeAt);
+    std::array<double, 4> barScore {};
+    for (std::size_t j = 0; j < 4; ++j)
+        barScore[j] = bassAt[j] + changeAt[j];
+    const auto best = static_cast<std::size_t> (std::max_element (barScore.begin(), barScore.end()) - barScore.begin());
+    auto sorted = barScore;
+    std::sort (sorted.begin(), sorted.end());
+    const auto confidence = sorted[3] > 0 ? std::clamp ((sorted[3] - sorted[2]) / sorted[3], 0.0, 1.0) : 0.0;
+
+    const auto beatFrames = hopsPerBeat * static_cast<double> (hop);
+    auto firstBeat = frameOf (bestPhase);
+    auto firstDownbeat = frameOf (bestPhase + static_cast<double> (best) * hopsPerBeat);
+    while (firstBeat - beatFrames >= 0)
+        firstBeat -= beatFrames;
+    while (firstDownbeat - 4 * beatFrames >= 0)
+        firstDownbeat -= 4 * beatFrames;
+    return BeatPlacement { firstBeat, firstDownbeat, confidence };
 }
 
 // --- Key --------------------------------------------------------------------------------------------------

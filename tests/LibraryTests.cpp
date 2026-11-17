@@ -3,6 +3,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <nlohmann/json.hpp>
 #include <sqlite3.h>
 
 #include <cstdio>
@@ -144,6 +145,38 @@ TEST_CASE ("The library file keeps tracks between launches and refuses a newer s
     sqlite3_exec (db, "PRAGMA user_version = 99", nullptr, nullptr, nullptr);
     sqlite3_close (db);
     CHECK_THROWS_AS (LibraryStore::open (file.path.string()), std::runtime_error);
+}
+
+TEST_CASE ("Watched folders persist, and a schema 1 library upgrades without losing tracks", "[library]")
+{
+    TempFile file;
+    {
+        // A library as DSS1 V2 test builds 1-6 made it.
+        sqlite3* db = nullptr;
+        REQUIRE (sqlite3_open (file.path.string().c_str(), &db) == SQLITE_OK);
+        const auto json = toJson (makeTrack ("/Music/old.wav", "fp")).dump();
+        const auto sql = "CREATE TABLE tracks (id INTEGER PRIMARY KEY, path TEXT NOT NULL UNIQUE, fingerprint TEXT NOT NULL DEFAULT '', "
+                         "record TEXT NOT NULL, added_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0);"
+                         "INSERT INTO tracks (path, fingerprint, record) VALUES ('/Music/old.wav', 'fp', '" + json + "');"
+                         "PRAGMA user_version = 1;";
+        REQUIRE (sqlite3_exec (db, sql.c_str(), nullptr, nullptr, nullptr) == SQLITE_OK);
+        sqlite3_close (db);
+    }
+    {
+        auto store = LibraryStore::open (file.path.string());
+        CHECK (store.count() == 1);
+        CHECK (store.watchedFolders().empty());
+        store.addWatchedFolder ("/Music/B");
+        store.addWatchedFolder ("/Music/A");
+        store.addWatchedFolder ("/Music/A");
+    }
+    {
+        auto store = LibraryStore::open (file.path.string());
+        CHECK (store.watchedFolders() == std::vector<std::string> { "/Music/A", "/Music/B" });
+        CHECK (store.removeWatchedFolder ("/Music/A"));
+        CHECK_FALSE (store.removeWatchedFolder ("/Music/A"));
+        CHECK (store.watchedFolders() == std::vector<std::string> { "/Music/B" });
+    }
 }
 
 // --- Matching -------------------------------------------------------------------------------------------

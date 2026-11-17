@@ -29,7 +29,7 @@ struct StoredTrack
 class LibraryStore
 {
 public:
-    static constexpr int schemaVersion = 1;
+    static constexpr int schemaVersion = 2;
 
     /// Opens (creating if needed) the database at `file`.
     static LibraryStore open (const std::string& file);
@@ -57,6 +57,11 @@ public:
 
     /// Returns false if there was no such track.
     bool remove (std::int64_t id);
+
+    /// Folders DSS1 watches for new music (paths as given, in path order).
+    void addWatchedFolder (const std::string& path);
+    bool removeWatchedFolder (const std::string& path);
+    std::vector<std::string> watchedFolders() const;
 
     /// Runs `work` in one transaction: all of its changes are kept, or none if it throws.
     void transaction (const std::function<void()>& work);

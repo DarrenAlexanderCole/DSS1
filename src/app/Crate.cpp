@@ -2,7 +2,11 @@
 
 #include "core/Analysis.h"
 #include "core/Hits.h"
+#include "core/TrackMatcher.h"
 #include "io/AudioDecoder.h"
+#include "io/TagReader.h"
+
+#include <chrono>
 
 namespace dss1::ui
 {
@@ -21,9 +25,37 @@ namespace
         }
         else
         {
+            info.artist.clear();
             info.title = name.toStdString();
         }
     }
+
+    /// Title, artist, album and genre from the file's tags; the file name fills in a missing title or artist.
+    void readNames (const juce::File& file, TrackInfo& info)
+    {
+        TrackInfo fromName;
+        titleFromFileName (file, fromName);
+        const auto tags = io::readTags (file.getFullPathName().toStdString());
+        info.title = tags.title.empty() ? fromName.title : tags.title;
+        info.artist = tags.artist.empty() ? fromName.artist : tags.artist;
+        info.album = tags.album;
+        info.genre = tags.genre;
+    }
+
+    /// True if the names look like they came from the file name only (test builds 1-6 didn't read tags).
+    bool namesFromFileNameOnly (const juce::File& file, const TrackInfo& info)
+    {
+        TrackInfo fromName;
+        titleFromFileName (file, fromName);
+        return info.album.empty() && info.genre.empty() && info.title == fromName.title && info.artist == fromName.artist;
+    }
+
+    juce::String plural (std::size_t n, const char* one, const char* many)
+    {
+        return juce::String (n) + " " + (n == 1 ? one : many);
+    }
+
+    constexpr auto rescanEvery = std::chrono::minutes (3);
 
     /// Unpacks the audio files in a zip into Music/DSS1 Imports/<zip name>/ and returns them. Only file names
     /// are used (folders inside the zip are flattened), so nothing can be written outside that folder.
@@ -69,7 +101,7 @@ juce::File Crate::dataFolder()
 
 bool Crate::isAudioFile (const juce::File& f)
 {
-    return io::formatForExtension (f.getFileExtension().toStdString()).has_value();
+    return ! f.getFileName().startsWith (".") && io::formatForExtension (f.getFileExtension().toStdString()).has_value();
 }
 
 Crate::Crate()
@@ -85,8 +117,11 @@ Crate::Crate()
         store = std::make_unique<LibraryStore> (LibraryStore::inMemory());
         statusText = "Couldn't open the library (" + juce::String (e.what()) + "). Changes won't be saved.";
     }
+    for (const auto& folder : store->watchedFolders())
+        watched.add (juce::String::fromUTF8 (folder.c_str()));
     refreshSnapshot();
     worker = std::thread ([this] { run(); });
+    rescan();
 }
 
 Crate::~Crate()
@@ -99,19 +134,96 @@ Crate::~Crate()
     worker.join();
 }
 
-void Crate::add (const juce::Array<juce::File>& items)
+void Crate::post (Job job)
 {
     {
         const std::lock_guard lock (queueLock);
-        jobs.push_back (items);
+        jobs.push_back (std::move (job));
     }
     wake.notify_all();
+}
+
+void Crate::add (const juce::Array<juce::File>& items)
+{
+    post ([this, items] { importItems (items); });
+}
+
+void Crate::rescan()
+{
+    post ([this] { scanWatched (false); });
+}
+
+void Crate::findMissingIn (const juce::File& folder)
+{
+    post ([this, folder] {
+        checkMissing();
+        const auto before = missing().size();
+        if (before == 0)
+        {
+            setStatus ("No tracks are missing.");
+            return;
+        }
+        setStatus ("Looking in " + folder.getFileName() + " for " + plural (before, "missing track", "missing tracks") + "...");
+        juce::Array<juce::File> files;
+        for (const auto& entry : juce::RangedDirectoryIterator (folder, true, "*", juce::File::findFiles))
+            if (isAudioFile (entry.getFile()))
+                files.add (entry.getFile());
+        const auto found = relinkFrom (files, nullptr);
+        refreshSnapshot();
+        const auto after = missing().size();
+        juce::String text = "Found " + juce::String (found) + " of " + plural (before, "missing track.", "missing tracks.");
+        if (after > 0)
+            text << " " << plural (after, "is", "are") << " still missing.";
+        setStatus (text);
+    });
+}
+
+void Crate::remove (const std::vector<std::int64_t>& ids)
+{
+    post ([this, ids] {
+        {
+            const std::lock_guard lock (storeLock);
+            store->transaction ([&] {
+                for (const auto id : ids)
+                    store->remove (id);
+            });
+        }
+        refreshSnapshot();
+        setStatus ("Removed " + plural (ids.size(), "track", "tracks") + " from DSS1. The files are still on disk.");
+    });
+}
+
+void Crate::stopWatching (const juce::String& folder)
+{
+    post ([this, folder] {
+        {
+            const std::lock_guard lock (storeLock);
+            store->removeWatchedFolder (folder.toStdString());
+        }
+        {
+            const std::lock_guard lock (stateLock);
+            watched.removeString (folder);
+        }
+        setStatus ("Stopped watching " + folder + ". Its tracks stay in DSS1.");
+    });
 }
 
 std::vector<StoredTrack> Crate::tracks() const
 {
     const std::lock_guard lock (stateLock);
     return snapshot;
+}
+
+std::set<std::int64_t> Crate::missing() const
+{
+    const std::lock_guard lock (stateLock);
+    return missingIds;
+}
+
+juce::StringArray Crate::watchedFolders() const
+{
+    const std::lock_guard lock (stateLock);
+    return watched;
 }
 
 juce::String Crate::status() const
@@ -139,16 +251,22 @@ void Crate::refreshSnapshot()
     {
         const std::lock_guard lock (stateLock);
         snapshot = std::move (all);
+        // Forget missing marks for tracks that are gone or relinked; checkMissing() sets new ones.
+        std::set<std::int64_t> stillMissing;
+        for (const auto& t : snapshot)
+            if (missingIds.count (t.id) != 0 && ! juce::File (juce::String::fromUTF8 (t.record.identity.path.c_str())).existsAsFile())
+                stillMissing.insert (t.id);
+        missingIds = std::move (stillMissing);
     }
     sendChangeMessage();
 }
 
 void Crate::run()
 {
-    // Analyse anything left over from last time first.
+    auto nextScan = std::chrono::steady_clock::now() + rescanEvery;
     for (;;)
     {
-        juce::Array<juce::File> job;
+        Job job;
         {
             std::unique_lock lock (queueLock);
             if (stopping)
@@ -160,9 +278,16 @@ void Crate::run()
             }
         }
 
-        if (! job.isEmpty())
+        if (job)
         {
-            importItems (job);
+            job();
+            continue;
+        }
+
+        if (std::chrono::steady_clock::now() >= nextScan)
+        {
+            nextScan = std::chrono::steady_clock::now() + rescanEvery;
+            scanWatched (true);
             continue;
         }
 
@@ -170,7 +295,29 @@ void Crate::run()
             continue;
 
         std::unique_lock lock (queueLock);
-        wake.wait (lock, [this] { return stopping || ! jobs.empty(); });
+        wake.wait_until (lock, nextScan, [this] { return stopping || ! jobs.empty(); });
+    }
+}
+
+bool Crate::importFile (const juce::File& file)
+{
+    const auto path = file.getFullPathName().toStdString();
+    try
+    {
+        const auto info = io::probe (path);
+        TrackRecord record;
+        record.identity.path = path;
+        readNames (file, record.info);
+        record.sampleRate = info.sampleRate;
+        record.lengthFrames = info.lengthFrames;
+        record.exportOffsetFrames = info.encoderDelayFrames;  // Serato and Rekordbox count it (see TrackRecord)
+        const std::lock_guard lock (storeLock);
+        store->save (record);
+        return true;
+    }
+    catch (const std::exception&)
+    {
+        return false;
     }
 }
 
@@ -182,6 +329,16 @@ void Crate::importItems (const juce::Array<juce::File>& items)
     {
         if (item.isDirectory())
         {
+            const auto folder = item.getFullPathName();
+            {
+                const std::lock_guard lock (storeLock);
+                store->addWatchedFolder (folder.toStdString());
+            }
+            {
+                const std::lock_guard lock (stateLock);
+                watched.addIfNotAlreadyThere (folder);
+                watched.sort (true);
+            }
             for (const auto& entry : juce::RangedDirectoryIterator (item, true, "*", juce::File::findFiles))
                 if (isAudioFile (entry.getFile()))
                     files.add (entry.getFile());
@@ -201,43 +358,174 @@ void Crate::importItems (const juce::Array<juce::File>& items)
         }
     }
 
-    int added = 0, failed = 0;
-    for (int i = 0; i < files.size(); ++i)
+    // Leave out what's already in the crate; files that are missing tracks moved somewhere new are relinked.
+    juce::Array<juce::File> fresh;
+    for (const auto& file : files)
     {
-        const auto& file = files.getReference (i);
-        const auto path = file.getFullPathName().toStdString();
-        {
-            const std::lock_guard lock (storeLock);
-            if (store->byPath (path))
-                continue;  // already in the crate
-        }
-        setStatus ("Adding " + juce::String (i + 1) + " of " + juce::String (files.size()) + ": " + file.getFileName());
-        try
-        {
-            const auto info = io::probe (path);
-            TrackRecord record;
-            record.identity.path = path;
-            titleFromFileName (file, record.info);
-            record.sampleRate = info.sampleRate;
-            record.lengthFrames = info.lengthFrames;
-            record.exportOffsetFrames = info.encoderDelayFrames;  // Serato and Rekordbox count it (see TrackRecord)
-            const std::lock_guard lock (storeLock);
-            store->save (record);
+        const std::lock_guard lock (storeLock);
+        if (! store->byPath (file.getFullPathName().toStdString()))
+            fresh.add (file);
+    }
+    checkMissing();
+    juce::Array<juce::File> unmatched;
+    const auto relinked = relinkFrom (fresh, &unmatched);
+
+    int added = 0, failed = 0;
+    for (int i = 0; i < unmatched.size(); ++i)
+    {
+        const auto& file = unmatched.getReference (i);
+        setStatus ("Adding " + juce::String (i + 1) + " of " + juce::String (unmatched.size()) + ": " + file.getFileName());
+        if (importFile (file))
             ++added;
-        }
-        catch (const std::exception&)
-        {
+        else
             ++failed;
-        }
     }
     refreshSnapshot();
 
-    juce::String summary = "Added " + juce::String (added) + (added == 1 ? " track." : " tracks.");
+    juce::String summary = "Added " + plural (static_cast<std::size_t> (added), "track.", "tracks.");
+    if (relinked > 0)
+        summary << " Found " << plural (static_cast<std::size_t> (relinked), "missing track.", "missing tracks.");
     if (failed > 0)
         summary << " " << failed << " couldn't be read.";
     if (skipped > 0)
         summary << " " << skipped << " weren't audio DSS1 reads yet (WAV, AIFF, FLAC, MP3).";
     setStatus (summary);
+}
+
+void Crate::scanWatched (bool quiet)
+{
+    checkMissing();
+
+    // Tracks added before DSS1 read tags get their tags now (cheap: only the tag bytes are read).
+    for (const auto& t : tracks())
+    {
+        const juce::File file (juce::String::fromUTF8 (t.record.identity.path.c_str()));
+        if (! file.existsAsFile() || ! namesFromFileNameOnly (file, t.record.info))
+            continue;
+        auto record = t.record;
+        readNames (file, record.info);
+        if (record.info != t.record.info)
+        {
+            const std::lock_guard lock (storeLock);
+            store->save (record);
+        }
+    }
+
+    juce::Array<juce::File> fresh;
+    for (const auto& folder : watchedFolders())
+    {
+        const juce::File dir (folder);
+        if (! dir.isDirectory())
+            continue;  // unplugged drive: try again next time
+        for (const auto& entry : juce::RangedDirectoryIterator (dir, true, "*", juce::File::findFiles))
+        {
+            if (! isAudioFile (entry.getFile()))
+                continue;
+            const std::lock_guard lock (storeLock);
+            if (! store->byPath (entry.getFile().getFullPathName().toStdString()))
+                fresh.add (entry.getFile());
+        }
+    }
+
+    juce::Array<juce::File> unmatched;
+    const auto relinked = relinkFrom (fresh, &unmatched);
+    int added = 0;
+    for (const auto& file : unmatched)
+        if (importFile (file))
+            ++added;
+    refreshSnapshot();
+
+    if (added > 0 || relinked > 0)
+    {
+        juce::String text;
+        if (added > 0)
+            text << "Added " << plural (static_cast<std::size_t> (added), "new track", "new tracks") << " from watched folders. ";
+        if (relinked > 0)
+            text << "Found " << plural (static_cast<std::size_t> (relinked), "moved track.", "moved tracks.");
+        setStatus (text.trim());
+    }
+    else if (! quiet)
+    {
+        const auto gone = missing().size();
+        setStatus (gone > 0 ? plural (gone, "track is missing.", "tracks are missing.") + " Use Find Missing to point DSS1 at them."
+                            : juce::String());
+    }
+}
+
+void Crate::checkMissing()
+{
+    std::set<std::int64_t> gone;
+    for (const auto& t : tracks())
+        if (! juce::File (juce::String::fromUTF8 (t.record.identity.path.c_str())).existsAsFile())
+            gone.insert (t.id);
+    bool changed = false;
+    {
+        const std::lock_guard lock (stateLock);
+        changed = gone != missingIds;
+        missingIds = std::move (gone);
+    }
+    if (changed)
+        sendChangeMessage();
+}
+
+int Crate::relinkFrom (const juce::Array<juce::File>& files, juce::Array<juce::File>* unmatched)
+{
+    // Candidates: the missing tracks. A file only counts as one of them if it has the same file name (accents and
+    // case aside) and the same length, so a different track with a common name ("Intro.mp3") isn't taken for it.
+    std::vector<MatchCandidate> candidates;
+    std::set<std::string> names;
+    {
+        const auto gone = missing();
+        for (const auto& t : tracks())
+            if (gone.count (t.id) != 0)
+            {
+                const auto& r = t.record;
+                candidates.push_back ({ t.id, r.identity.path,
+                                        r.sampleRate > 0 ? std::optional<double> (static_cast<double> (r.lengthFrames) / r.sampleRate) : std::nullopt });
+                names.insert (looseKey (juce::File (juce::String::fromUTF8 (r.identity.path.c_str())).getFileName().toStdString()));
+            }
+    }
+
+    int relinked = 0;
+    for (const auto& file : files)
+    {
+        const auto path = file.getFullPathName().toStdString();
+        if (candidates.empty() || names.count (looseKey (file.getFileName().toStdString())) == 0)
+        {
+            if (unmatched != nullptr)
+                unmatched->add (file);
+            continue;
+        }
+        std::optional<double> length;
+        try
+        {
+            const auto info = io::probe (path);
+            length = static_cast<double> (info.lengthFrames) / info.sampleRate;
+        }
+        catch (const std::exception&) {}
+
+        const auto result = matchTrack ({ path, length }, candidates);
+        // Only same-file moves: a converted copy (MP3 → WAV) has other frame positions and isn't the same file.
+        if (result.isMatch() && (result.kind == MatchKind::sameFileName || result.kind == MatchKind::samePath))
+        {
+            const auto id = result.ids.front();
+            try
+            {
+                const std::lock_guard lock (storeLock);
+                store->relink (id, path);
+                ++relinked;
+                candidates.erase (std::remove_if (candidates.begin(), candidates.end(), [id] (const MatchCandidate& c) { return c.id == id; }),
+                                  candidates.end());
+                continue;
+            }
+            catch (const std::exception&) {}
+        }
+        if (unmatched != nullptr)
+            unmatched->add (file);
+    }
+    if (relinked > 0)
+        refreshSnapshot();
+    return relinked;
 }
 
 bool Crate::analyseNext()
@@ -247,7 +535,8 @@ bool Crate::analyseNext()
     {
         const std::lock_guard lock (stateLock);
         for (const auto& t : snapshot)
-            if (! t.record.info.analysed)
+            if ((! t.record.info.analysed || (t.record.info.bpm && ! t.record.grid && gridTried.count (t.id) == 0))
+                && missingIds.count (t.id) == 0)
             {
                 if (! next)
                     next = t;
@@ -258,14 +547,29 @@ bool Crate::analyseNext()
         return false;
 
     auto record = next->record;
+    gridTried.insert (next->id);  // tracks analysed before DSS1 placed beats get one more pass, once
+    if (! juce::File (juce::String::fromUTF8 (record.identity.path.c_str())).existsAsFile())
+    {
+        // Gone since the last check: mark it missing and analyse it once it's found.
+        {
+            const std::lock_guard lock (stateLock);
+            missingIds.insert (next->id);
+        }
+        sendChangeMessage();
+        return true;
+    }
     setStatus ("Analysing " + juce::String (remaining) + (remaining == 1 ? " track" : " tracks") + ": "
-               + juce::String (record.info.title));
+               + juce::String::fromUTF8 (record.info.title.c_str()));
     try
     {
         const auto audio = io::decode (record.identity.path);
         const auto mono = mixDown (audio.channels);
         const auto rate = audio.info.sampleRate;
         record.info.bpm = analysis::detectBpm (mono, rate);
+        // A first grid from the analysis, unless the track already has one (set by hand or imported).
+        if (record.info.bpm && ! record.grid)
+            if (const auto beats = analysis::placeBeats (mono, rate, *record.info.bpm))
+                record.grid = BeatGrid::constant (rate, *record.info.bpm, static_cast<Frame> (std::llround (beats->firstDownbeat)));
         if (const auto key = analysis::detectKey (mono, rate))
         {
             record.info.key = key->name();

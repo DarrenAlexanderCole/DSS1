@@ -62,6 +62,8 @@ struct TrackInfo
 {
     std::string title;
     std::string artist;
+    std::string album;
+    std::string genre;
     std::optional<double> bpm;
     std::string key;            ///< e.g. "F minor"
     std::string camelot;        ///< e.g. "4A"

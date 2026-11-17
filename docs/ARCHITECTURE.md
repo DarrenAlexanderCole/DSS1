@@ -50,7 +50,21 @@ One `TrackRecord` per prepared track (`src/core/TrackRecord.h`):
 `src/core/LibraryStore.h`: one SQLite file (the copy that ships with macOS) holding each track's record as
 JSON, found by path or audio fingerprint. A moved file keeps its data through `relink`. The file carries a
 schema number (`PRAGMA user_version`): an older file is upgraded in place, a newer one is refused rather than
-risk damage. Catalog columns (title, artist, BPM, key) arrive with Phase 3 as schema 2.
+risk damage. Schema 2 adds `watched_folders`. Catalog details (title, artist, album, genre, BPM, key,
+loudness) live in the record JSON's `info` object, so adding one needs no schema change.
+
+## Tags, watched folders and missing files
+
+- **Tags:** `src/core/Tags.h` parses ID3v2.2–2.4 (Latin-1, UTF-16, UTF-8; several values joined; numeric
+  genres resolved), ID3v1, FLAC Vorbis comments and WAV LIST/INFO. `src/io/TagReader.h` finds those parts in
+  a file by seeking, never reading the audio. The file name ("Artist - Title") fills in a missing title or
+  artist. Tracks added before tags were read get them on the next scan.
+- **Watched folders:** a folder the user adds is watched. The Crate looks in watched folders at launch, every
+  three minutes and on request, adding new music. A folder on an unplugged drive is skipped until it's back.
+- **Missing files:** a track whose file is gone is marked missing (and not analysed). A new file found in a
+  watched folder, or by **Find Missing** in a folder the user picks, relinks a missing track when the matcher
+  says it's the same file moved: same file name (accents and case aside) and same length. A converted copy
+  (MP3 → WAV) is not relinked automatically, because its frame positions differ.
 
 ## Track matching
 
@@ -106,6 +120,11 @@ FLAC and M4A keep Serato data differently (Vorbis comments / MP4 atoms); for now
   the peak 16 beats away. Folded into 70–180 BPM. Steady sounds with no pulse give no tempo.
 - **Key:** a chromagram (55–2000 Hz) correlated with Krumhansl–Kessler profiles; reported as a name and a
   Camelot code.
+- **Beats and bars:** for the tempo found, the beat phase that lines up spectral-flux and bass onsets best
+  across the track, then refined on the waveform (median of the energy jumps nearest each beat, about 1 ms).
+  Beat 1 of the bar (4/4 assumed) is the beat where bass power rises and the chroma changes most, measured over
+  the half beats either side so claps and snares don't count. The result becomes the track's first grid,
+  unless it already has one.
 - **Loudness:** integrated LUFS per ITU-R BS.1770 / EBU R128 (K-weighting coefficients derived for any sample
   rate, as libebur128 does; 400 ms blocks, absolute and relative gates).
 

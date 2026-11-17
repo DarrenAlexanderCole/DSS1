@@ -133,3 +133,82 @@ TEST_CASE ("Loudness of a 1 kHz tone at -23 dBFS is -23 LUFS (EBU Tech 3341)", "
     }
     CHECK_FALSE (integratedLoudness ({ std::vector<float> (48000 * 5, 0.0f) }, 48000.0));
 }
+
+namespace
+{
+    /// Four-on-the-floor house with a bar structure: kick on every beat, a bass note and a new chord at the start of
+    /// every bar, hats on the off-beats, a clap on 2 and 4. The first downbeat is at `offset` seconds.
+    std::vector<float> barLoop (double bpm, double seconds, double offset, unsigned seed = 3)
+    {
+        const auto n = static_cast<std::size_t> (seconds * rate);
+        std::vector<float> x (n, 0.0f);
+        std::mt19937 rng (seed);
+        std::normal_distribution<float> noise (0.0f, 1.0f);
+        const auto beat = 60.0 / bpm;
+        const auto add = [&] (double at, double length, auto&& sample) {
+            if (at < 0)
+                return;
+            const auto start = static_cast<std::size_t> (at * rate);
+            for (std::size_t k = 0; k < static_cast<std::size_t> (length * rate) && start + k < n; ++k)
+                x[start + k] += sample (static_cast<double> (k) / rate);
+        };
+        const double roots[4] = { 45, 41, 48, 43 };  // A, F, C, G
+        for (int b = -4; offset + b * beat < seconds; ++b)
+        {
+            const auto t0 = offset + b * beat;
+            add (t0, 0.2, [] (double t) {
+                return static_cast<float> (0.6 * std::sin (tau * (50.0 + 100.0 * std::exp (-t * 40.0)) * t) * std::exp (-t * 15.0)); });
+            add (t0 + beat / 2, 0.04, [&] (double t) { return 0.08f * noise (rng) * static_cast<float> (std::exp (-t * 120.0)); });
+            if ((b & 1) != 0)
+                add (t0, 0.12, [&] (double t) { return 0.25f * noise (rng) * static_cast<float> (std::exp (-t * 30.0)); });
+            if (b % 4 == 0)
+            {
+                const auto root = roots[static_cast<std::size_t> (((b / 4) % 4 + 4) % 4)];
+                const auto hz = [] (double midi) { return 440.0 * std::pow (2.0, (midi - 69.0) / 12.0); };
+                add (t0, beat * 1.5, [&] (double t) { return static_cast<float> (0.35 * std::sin (tau * hz (root - 12) * t) * std::exp (-t * 2.0)); });
+                add (t0, beat * 4, [&] (double t) {
+                    double v = 0;
+                    for (const double m : { root + 12, root + 16, root + 19 })
+                        v += std::sin (tau * hz (m) * t);
+                    return static_cast<float> (0.06 * v);
+                });
+            }
+        }
+        return x;
+    }
+
+    /// Distance between two frames, allowing either to be a whole number of `period`s away.
+    double phaseError (double found, double expected, double period)
+    {
+        auto d = std::fmod (found - expected, period);
+        if (d < 0)
+            d += period;
+        return std::min (d, period - d);
+    }
+}
+
+TEST_CASE ("Beats and downbeats are placed on bar-structured loops", "[analysis]")
+{
+    for (const auto& [bpm, offset] : { std::pair { 124.0, 0.37 }, std::pair { 128.0, 1.05 }, std::pair { 100.0, 0.0 }, std::pair { 140.0, 2.2 } })
+    {
+        CAPTURE (bpm, offset);
+        const auto audio = barLoop (bpm, 40.0, offset);
+        const auto placed = placeBeats (audio, rate, bpm);
+        REQUIRE (placed);
+        const auto beatFrames = 60.0 / bpm * rate;
+        CHECK (phaseError (placed->firstBeat, offset * rate, beatFrames) < 0.004 * rate);
+        CHECK (phaseError (placed->firstDownbeat, offset * rate, 4 * beatFrames) < 0.004 * rate);
+        CHECK (placed->firstBeat >= 0);
+        CHECK (placed->firstBeat < beatFrames);
+        CHECK (placed->firstDownbeat < 4 * beatFrames);
+        CHECK (placed->downbeatConfidence > 0.1);
+    }
+}
+
+TEST_CASE ("Beats are placed on a plain drum loop, and not at all in silence", "[analysis]")
+{
+    const auto placed = placeBeats (drumLoop (122.0, 30.0), rate, 122.0);
+    REQUIRE (placed);
+    CHECK (phaseError (placed->firstBeat, 0.0, 60.0 / 122.0 * rate) < 0.004 * rate);
+    CHECK_FALSE (placeBeats (std::vector<float> (static_cast<std::size_t> (10 * rate), 0.0f), rate, 120.0));
+}

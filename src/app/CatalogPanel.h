@@ -6,11 +6,14 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <set>
+
 namespace dss1::ui
 {
 
-/// The Catalog stage: the crate as a sortable table (title, artist, time, BPM, key, loudness), music added by
-/// dropping files, folders or zips, and a deck to listen with.
+/// The Catalog stage: the crate as a sortable table (title, artist, album, genre, time, BPM, key, loudness),
+/// music added by dropping files, folders or zips, watched folders, missing files found again, and a deck to
+/// listen with.
 class CatalogPanel : public juce::Component,
                      public juce::FileDragAndDropTarget,
                      private juce::TableListBoxModel,
@@ -37,17 +40,24 @@ private:
     void paintCell (juce::Graphics&, int row, int column, int width, int height, bool selected) override;
     void sortOrderChanged (int column, bool ascending) override;
     void cellDoubleClicked (int row, int column, const juce::MouseEvent&) override;
+    void cellClicked (int row, int column, const juce::MouseEvent&) override;
     void returnKeyPressed (int row) override;
+    void deleteKeyPressed (int lastRowSelected) override;
 
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void refreshRows();
     void sortRows();
     void play (int row);
     juce::String cellText (const StoredTrack& t, int column) const;
+    std::vector<std::int64_t> selectedIds() const;
+    void removeSelected();
+    void showFoldersMenu();
+    void chooseMissingFolder();
 
     Crate& crate;
     AudioEngine& audio;
     std::vector<StoredTrack> rows;
+    std::set<std::int64_t> missing;
     int sortColumn = 1;
     bool sortAscending = true;
     int loadGeneration = 0;
@@ -55,9 +65,12 @@ private:
 
     juce::TableListBox table { "Crate", this };
     juce::TextButton addButton { "Add Music..." };
+    juce::TextButton foldersButton { "Folders" };
+    juce::TextButton findButton { "Find Missing..." };
     juce::Label statusLabel;
     TransportBar transport;
     std::unique_ptr<juce::FileChooser> chooser;
+    juce::ScopedMessageBox messageBox;
 
     JUCE_DECLARE_WEAK_REFERENCEABLE (CatalogPanel)
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (CatalogPanel)
