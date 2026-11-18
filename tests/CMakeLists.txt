@@ -3,6 +3,7 @@ add_executable(dss1_tests
     AudioDecoderTests.cpp
     BeatGridTests.cpp
     DeliverTests.cpp
+    EffectsTests.cpp
     DeckTests.cpp
     LibraryTests.cpp
     RekordboxTests.cpp

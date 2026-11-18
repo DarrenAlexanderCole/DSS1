@@ -127,6 +127,9 @@ void TransportBar::updatePlayButton() {}
 
 void TransportBar::timerCallback()
 {
+    // Echo follows the track's tempo at the current pitch.
+    if (const auto bpm = session.playingBpm())
+        session.effects().bpm = static_cast<float> (*bpm);
     updatePlayButton();
     updateTempoLabel();
     tempoResetButton.setEnabled (std::abs (tempoSlider.getValue()) > 0.004);

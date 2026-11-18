@@ -121,6 +121,15 @@ void Theme::drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce
                 g.drawRoundedRectangle (r.expanded (2.0f), 4.0f, 3.0f);
             }
             break;
+        case KeyStyle::rec:
+            drawKey (g, r, b.getToggleState() ? juce::Colour (0xffff4a3a) : juce::Colour (0xffb3261a),
+                     b.getToggleState() ? juce::Colour (0xffa01c10) : juce::Colour (0xff5e1209), down, over && enabled);
+            if (b.getToggleState())
+            {
+                g.setColour (juce::Colour (0xffff3020).withAlpha (0.25f));
+                g.drawRoundedRectangle (r.expanded (2.0f), 4.0f, 4.0f);
+            }
+            break;
         case KeyStyle::pad:
         {
             const auto colour = juce::Colour (static_cast<juce::uint32> (static_cast<juce::int64> (b.getProperties()[padColourId])));
@@ -151,7 +160,7 @@ void Theme::drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce
     }
 
     // A key that's switched on shows a small LED in its top-left corner.
-    if (b.getToggleState() && styleOf (b) != KeyStyle::pad)
+    if (b.getToggleState() && styleOf (b) != KeyStyle::pad && styleOf (b) != KeyStyle::rec)
         hw::led (g, { r.getX() + 8.0f, r.getY() + 7.0f + (down ? 2.0f : 0.0f) }, 2.6f, hw::colour::amber, true);
 
     if (! enabled)
@@ -176,6 +185,11 @@ void Theme::drawButtonText (juce::Graphics& g, juce::TextButton& b, bool, bool d
         case KeyStyle::cue:
             g.setColour (juce::Colour (0xff1c0a02).withAlpha (alpha));
             g.setFont (text.length() > 6 ? hw::label (14.0f) : hw::brand (13.0f));
+            g.drawText (text, area, juce::Justification::centred);
+            break;
+        case KeyStyle::rec:
+            g.setColour (juce::Colours::white.withAlpha (alpha));
+            g.setFont (hw::brand (13.0f));
             g.drawText (text, area, juce::Justification::centred);
             break;
         case KeyStyle::play:

@@ -20,10 +20,12 @@ juce_add_gui_app(DSS1
     NEEDS_WEB_BROWSER     FALSE
     NEEDS_CURL            FALSE
     MICROPHONE_PERMISSION_ENABLED FALSE)
+# (The recorder records DSS1's own output, not the microphone, so no permission is needed.)
 
 target_sources(DSS1 PRIVATE
     AudioEngine.cpp
     CatalogPanel.cpp
+    DesignPanel.cpp
     DeliverPanel.cpp
     Crate.cpp
     Main.cpp
@@ -53,6 +55,7 @@ target_link_libraries(DSS1
         dss1_engine
         dss1_assets
         juce::juce_audio_devices
+        juce::juce_audio_formats
         juce::juce_gui_extra
     PUBLIC
         juce::juce_recommended_config_flags

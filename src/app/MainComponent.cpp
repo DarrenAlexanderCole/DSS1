@@ -1,7 +1,7 @@
 #include "MainComponent.h"
 #include "CatalogPanel.h"
 #include "PrepPanel.h"
-#include "StagePanel.h"
+#include "DesignPanel.h"
 #include "DeliverPanel.h"
 #include "Theme.h"
 
@@ -16,9 +16,7 @@ MainComponent::MainComponent()
 
     auto catalog = std::make_unique<CatalogPanel> (session);
     auto prep = std::make_unique<PrepPanel> (session);
-    auto design = std::make_unique<StagePanel> (
-        "Listen / Design", "Hear it, shape it, make your own samples.",
-        juce::StringArray { "Listening deck with real-time effects", "Recorder for takes", "XY performance pad and a pad sampler" });
+    auto design = std::make_unique<DesignPanel> (session, crate);
     auto deliver = std::make_unique<DeliverPanel> (crate);
     catalog->onExportSelected = [this, d = deliver.get()] {
         d->useSelection();

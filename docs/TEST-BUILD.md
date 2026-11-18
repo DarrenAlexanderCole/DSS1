@@ -69,6 +69,21 @@ Double-click a track in Catalog, then open **Prep**.
   memory cues, for instance).
 - Everything saves as you go.
 
+## Listen / Design (new)
+
+Load a track (double-click it in Catalog), press PLAY, then open **Listen / Design**.
+
+- **Effects** play over everything you hear. Flip a module's switch to turn it on:
+  - **FILTER:** one knob, low-pass to the left, high-pass to the right, open in the middle.
+  - **ECHO:** TIME in beats (synced to the track's BPM at your pitch), FEEDBACK and MIX.
+  - **REVERB:** SIZE and MIX.
+  - **CRUSH:** BITS and RATE for a lo-fi sampler sound, and MIX.
+  - Double-click a knob to reset it. **ALL OFF** turns every effect off.
+- **XY pad:** hold the mouse down on it and move: left and right sweep the filter, up adds echo. Let go and it
+  springs back. With **HOLD** on, it stays where you leave it.
+- **Recorder:** **REC** records what you hear, effects included, to a WAV in Music > DSS1 Recordings. Press
+  **STOP** and the take is added to Catalog, ready to prep and export like any track.
+
 ## Deliver (new)
 
 Your music files are never changed. Choose **Tracks you've prepared** (any cue, loop or grid), **All tracks**,
@@ -94,6 +109,7 @@ just those. The line next to the menu says which tracks will go.
   collection, did Import To Collection update its cues?
 - Did titles and artists come through from your tags? Any garbled accents?
 - Did a moved folder get found again?
+- Listen / Design: do the effects sound right, and do they ever click or crackle? Is the echo in time?
 - Do BPM and key look right for tracks you know? Where they're off, is the BPM half or double, or just wrong?
   How do they compare with Serato and Rekordbox?
 - Does playback sound clean, with and without key lock, at 0% and at ±8%?

@@ -21,7 +21,7 @@ namespace Colours
 }
 
 /// How a TextButton is drawn: set with `hwStyle (button, ...)`.
-enum class KeyStyle { dark, cream, cue, play, pad };
+enum class KeyStyle { dark, cream, cue, play, pad, rec };
 
 void hwStyle (juce::Button& button, KeyStyle style);
 /// A hot cue pad lit in `colour` (or unlit when `lit` is false).

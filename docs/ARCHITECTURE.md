@@ -166,6 +166,16 @@ copies in Music/DSS1 for Serato with Markers2 written (and the grid only when as
 originals each time. Copy names stay unique when two sources share a name. FLAC isn't written for Serato yet
 (it needs Vorbis-comment tags, not ID3). Missing tracks are skipped.
 
+## Listen & Design
+
+`src/engine/Effects.h` is the effects chain on the output, after the deck: filter (a state-variable filter,
+low-pass left of centre, high-pass right), crusher (sample hold and quantising), echo (tempo-synced delay with a
+darkened feedback loop and a 150 ms glide when the time changes) and reverb (Freeverb). Parameters are atomics
+set by the UI and smoothed per sample, so knob moves never click; with everything off audio passes untouched.
+The XY pad drives the filter and echo mix and restores them on release unless HOLD is on. The recorder
+(AudioEngine) writes what you hear, after effects, to a 24-bit WAV through a background writer thread, then the
+take is added to the library.
+
 ## Playback
 
 `src/engine/Deck.h`: plays a decoded track at 0.5–1.5x. With key lock, Signalsmith Stretch time-stretches
