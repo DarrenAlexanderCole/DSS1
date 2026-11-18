@@ -40,13 +40,14 @@ TransportBar::TransportBar (Session& s) : session (s), deck (s.deck())
     tempoSlider.setColour (juce::Slider::thumbColourId, Colours::accent);
     tempoSlider.onValueChange = [this] {
         deck.setTempo (1.0 + tempoSlider.getValue() / 100.0);
-        tempoLabel.setText (juce::String (tempoSlider.getValue(), 2) + " %", juce::dontSendNotification);
+        updateTempoLabel();
     };
     addAndMakeVisible (tempoSlider);
 
     tempoLabel.setText ("0.00 %", juce::dontSendNotification);
     tempoLabel.setJustificationType (juce::Justification::centredLeft);
-    tempoLabel.setColour (juce::Label::textColourId, Colours::dimText);
+    tempoLabel.setColour (juce::Label::textColourId, Colours::text);
+    tempoLabel.setTooltip ("Tempo change, and the track's BPM at this tempo");
     addAndMakeVisible (tempoLabel);
 
     keyLockButton.setToggleState (deck.keyLock(), juce::dontSendNotification);
@@ -76,6 +77,7 @@ void TransportBar::changeListenerCallback (juce::ChangeBroadcaster*)
         case Session::State::loaded:  trackDetails = session.details(); break;
     }
     overview = session.overview();
+    updateTempoLabel();
     updatePlayButton();
     repaint();
 }
@@ -97,6 +99,7 @@ void TransportBar::updatePlayButton()
 void TransportBar::timerCallback()
 {
     updatePlayButton();
+    updateTempoLabel();
     repaint (waveformArea.expanded (2).withTop (0));
 }
 
@@ -155,7 +158,7 @@ void TransportBar::resized()
     playButton.setBounds (controls.removeFromLeft (90));
     controls.removeFromLeft (16);
     keyLockButton.setBounds (controls.removeFromRight (100));
-    tempoLabel.setBounds (controls.removeFromRight (70));
+    tempoLabel.setBounds (controls.removeFromRight (170));
     controls.removeFromRight (8);
     tempoSlider.setBounds (controls.removeFromRight (std::min (320, controls.getWidth())));
 }
@@ -179,6 +182,31 @@ void TransportBar::mouseDrag (const juce::MouseEvent& e)
 {
     if (waveformArea.contains (e.getMouseDownPosition()))
         seekTo (e.x);
+}
+
+} // namespace dss1::ui
+
+namespace dss1::ui
+{
+
+void TransportBar::updateTempoLabel()
+{
+    const auto percent = tempoSlider.getValue();
+    juce::String text = (percent > 0.004 ? "+" : "") + juce::String (percent, 2) + " %";
+
+    // The BPM you'd hear: the track's BPM, or on a grid with tempo changes the tempo where the playhead is.
+    if (const auto* r = session.record())
+    {
+        std::optional<double> base;
+        if (r->grid && ! r->grid->isEmpty() && (! r->grid->isConstantTempo() || ! r->info.bpm))
+            base = r->grid->bpmAt (deck.position());
+        else
+            base = r->info.bpm;
+        if (base)
+            text << "    " << juce::String (*base * (1.0 + percent / 100.0), 1) << " BPM";
+    }
+    if (text != tempoLabel.getText())
+        tempoLabel.setText (text, juce::dontSendNotification);
 }
 
 } // namespace dss1::ui

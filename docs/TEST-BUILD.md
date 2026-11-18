@@ -28,7 +28,7 @@ DSS1 opens on **Catalog**.
 6. **Analysis:** BPM, key (Camelot and name) and loudness fill in, a couple of seconds per track. DSS1 also
    finds where the beats and bars fall, and that becomes the track's first grid.
 7. **Play:** double-click a track (or select it and press Return). The player along the bottom stays on every
-   tab. Space plays and pauses. The slider changes tempo by up to ±8% (double-click to reset); **Key lock**
+   tab. Space plays and pauses. The slider changes tempo by up to ±8% (double-click to reset), and the BPM next to it shows the new tempo; **Key lock**
    keeps the pitch.
 
 ## Prep (new)

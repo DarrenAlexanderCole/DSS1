@@ -25,6 +25,7 @@ public:
 private:
     void timerCallback() override;
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
+    void updateTempoLabel();
     void seekTo (int x);
     void updatePlayButton();
 
