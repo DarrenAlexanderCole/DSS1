@@ -20,6 +20,9 @@ class CatalogPanel : public juce::Component,
 {
 public:
     CatalogPanel (Session& session);
+
+    /// Called with "Export Selected Tracks...": the window shows Deliver set to the selection.
+    std::function<void()> onExportSelected;
     ~CatalogPanel() override;
 
     void paint (juce::Graphics&) override;
@@ -41,6 +44,7 @@ private:
     void cellDoubleClicked (int row, int column, const juce::MouseEvent&) override;
     void cellClicked (int row, int column, const juce::MouseEvent&) override;
     void returnKeyPressed (int row) override;
+    void selectedRowsChanged (int lastRowSelected) override;
     void deleteKeyPressed (int lastRowSelected) override;
 
     void changeListenerCallback (juce::ChangeBroadcaster*) override;

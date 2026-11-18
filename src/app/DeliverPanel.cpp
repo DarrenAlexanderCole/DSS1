@@ -11,7 +11,7 @@ namespace dss1::ui
 
 namespace
 {
-    enum Scope { prepared = 1, everything = 2 };
+    enum Scope { prepared = 1, everything = 2, selection = 3 };
 
     const char* const rekordboxHow =
         "Writes one file that points at your music; your files aren't touched.\n"
@@ -50,7 +50,14 @@ DeliverPanel::DeliverPanel (Crate& c) : crate (c)
     options.osxLibrarySubFolder = "Application Support";
     settings = std::make_unique<juce::PropertiesFile> (options);
 
-    scopeBox.onChange = [this] { settings->setValue ("deliverScope", scopeBox.getSelectedId()); };
+    scopeBox.onChange = [this] {
+        if (scopeBox.getSelectedId() != selection)
+            settings->setValue ("deliverScope", scopeBox.getSelectedId());
+        refreshCounts();
+    };
+    chosenLabel.setColour (juce::Label::textColourId, Colours::dimText);
+    chosenLabel.setJustificationType (juce::Justification::centredLeft);
+    addAndMakeVisible (chosenLabel);
     addAndMakeVisible (scopeBox);
 
     rekordboxButton.onClick = [this] { exportRekordbox(); };
@@ -112,15 +119,46 @@ void DeliverPanel::refreshCounts()
     scopeBox.clear (juce::dontSendNotification);
     scopeBox.addItem ("Tracks you've prepared (" + juce::String (preparedCount) + ")", prepared);
     scopeBox.addItem ("All tracks (" + juce::String (all.size()) + ")", everything);
+    scopeBox.addItem ("Tracks selected in Catalog (" + juce::String (crate.selection().size()) + ")", selection);
     scopeBox.setSelectedId (selected, juce::dontSendNotification);
+
+    // Say which tracks will go: by name for a few, by count for many.
+    const auto chosen = chosenTracks();
+    juce::String text;
+    if (chosen.empty())
+        text = selected == selection ? "Select tracks in Catalog (Shift or Command for several), or right-click > Export."
+                                     : "No tracks to export yet.";
+    else if (chosen.size() <= 3)
+    {
+        juce::StringArray names;
+        for (const auto& t : chosen)
+            names.add (juce::String::fromUTF8 ((t.record.info.artist.empty() ? t.record.info.title
+                                                                             : t.record.info.artist + " - " + t.record.info.title).c_str()));
+        text = "Exporting: " + names.joinIntoString (",  ");
+    }
+    else
+        text = "Exporting " + juce::String (chosen.size()) + " tracks.";
+    chosenLabel.setText (text, juce::dontSendNotification);
+}
+
+void DeliverPanel::useSelection()
+{
+    scopeBox.setSelectedId (selection, juce::dontSendNotification);
+    refreshCounts();
 }
 
 std::vector<StoredTrack> DeliverPanel::chosenTracks() const
 {
     auto all = crate.tracks();
     const auto gone = crate.missing();
+    const auto& picked = crate.selection();
+    const auto scope = scopeBox.getSelectedId();
     std::erase_if (all, [&] (const StoredTrack& t) {
-        return gone.count (t.id) != 0 || (scopeBox.getSelectedId() != everything && ! deliver::isPrepared (t.record));
+        if (gone.count (t.id) != 0)
+            return true;
+        if (scope == selection)
+            return std::find (picked.begin(), picked.end(), t.id) == picked.end();
+        return scope != everything && ! deliver::isPrepared (t.record);
     });
     return all;
 }
@@ -141,7 +179,9 @@ void DeliverPanel::exportRekordbox()
     const auto tracks = chosenTracks();
     if (tracks.empty())
     {
-        status.setText ("Nothing to export yet: prepare a track (cues, loops or a grid) in Prep first.", juce::dontSendNotification);
+        status.setText (scopeBox.getSelectedId() == selection ? "No tracks selected: select them in Catalog first."
+                                                              : "Nothing to export yet: prepare a track (cues, loops or a grid) in Prep first.",
+                        juce::dontSendNotification);
         return;
     }
     const auto file = rekordboxXmlFile();
@@ -169,7 +209,9 @@ void DeliverPanel::exportSerato()
     const auto tracks = chosenTracks();
     if (tracks.empty())
     {
-        status.setText ("Nothing to export yet: prepare a track (cues, loops or a grid) in Prep first.", juce::dontSendNotification);
+        status.setText (scopeBox.getSelectedId() == selection ? "No tracks selected: select them in Catalog first."
+                                                              : "Nothing to export yet: prepare a track (cues, loops or a grid) in Prep first.",
+                        juce::dontSendNotification);
         return;
     }
     busy = true;
@@ -273,6 +315,8 @@ void DeliverPanel::resized()
     area.removeFromTop (64);
     auto scopeRow = area.removeFromTop (30);
     scopeBox.setBounds (scopeRow.removeFromLeft (320));
+    scopeRow.removeFromLeft (16);
+    chosenLabel.setBounds (scopeRow);
     area.removeFromTop (16);
 
     const auto layoutCard = [&] (juce::Rectangle<int> r, juce::TextButton& action, juce::TextButton& reveal, juce::Component* extra) {

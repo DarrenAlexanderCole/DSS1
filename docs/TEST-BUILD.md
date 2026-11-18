@@ -59,7 +59,10 @@ Double-click a track in Catalog, then open **Prep**.
 
 ## Deliver (new)
 
-Your music files are never changed. Choose **Tracks you've prepared** (any cue, loop or grid) or **All tracks**.
+Your music files are never changed. Choose **Tracks you've prepared** (any cue, loop or grid), **All tracks**,
+or **Tracks selected in Catalog**. To export one track or a handful: select them in Catalog (Shift or Command
+for several), right-click → **Export This Track...** (or **Export N Tracks...**), and Deliver opens set to
+just those. The line next to the menu says which tracks will go.
 
 - **Export for Rekordbox** writes Music → DSS1 Exports → DSS1 rekordbox.xml, pointing at your original files.
   In Rekordbox: Preferences → Advanced → Database → rekordbox xml, choose that file. In the sidebar open

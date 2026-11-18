@@ -23,6 +23,10 @@ MainComponent::MainComponent()
                             "XY performance pad and a pad sampler" });
 
     auto deliver = std::make_unique<DeliverPanel> (crate);
+    catalog->onExportSelected = [this, d = deliver.get()] {
+        d->useSelection();
+        stages.setCurrentTabIndex (3);
+    };
 
     const auto bg = Colours::background;
     stages.setTabBarDepth (44);

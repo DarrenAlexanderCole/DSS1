@@ -252,6 +252,14 @@ void Crate::stopWatching (const juce::String& folder)
     });
 }
 
+void Crate::setSelection (std::vector<std::int64_t> ids)
+{
+    if (ids == selected)
+        return;
+    selected = std::move (ids);
+    sendChangeMessage();
+}
+
 std::vector<StoredTrack> Crate::tracks() const
 {
     const std::lock_guard lock (stateLock);

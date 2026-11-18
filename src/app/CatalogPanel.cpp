@@ -209,6 +209,11 @@ void CatalogPanel::returnKeyPressed (int row)
     play (row);
 }
 
+void CatalogPanel::selectedRowsChanged (int)
+{
+    crate.setSelection (selectedIds());
+}
+
 void CatalogPanel::deleteKeyPressed (int)
 {
     removeSelected();
@@ -265,6 +270,11 @@ void CatalogPanel::cellClicked (int row, int, const juce::MouseEvent& e)
     if (gone)
         menu.addItem ("Find Missing Tracks...", [this] { chooseMissingFolder(); });
     menu.addSeparator();
+    menu.addItem (count > 1 ? "Export " + juce::String (count) + " Tracks..." : juce::String ("Export This Track..."), [this] {
+        crate.setSelection (selectedIds());
+        if (onExportSelected)
+            onExportSelected();
+    });
     menu.addItem (count > 1 ? "Analyse " + juce::String (count) + " Tracks Again (New Grids)" : juce::String ("Analyse Again (New Grid)"),
                   [this] { crate.analyseAgain (selectedIds()); });
     menu.addItem (count > 1 ? "Remove " + juce::String (count) + " Tracks from DSS1..." : juce::String ("Remove from DSS1..."),

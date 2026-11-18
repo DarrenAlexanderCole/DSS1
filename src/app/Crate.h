@@ -46,6 +46,10 @@ public:
 
     void stopWatching (const juce::String& folder);
 
+    /// The tracks selected in Catalog (message thread only). Deliver can export just these.
+    void setSelection (std::vector<std::int64_t> ids);
+    const std::vector<std::int64_t>& selection() const noexcept { return selected; }
+
     std::vector<StoredTrack> tracks() const;
     std::set<std::int64_t> missing() const;
     juce::StringArray watchedFolders() const;
@@ -78,7 +82,8 @@ private:
     std::set<std::int64_t> missingIds;
     juce::StringArray watched;
     juce::String statusText;
-    std::set<std::int64_t> gridTried;  ///< worker thread only
+    std::set<std::int64_t> gridTried;
+    std::vector<std::int64_t> selected;  ///< message thread only  ///< worker thread only
 
     std::mutex queueLock;
     std::condition_variable wake;

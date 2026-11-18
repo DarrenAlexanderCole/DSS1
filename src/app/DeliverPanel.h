@@ -19,6 +19,9 @@ public:
     explicit DeliverPanel (Crate& crate);
     ~DeliverPanel() override;
 
+    /// Switches the export to the tracks selected in Catalog.
+    void useSelection();
+
     void paint (juce::Graphics&) override;
     void resized() override;
 
@@ -43,6 +46,7 @@ private:
     juce::ToggleButton seratoGrid { "Include beat grid" };
     juce::TextButton timingButton { "Export Timing Check..." };
     juce::Label status;
+    juce::Label chosenLabel;
 
     juce::Rectangle<int> rekordboxCard, seratoCard;
     std::atomic<bool> busy { false };
