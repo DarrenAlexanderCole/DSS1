@@ -14,7 +14,9 @@ permissions:
 jobs:
   release:
     name: Build and publish DSS1 for macOS
-    runs-on: macos-15
+    # GitHub is short of Apple-silicon Mac runners (jobs were cancelled unstarted); the Intel ones still build a
+    # universal app.
+    runs-on: macos-15-intel
     env:
       TAG: v2.0.0-test.${{ github.run_number }}
     steps:
