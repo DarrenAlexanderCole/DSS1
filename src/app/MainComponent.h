@@ -23,6 +23,7 @@ public:
     void resized() override;
     void paint (juce::Graphics&) override;
     bool keyPressed (const juce::KeyPress&) override;
+    bool keyStateChanged (bool isKeyDown) override;
 
 private:
     Theme theme;

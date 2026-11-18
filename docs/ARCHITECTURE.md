@@ -178,11 +178,17 @@ take is added to the library. While recording, the audio thread also pushes one 
 lock-free ring that the Design screen drains 30 times a second to draw the take as it grows.
 
 `src/engine/Sampler.h` is the pad sampler: 8 banks (A-H) of 16 pads, 128 slots, 16 voices, mixed in after the deck
-and before the effects. The UI hands it samples through atomics and triggers through a lock-free queue, so the
-audio thread never locks or frees memory; a replaced sample is kept alive until any voice still playing it has
-finished. CAPTURE writes the playing loop (or LENGTH beats from the playhead) to
-`<samples folder>/Bank X/X07 Title.wav` with 3 ms fades and loads it onto the pad. The kit (128 paths) and the
-samples folder are kept in settings.
+and before the effects. A slot holds a sample and a region of it, so the slices of a track share one decoded copy;
+3 ms fades at each end of the region keep slices from clicking. The UI hands it samples and regions through
+atomics and triggers through a lock-free queue, so the audio thread never locks or frees memory; a replaced
+sample is kept alive until any voice still playing it has finished. `SamplerSection` keeps the slicer's marks:
+a slice runs from its mark to the next mark of the same track in its bank, the last one LAST SLICE beats. Pads
+are keyed Z X C V / A S D F / Q W E R / 1 2 3 4 from the bottom row up (MainComponent passes keys on while the
+Listen & Design screen shows). Marks, not audio, are kept in settings ("padKit"); SAVE BANK writes the slices
+as WAVs into `<samples folder>/Bank X/`.
+
+`src/engine/TakePlayer.h` plays the last take back, mixed in after the effects. Takes record into the temp
+folder and move to Music/DSS1 Recordings (and into the library) only when saved.
 
 ## Playback
 

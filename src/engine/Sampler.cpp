@@ -11,11 +11,24 @@ Sampler::Sampler()
         s.store (nullptr);
     for (auto& p : playing)
         p.store (false);
+    for (std::size_t i = 0; i < static_cast<std::size_t> (slots); ++i)
+    {
+        regionStart[i].store (0);
+        regionEnd[i].store (-1);
+    }
 }
 
 Sampler::~Sampler() = default;
 
-void Sampler::setSample (int slot, std::shared_ptr<const io::DecodedAudio> audio)
+void Sampler::setRegion (int slot, std::int64_t start, std::int64_t end)
+{
+    if (slot < 0 || slot >= slots)
+        return;
+    regionStart[static_cast<std::size_t> (slot)].store (std::max<std::int64_t> (0, start));
+    regionEnd[static_cast<std::size_t> (slot)].store (end);
+}
+
+void Sampler::setSample (int slot, std::shared_ptr<const io::DecodedAudio> audio, std::int64_t start, std::int64_t end)
 {
     if (slot < 0 || slot >= slots)
         return;
@@ -23,10 +36,14 @@ void Sampler::setSample (int slot, std::shared_ptr<const io::DecodedAudio> audio
     if (owned[i])
     {
         // A voice may still be reading the old sample: keep it until it would have finished from the start.
-        const auto length = owned[i]->channels.empty() ? 0 : owned[i]->channels.front().size();
+        auto length = static_cast<std::int64_t> (owned[i]->channels.empty() ? 0 : owned[i]->channels.front().size());
+        if (const auto e = regionEnd[i].load(); e > 0)
+            length = std::min (length, e - regionStart[i].load());
         const auto deviceFrames = static_cast<std::uint64_t> (static_cast<double> (length) / std::max (1.0, owned[i]->info.sampleRate) * rate.load()) + 1;
         retired.push_back ({ owned[i], framesRendered.load() + deviceFrames + static_cast<std::uint64_t> (rate.load()) });
     }
+    live[i].store (nullptr);
+    setRegion (slot, start, end);
     owned[i] = std::move (audio);
     live[i].store (owned[i].get());
 }
@@ -106,9 +123,18 @@ void Sampler::render (float* const* outputs, int numChannels, int numFrames) noe
                 }
         if (chosen == nullptr)
             chosen = &*std::max_element (voices.begin(), voices.end(), [] (const Voice& a, const Voice& b) { return a.position < b.position; });
+        const auto length = static_cast<double> (audio->channels.front().size());
+        const auto from = std::min (static_cast<double> (regionStart[static_cast<std::size_t> (slot)].load()), length);
+        const auto e = regionEnd[static_cast<std::size_t> (slot)].load();
+        const auto to = e > 0 ? std::clamp (static_cast<double> (e), from, length) : length;
+        if (to - from < 2)
+            continue;
         chosen->audio = audio;
         chosen->slot = slot;
-        chosen->position = 0;
+        chosen->start = from;
+        chosen->end = to;
+        chosen->position = from;
+        chosen->fade = std::max (1.0, std::min (audio->info.sampleRate * 0.003, (to - from) / 4));
         chosen->step = audio->info.sampleRate / rate.load();
         chosen->gain = static_cast<float> (message & 255) / 255.0f;
     }
@@ -123,16 +149,18 @@ void Sampler::render (float* const* outputs, int numChannels, int numFrames) noe
         for (int i = 0; i < numFrames; ++i)
         {
             const auto p = static_cast<std::size_t> (v.position);
-            if (p + 1 >= length)
+            if (p + 1 >= length || v.position >= v.end - 1)
             {
                 v = {};
                 break;
             }
             const auto frac = static_cast<float> (v.position - static_cast<double> (p));
+            const auto edge = std::min (v.position - v.start, v.end - 1 - v.position);
+            const auto g = v.gain * static_cast<float> (std::min (1.0, edge / v.fade));
             for (int c = 0; c < std::min (numChannels, 2); ++c)
             {
                 const auto& src = ch[std::min (static_cast<std::size_t> (c), ch.size() - 1)];
-                outputs[c][i] += (src[p] + (src[p + 1] - src[p]) * frac) * v.gain;
+                outputs[c][i] += (src[p] + (src[p + 1] - src[p]) * frac) * g;
             }
             v.position += v.step;
         }

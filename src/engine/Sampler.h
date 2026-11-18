@@ -10,9 +10,10 @@
 namespace dss1::engine
 {
 
-/// The pad sampler: 8 banks (A–H) of 16 pads, 128 slots, like a drum machine. Each slot holds a sample; a
-/// pad press plays it as a one-shot over everything else (up to 16 at once; pressing a playing pad restarts
-/// it). Mixes into the output buffer, so effects and the recorder hear it.
+/// The pad sampler: 8 banks (A–H) of 16 pads, 128 slots, like a drum machine. Each slot holds a sample, or a
+/// slice of one (a start and end frame in a track that several pads share); a pad press plays it as a one-shot
+/// over everything else (up to 16 at once; pressing a playing pad restarts it), with 3 ms fades at each end so
+/// slices don't click. Mixes into the output buffer, so effects and the recorder hear it.
 ///
 /// Threads: `setSample`, `trigger`, `stopAll` and `collectGarbage` are for the message thread; `prepare` and
 /// `render` for the audio thread. Samples are swapped without locks; a replaced sample is kept alive until no
@@ -30,8 +31,11 @@ public:
 
     // --- Message thread ------------------------------------------------------------------------------------
 
-    /// Puts `audio` in `slot` (0 … 127), or empties it with nullptr.
-    void setSample (int slot, std::shared_ptr<const io::DecodedAudio> audio);
+    /// Puts `audio` in `slot` (0 … 127), or empties it with nullptr. The pad plays frames [start, end) of it;
+    /// end < 0 means to the end.
+    void setSample (int slot, std::shared_ptr<const io::DecodedAudio> audio, std::int64_t start = 0, std::int64_t end = -1);
+    /// Moves the slice a pad plays (takes effect on the next press).
+    void setRegion (int slot, std::int64_t start, std::int64_t end);
     std::shared_ptr<const io::DecodedAudio> sample (int slot) const;
     void trigger (int slot, float gain = 1.0f);
     void stopAll();
@@ -50,13 +54,14 @@ private:
     struct Voice
     {
         const io::DecodedAudio* audio = nullptr;
-        double position = 0, step = 1;
+        double position = 0, step = 1, start = 0, end = 0, fade = 1;
         float gain = 1;
         int slot = -1;
     };
 
     std::array<std::shared_ptr<const io::DecodedAudio>, slots> owned;  // message thread
     std::array<std::atomic<const io::DecodedAudio*>, slots> live {};    // read by the audio thread
+    std::array<std::atomic<std::int64_t>, slots> regionStart {}, regionEnd {};
     struct Retired
     {
         std::shared_ptr<const io::DecodedAudio> audio;

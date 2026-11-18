@@ -5,6 +5,8 @@
 
 #include <cmath>
 
+#include <thread>
+
 namespace dss1::ui
 {
 
@@ -194,23 +196,126 @@ DesignPanel::DesignPanel (Session& s, Crate& c) : session (s), crate (c), fx (s.
     addAndMakeVisible (resetFxButton);
 
     hwStyle (recordButton, KeyStyle::rec);
-    recordButton.setTooltip ("Record what you hear (with effects) to a WAV. Takes go to Music > DSS1 Recordings and into Catalog.");
+    recordButton.setTooltip ("Record what you hear, with effects. Recording again throws away a take you haven't saved.");
     recordButton.onClick = [this] { toggleRecording(); };
     addAndMakeVisible (recordButton);
+    hwStyle (playTakeButton, KeyStyle::play);
+    playTakeButton.setTooltip ("Play the take back on its own (the deck pauses). Click the waveform to play from there.");
+    playTakeButton.onClick = [this] { toggleTakePlayback(); };
+    hwStyle (saveTakeButton, KeyStyle::cue);
+    saveTakeButton.setTooltip ("Keep the take: saved to Music > DSS1 Recordings and added to Catalog");
+    saveTakeButton.onClick = [this] { saveTake(); };
+    discardButton.setTooltip ("Throw the take away");
+    discardButton.onClick = [this] { discardTake(); };
+    for (auto* b : { &playTakeButton, &saveTakeButton, &discardButton })
+        addAndMakeVisible (b);
+    hwStyle (revealButton, KeyStyle::cream);
     revealButton.onClick = [] {
         recordingsFolder().createDirectory();
         recordingsFolder().revealToUser();
     };
     addAndMakeVisible (revealButton);
 
+    updateRecorderKeys();
     startTimerHz (30);
 }
 
 DesignPanel::~DesignPanel()
 {
-    if (session.output().isRecording())
-        if (const auto file = session.output().stopRecording(); file.existsAsFile())
-            crate.add ({ file });
+    // Quitting never loses a take: one that wasn't saved or thrown away is kept in DSS1 Recordings > Unsaved Takes.
+    auto& audio = session.output();
+    audio.takePlayer().setTake (nullptr);
+    if (audio.isRecording())
+        pendingTake = audio.stopRecording();
+    if (pendingTake.existsAsFile())
+    {
+        unsavedFolder().createDirectory();
+        pendingTake.moveFileTo (unsavedFolder().getNonexistentChildFile (pendingTake.getFileNameWithoutExtension(), ".wav", false));
+    }
+}
+
+juce::File DesignPanel::unsavedFolder()
+{
+    return recordingsFolder().getChildFile ("Unsaved Takes");
+}
+
+void DesignPanel::updateRecorderKeys()
+{
+    const auto& audio = session.output();
+    const bool recording = audio.isRecording();
+    const bool hasTake = ! recording && const_cast<AudioEngine&> (audio).takePlayer().hasTake();
+    playTakeButton.setEnabled (hasTake);
+    playTakeButton.setButtonText (hasTake && const_cast<AudioEngine&> (audio).takePlayer().isPlaying() ? "STOP" : "PLAY");
+    saveTakeButton.setEnabled (! recording && pendingTake.existsAsFile());
+    discardButton.setEnabled (! recording && pendingTake.existsAsFile());
+}
+
+void DesignPanel::toggleTakePlayback()
+{
+    auto& player = session.output().takePlayer();
+    if (player.isPlaying())
+        player.stop();
+    else if (player.hasTake())
+    {
+        if (session.deck().isPlaying())
+            session.deck().pause();
+        player.play (player.progress());
+    }
+    updateRecorderKeys();
+    repaint();
+}
+
+void DesignPanel::saveTake()
+{
+    if (! pendingTake.existsAsFile())
+        return;
+    const auto target = recordingsFolder().getNonexistentChildFile (pendingTake.getFileNameWithoutExtension(), ".wav", false);
+    recordingsFolder().createDirectory();
+    if (! pendingTake.moveFileTo (target))
+    {
+        recorderMessage = "COULDN'T SAVE TO DSS1 RECORDINGS";
+    }
+    else
+    {
+        crate.add ({ target });
+        lastTake = target.getFileName();
+        recorderMessage = "SAVED, AND ADDED TO CATALOG";
+        pendingTake = juce::File();
+        takeSaved = true;
+    }
+    updateRecorderKeys();
+    repaint();
+}
+
+void DesignPanel::discardTake()
+{
+    session.output().takePlayer().setTake (nullptr);
+    pendingTake.deleteFile();
+    pendingTake = juce::File();
+    takePeaks.clear();
+    lastTake.clear();
+    recorderMessage = "TAKE THROWN AWAY";
+    updateRecorderKeys();
+    repaint();
+}
+
+void DesignPanel::mouseDown (const juce::MouseEvent& e)
+{
+    // Click the take's waveform to play from there.
+    auto& player = session.output().takePlayer();
+    if (! waveArea.contains (e.getPosition()) || session.output().isRecording() || ! player.hasTake() || takePeaks.empty())
+        return;
+    const auto area = waveArea.toFloat().reduced (6, 6);
+    const auto blocksPerSecond = session.output().sampleRate() / 512.0;
+    const auto shown = juce::jmax (static_cast<double> (takePeaks.size()), 10.0 * blocksPerSecond);
+    const auto drawnWidth = area.getWidth() * static_cast<float> (static_cast<double> (takePeaks.size()) / shown);
+    if (drawnWidth <= 0)
+        return;
+    if (session.deck().isPlaying())
+        session.deck().pause();
+    player.play (juce::jlimit (0.0, 1.0, static_cast<double> ((static_cast<float> (e.x) - area.getX()) / drawnWidth)));
+    updateRecorderKeys();
+    repaint();
 }
 
 void DesignPanel::syncFromEffects()
@@ -231,15 +336,41 @@ void DesignPanel::toggleRecording()
         recordButton.setButtonText ("REC");
         if (file.existsAsFile())
         {
+            pendingTake = file;
+            takeSaved = false;
             lastTake = file.getFileName();
-            recorderMessage = "SAVED, AND ADDED TO CATALOG";
-            crate.add ({ file });
+            recorderMessage = "PLAY IT BACK, THEN SAVE OR DISCARD";
+            // Load it for playback, off the message thread.
+            std::thread ([weak = juce::WeakReference<DesignPanel> (this), file] {
+                std::shared_ptr<const io::DecodedAudio> take;
+                try
+                {
+                    take = std::make_shared<io::DecodedAudio> (io::decode (file.getFullPathName().toStdString()));
+                }
+                catch (const std::exception&)
+                {
+                }
+                juce::MessageManager::callAsync ([weak, file, take] {
+                    if (auto* self = weak.get())
+                        if (take != nullptr && self->pendingTake == file && ! self->session.output().isRecording())
+                        {
+                            self->session.output().takePlayer().setTake (take);
+                            self->updateRecorderKeys();
+                        }
+                });
+            }).detach();
         }
     }
     else
     {
+        // Recording again throws away a take that wasn't saved.
+        audio.takePlayer().setTake (nullptr);
+        if (pendingTake.existsAsFile())
+            pendingTake.deleteFile();
+        pendingTake = juce::File();
         const auto name = "DSS1 Take " + juce::Time::getCurrentTime().formatted ("%Y-%m-%d %H%M%S") + ".wav";
-        const auto problem = audio.startRecording (recordingsFolder().getChildFile (name));
+        const auto takes = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("DSS1 Takes");
+        const auto problem = audio.startRecording (takes.getChildFile (name));
         if (problem.isNotEmpty())
         {
             recorderMessage = problem.toUpperCase();
@@ -253,11 +384,24 @@ void DesignPanel::toggleRecording()
             lastTake = name;
         }
     }
+    updateRecorderKeys();
     repaint();
 }
 
 void DesignPanel::timerCallback()
 {
+    {
+        auto& player = session.output().takePlayer();
+        const bool playingTake = player.isPlaying();
+        if (playingTake || playingTake != wasTakePlaying)
+        {
+            if (playingTake != wasTakePlaying)
+                updateRecorderKeys();
+            wasTakePlaying = playingTake;
+            repaint (waveArea.expanded (6));
+            repaint (timeArea);
+        }
+    }
     if (session.output().isRecording())
     {
         session.output().drainRecordedPeaks (takePeaks);
@@ -310,9 +454,21 @@ void DesignPanel::paint (juce::Graphics& g)
     const auto clock = juce::String (whole / 60).paddedLeft ('0', 2) + ":" + juce::String (whole % 60).paddedLeft ('0', 2) + "."
                        + juce::String (static_cast<int> ((secs - whole) * 10));
     auto t = timeArea.toFloat().reduced (14, 8);
-    hw::glowText (g, recording ? "REC  " + clock : (lastTake.isEmpty() ? "READY" : "00:00.0"), t.removeFromTop (38), hw::vfd (40.0f),
-                  recording ? juce::Colour (0xffff4a3a) : hw::colour::amber);
-    hw::glowText (g, lastTake.isEmpty() ? "TAKES GO TO MUSIC > DSS1 RECORDINGS" : lastTake.toUpperCase(), t.removeFromTop (22), hw::vfd (20.0f),
+    auto& player = session.output().takePlayer();
+    juce::String status = "READY";
+    if (recording)
+        status = "REC  " + clock;
+    else if (player.hasTake())
+    {
+        const auto at = player.progress() * player.lengthSeconds(), len = player.lengthSeconds();
+        const auto mmss = [] (double v) {
+            const auto w = static_cast<int> (v);
+            return juce::String (w / 60).paddedLeft ('0', 2) + ":" + juce::String (w % 60).paddedLeft ('0', 2);
+        };
+        status = (player.isPlaying() ? "PLAY " : (pendingTake.existsAsFile() ? "TAKE " : "SAVED ")) + mmss (at) + " / " + mmss (len);
+    }
+    hw::glowText (g, status, t.removeFromTop (38), hw::vfd (40.0f), recording ? juce::Colour (0xffff4a3a) : hw::colour::amber);
+    hw::glowText (g, lastTake.isEmpty() ? "SAVED TAKES GO TO MUSIC > DSS1 RECORDINGS" : lastTake.toUpperCase(), t.removeFromTop (22), hw::vfd (20.0f),
                   hw::colour::amberMid);
     hw::glowText (g, recorderMessage, t.removeFromTop (22), hw::vfd (20.0f), hw::colour::amberDim);
     hw::glass (g, timeArea.toFloat());
@@ -342,6 +498,13 @@ void DesignPanel::paint (juce::Graphics& g)
             const auto h = juce::jmin (1.0f, peak) * area.getHeight() * 0.48f;
             g.fillRect (area.getX() + static_cast<float> (x), mid - h, 1.0f, juce::jmax (1.0f, h * 2));
         }
+        // The playback position.
+        if (! recording && player.hasTake())
+        {
+            const auto x = area.getX() + static_cast<float> (player.progress() * static_cast<double> (takePeaks.size()) / perColumn);
+            g.setColour (hw::colour::playGreen.withAlpha (player.isPlaying() ? 0.95f : 0.5f));
+            g.fillRect (x - 1.0f, area.getY(), 2.0f, area.getHeight());
+        }
     }
     else
     {
@@ -350,7 +513,7 @@ void DesignPanel::paint (juce::Graphics& g)
     }
     hw::glass (g, waveArea.toFloat());
     if (recording)
-        hw::led (g, { static_cast<float> (recordButton.getRight() + 18), static_cast<float> (recordButton.getBounds().getCentreY()) }, 6.0f,
+        hw::led (g, { static_cast<float> (timeArea.getRight() - 18), static_cast<float> (timeArea.getY() + 18) }, 6.0f,
                  juce::Colour (0xffff3020), (juce::Time::getMillisecondCounter() / 500) % 2 == 0);
 }
 
@@ -417,13 +580,18 @@ void DesignPanel::resized()
 
     recorderArea = area;
     auto rec = area;
-    auto keys = rec.removeFromTop (54);
-    recordButton.setBounds (keys.removeFromLeft (110));
-    keys.removeFromLeft (30);
-    revealButton.setBounds (keys.removeFromLeft (140).withSizeKeepingCentre (140, 42));
-    rec.removeFromTop (14);
+    auto keys = rec.removeFromTop (46);
+    const auto kw = (keys.getWidth() - 3 * 8) / 4;
+    for (auto* b : { &recordButton, &playTakeButton, &saveTakeButton, &discardButton })
+    {
+        b->setBounds (keys.removeFromLeft (kw));
+        keys.removeFromLeft (8);
+    }
+    rec.removeFromTop (12);
     timeArea = rec.removeFromTop (96).reduced (4);
-    rec.removeFromTop (30);
+    auto bottom = rec.removeFromBottom (40);
+    revealButton.setBounds (bottom.removeFromRight (130).withTrimmedTop (6));
+    rec.removeFromTop (28);
     waveArea = rec.reduced (4);
 }
 

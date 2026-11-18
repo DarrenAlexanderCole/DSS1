@@ -48,7 +48,8 @@ private:
 
 /// The Listen & Design stage: an effects rack (filter, echo, reverb, crusher) that plays over whatever the
 /// deck plays, the XY performance pad, the pad sampler (8 banks x 16 pads), and a recorder that captures what
-/// you hear to a WAV (drawing its waveform as it goes) and adds the take to the library.
+/// you hear to a WAV, drawing its waveform as it goes. A take can be played back on its own, then saved (to
+/// Music > DSS1 Recordings, and into Catalog) or thrown away; recording again throws away an unsaved take.
 class DesignPanel : public juce::Component, private juce::Timer
 {
 public:
@@ -64,6 +65,11 @@ public:
 private:
     void timerCallback() override;
     void toggleRecording();
+    void toggleTakePlayback();
+    void saveTake();
+    void discardTake();
+    void mouseDown (const juce::MouseEvent&) override;
+    static juce::File unsavedFolder();
     void syncFromEffects();
 
     struct Knob
@@ -89,13 +95,21 @@ private:
     juce::ToggleButton holdButton { "HOLD" };
     juce::TextButton resetFxButton { "ALL OFF" };
 
+
+public:
     SamplerSection sampler;
 
-    juce::TextButton recordButton { "REC" }, revealButton { "SHOW TAKES" };
+private:
+    juce::TextButton recordButton { "REC" }, playTakeButton { "PLAY" }, saveTakeButton { "SAVE" }, discardButton { "DISCARD" },
+        revealButton { "SHOW TAKES" };
     std::vector<float> takePeaks;
     juce::Rectangle<int> waveArea;
     juce::String lastTake, recorderMessage;
+    juce::File pendingTake;  // recorded, not saved yet
+    bool takeSaved = false, wasTakePlaying = false;
+    void updateRecorderKeys();
 
+    JUCE_DECLARE_WEAK_REFERENCEABLE (DesignPanel)
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (DesignPanel)
 };
 

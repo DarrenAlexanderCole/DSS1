@@ -81,14 +81,26 @@ Load a track (double-click it in Catalog), press PLAY, then open **Listen / Desi
   - Double-click a knob to reset it. **ALL OFF** turns every effect off.
 - **XY pad:** hold the mouse down on it and move: left and right sweep the filter, up adds echo. Let go and it
   springs back. With **HOLD** on, it stays where you leave it.
-- **Recorder:** **REC** records what you hear, effects included, to a WAV in Music > DSS1 Recordings. Press
-  **STOP** and the take is added to Catalog, ready to prep and export like any track. The **TAKE** window draws
-  the waveform live as it records.
-- **Sampler:** 8 banks (**A-H**) x 16 pads = 128 samples. Pick a bank and a pad, then press **CAPTURE** to grab
-  the playing loop (or **LENGTH** beats from the playhead) onto it, or **LOAD...** any audio file. Click a pad to
-  play it. Right-click a pad for Capture, Load, Show in Finder and Clear. **STOP ALL** silences every pad.
-  Captured samples are saved as WAVs to the folder under **SAMPLES TO**: press **CHANGE...** to pick another.
-  Your kit is still there next time you open DSS1.
+- **Recorder:** **REC** records what you hear, effects included, and draws the waveform as it goes. Press
+  **STOP**, then **PLAY** to hear the take on its own (the deck pauses; click the waveform to play from there).
+  **SAVE** keeps it (Music > DSS1 Recordings, and into Catalog); **DISCARD** throws it away; pressing **REC**
+  again records another and throws away the one you didn't save. A take left unsaved when you quit is kept in
+  DSS1 Recordings > Unsaved Takes.
+- **Sampler (slicer):** 8 banks (**A-H**) x 16 pads, laid out and keyed like a drum machine:
+
+  | | | | |
+  |---|---|---|---|
+  | 13 `1` | 14 `2` | 15 `3` | 16 `4` |
+  | 9 `Q` | 10 `W` | 11 `E` | 12 `R` |
+  | 5 `A` | 6 `S` | 7 `D` | 8 `F` |
+  | 1 `Z` | 2 `X` | 3 `C` | 4 `V` |
+
+  The first press of an empty pad marks the playhead. After that the pad plays its slice: from its mark to the
+  next mark in the same track in this bank. The last slice plays **LAST SLICE** beats. Play the track and tap Z,
+  X, C, V … on the beats you want. **CLEAR** empties the chosen pad so it marks again; right-click a pad to mark
+  it again, load a sound file onto it, or clear the bank. **SAVE BANK** writes the bank's slices as WAVs into
+  the folder under **SAMPLES TO** (Bank A … Bank H); **CHANGE...** picks the folder. Your pads are still there
+  next time you open DSS1.
 - **Space** or **P** plays and pauses on every screen (except while typing in a search box).
 
 ## Deliver (new)

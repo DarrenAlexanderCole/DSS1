@@ -62,6 +62,17 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
         session.playPressed();
         return true;
     }
+    // On Listen & Design, the pad keys play the sampler.
+    if (auto* design = dynamic_cast<DesignPanel*> (stages[static_cast<std::size_t> (currentStage)].get()))
+        return design->sampler.handleKey (key);
+    return false;
+}
+
+bool MainComponent::keyStateChanged (bool isKeyDown)
+{
+    if (! isKeyDown)
+        if (auto* design = dynamic_cast<DesignPanel*> (stages[2].get()))
+            design->sampler.keysChanged();
     return false;
 }
 
