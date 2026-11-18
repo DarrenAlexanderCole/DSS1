@@ -28,7 +28,7 @@ and each export takes what its software supports.
 | 2 | Track data & formats: library store, Rekordbox XML, Serato tags, track matching | Done (core): library database, Rekordbox XML, Serato tags, track matching |
 | 3 | Audio engine + Catalog | Nearly done: import, tags, watched folders, missing-file relink, analysis (BPM, key, loudness, beats and bars), playback with key lock |
 | 4 | Prep | First version: waveform editor, hot cues A-H, memory cues, saved loops, grid tools, Rekordbox/Serato target |
-| 5 | Deliver → **DJ prep beta** | |
+| 5 | Deliver | First version: Rekordbox XML of the library, tagged copies for Serato (originals never changed) |
 | 6 | Listen & Design → **1.0** | |
 | Later | Windows | |
 

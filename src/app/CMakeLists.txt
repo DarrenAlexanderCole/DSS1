@@ -10,6 +10,7 @@ juce_add_gui_app(DSS1
 target_sources(DSS1 PRIVATE
     AudioEngine.cpp
     CatalogPanel.cpp
+    DeliverPanel.cpp
     Crate.cpp
     Main.cpp
     MainComponent.cpp

@@ -57,13 +57,24 @@ Double-click a track in Catalog, then open **Prep**.
   memory cues, for instance).
 - Everything saves as you go.
 
-The MP3 timing test has moved: **Deliver → Export Timing Check...** (the MP3 question is settled: cues land on
-the same beat in Serato and Rekordbox for WAV and MP3).
+## Deliver (new)
+
+Your music files are never changed. Choose **Tracks you've prepared** (any cue, loop or grid) or **All tracks**.
+
+- **Export for Rekordbox** writes Music → DSS1 Exports → DSS1 rekordbox.xml, pointing at your original files.
+  In Rekordbox: Preferences → Advanced → Database → rekordbox xml, choose that file. In the sidebar open
+  **rekordbox xml → Playlists → DSS1**, select the tracks, right-click → **Import To Collection**.
+- **Export Copies for Serato** copies the tracks into Music → DSS1 for Serato with your cues and loops inside.
+  Drag that folder into Serato. Exporting again replaces the copies. **Include beat grid** is off unless you
+  turn it on. FLAC isn't supported for Serato yet.
+- **Export Timing Check...** is still at the bottom.
 
 ## What to tell me
 
 - In Prep: is the grid on the beat, and is bar 1 on the real beat 1? Was anything awkward when setting cues
   and loops?
+- Deliver: do your cues and loops show up in Rekordbox and Serato? If a track was already in your Rekordbox
+  collection, did Import To Collection update its cues?
 - Did titles and artists come through from your tags? Any garbled accents?
 - Did a moved folder get found again?
 - Do BPM and key look right for tracks you know? Where they're off, is the BPM half or double, or just wrong?

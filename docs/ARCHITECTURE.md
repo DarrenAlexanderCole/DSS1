@@ -144,6 +144,15 @@ is loaded are taken in, but never over the user's cues and loops, and a grid onl
 tempo changes, hot cues, memory cues, saved loops and the deck's active loop. `src/app/PrepPanel.h` holds the
 controls and keys. Snapping is off by default; the setting and the chosen target are kept in DSS1.settings.
 
+## Deliver
+
+`src/core/Deliver.h` turns library tracks into exports, and never touches the user's music files (decided with
+the user, 2026-11-17: copies only when exporting). Rekordbox gets one XML collection (Music/DSS1 Exports/DSS1
+rekordbox.xml) with a DSS1 playlist, pointing at the originals. Serato reads cues from the files, so it gets
+copies in Music/DSS1 for Serato with Markers2 written (and the grid only when asked), made fresh from the
+originals each time. Copy names stay unique when two sources share a name. FLAC isn't written for Serato yet
+(it needs Vorbis-comment tags, not ID3). Missing tracks are skipped.
+
 ## Playback
 
 `src/engine/Deck.h`: plays a decoded track at 0.5–1.5x. With key lock, Signalsmith Stretch time-stretches
