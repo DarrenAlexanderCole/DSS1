@@ -24,8 +24,11 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
+  # The Mac app is built (and tested) by the release workflow on the test-build branch; building it here too on
+  # every push doubled the wait for GitHub's Mac runners. Run this by hand when needed.
   macos:
     name: macOS app + tests
+    if: github.event_name == 'workflow_dispatch'
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
