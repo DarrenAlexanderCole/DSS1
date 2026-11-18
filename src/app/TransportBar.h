@@ -39,6 +39,7 @@ private:
     juce::Slider tempoSlider { juce::Slider::LinearHorizontal, juce::Slider::NoTextBox };
     juce::Label tempoLabel;
     juce::ToggleButton keyLockButton { "Key lock" };
+    juce::TextButton tempoResetButton { "Reset" };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TransportBar)
 };

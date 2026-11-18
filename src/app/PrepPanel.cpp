@@ -100,7 +100,7 @@ PrepPanel::PrepPanel (Session& s) : session (s), waveform (s)
         b->setTooltip ("Saved loop: click to play it, Shift-click to delete");
         b->onClick = [this, i] {
             if (juce::ModifierKeys::currentModifiers.isShiftDown())
-                edit ([i] (TrackRecord& r) { r.savedLoops[i].reset(); });
+                deleteLoop (i);
             else
                 playSavedLoop (i);
         };
@@ -123,8 +123,13 @@ PrepPanel::PrepPanel (Session& s) : session (s), waveform (s)
     loopInButton.onClick = [this] { loopIn(); };
     loopOutButton.onClick = [this] { loopOut(); };
     exitLoopButton.onClick = [this] { session.deck().clearLoop(); };
+    deleteLoopButton.setTooltip ("Delete the saved loop that's playing, so you can set a better one");
+    deleteLoopButton.onClick = [this] {
+        if (const auto slot = activeLoopSlot())
+            deleteLoop (*slot);
+    };
 
-    for (auto* b : { &addMemoryButton, &prevMemoryButton, &nextMemoryButton, &saveLoopButton, &loopInButton, &loopOutButton, &exitLoopButton })
+    for (auto* b : { &addMemoryButton, &prevMemoryButton, &nextMemoryButton, &saveLoopButton, &loopInButton, &loopOutButton, &exitLoopButton, &deleteLoopButton })
         addAndMakeVisible (b);
     addAndMakeVisible (loopLengthBox);
 
@@ -232,6 +237,9 @@ void PrepPanel::refresh()
     for (auto* b : { &nudgeEarlier, &nudgeLater, &halveButton, &doubleButton, &clearGridButton })
         b->setEnabled (hasGrid);
     exitLoopButton.setEnabled (session.deck().isLooping());
+    const auto active = ready ? activeLoopSlot() : std::nullopt;
+    deleteLoopButton.setEnabled (active.has_value());
+    deleteLoopButton.setButtonText (active ? "Delete Loop " + juce::String (*active + 1) : juce::String ("Delete Loop"));
     for (auto* b : { &startButton, &jumpBackButton, &jumpForwardButton, &cueButton, &playButton })
         b->setEnabled (ready);
     playButton.setButtonText (session.deck().isPlaying() && ! cuePreviewing ? "Pause" : "Play");
@@ -411,6 +419,28 @@ void PrepPanel::playSavedLoop (std::size_t slot)
     session.deck().setLoop (r->savedLoops[slot]->start, r->savedLoops[slot]->end);
     session.deck().seek (r->savedLoops[slot]->start);
     session.deck().play();
+}
+
+std::optional<std::size_t> PrepPanel::activeLoopSlot() const
+{
+    const auto* r = session.record();
+    if (r == nullptr)
+        return std::nullopt;
+    for (std::size_t i = 0; i < r->savedLoops.size(); ++i)
+        if (r->savedLoops[i] && deckIsPlayingLoop (session.deck(), *r->savedLoops[i]))
+            return i;
+    return std::nullopt;
+}
+
+void PrepPanel::deleteLoop (std::size_t slot)
+{
+    const auto* r = session.record();
+    if (r == nullptr || ! r->savedLoops[slot])
+        return;
+    if (deckIsPlayingLoop (session.deck(), *r->savedLoops[slot]))
+        session.deck().clearLoop();
+    edit ([slot] (TrackRecord& rec) { rec.savedLoops[slot].reset(); });
+    say ("Deleted loop " + juce::String (slot + 1) + ". Set a new one with Save Loop or Loop In / Loop Out.");
 }
 
 void PrepPanel::stepBeats (double beats)
@@ -766,7 +796,9 @@ void PrepPanel::resized()
     loopOutButton.setBounds (row.removeFromLeft (76));
     row.removeFromLeft (4);
     exitLoopButton.setBounds (row.removeFromLeft (76));
-    row.removeFromLeft (16);
+    row.removeFromLeft (4);
+    deleteLoopButton.setBounds (row.removeFromLeft (110));
+    row.removeFromLeft (12);
     for (auto& b : loopButtons)
     {
         b->setBounds (row.removeFromLeft (30));

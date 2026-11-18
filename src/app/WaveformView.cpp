@@ -17,6 +17,12 @@ namespace
     juce::Colour toColour (const CueColour& c) { return juce::Colour (c.red, c.green, c.blue); }
 }
 
+bool deckIsPlayingLoop (engine::Deck& deck, const SavedLoop& loop)
+{
+    return deck.isLooping() && std::abs (deck.loopStartFrame() - static_cast<double> (loop.start)) < 2.0
+           && std::abs (deck.loopEndFrame() - static_cast<double> (loop.end)) < 2.0;
+}
+
 juce::Colour hotCueColour (const TrackRecord& r, std::size_t slot)
 {
     const auto& cue = r.hotCues[slot];
@@ -443,6 +449,10 @@ void WaveformView::mouseDrag (const juce::MouseEvent& e)
         const auto delta = static_cast<double> (e.getDistanceFromDragStartX()) * framesPerPixel;
         auto moved = *original;
         moveMarker (moved, *dragging, snap (static_cast<Frame> (std::llround (static_cast<double> (startFrame) + delta))));
+        // Moving the loop the deck is playing moves what you hear (and the orange box) with it.
+        if (dragging->kind == Marker::Kind::loop && dragRecord && dragRecord->savedLoops[dragging->index]
+            && moved.savedLoops[dragging->index] && deckIsPlayingLoop (session.deck(), *dragRecord->savedLoops[dragging->index]))
+            session.deck().setLoop (moved.savedLoops[dragging->index]->start, moved.savedLoops[dragging->index]->end);
         dragRecord = std::move (moved);
         repaint();
         return;
@@ -584,7 +594,12 @@ void WaveformView::showMarkerMenu (const Marker& m)
         auto rec = *session.record();
         if (m.kind == Marker::Kind::hotCue) rec.hotCues[m.index].reset();
         if (m.kind == Marker::Kind::memoryCue && m.index < rec.memoryCues.size()) rec.memoryCues.erase (rec.memoryCues.begin() + static_cast<std::ptrdiff_t> (m.index));
-        if (m.kind == Marker::Kind::loop) rec.savedLoops[m.index].reset();
+        if (m.kind == Marker::Kind::loop && rec.savedLoops[m.index])
+        {
+            if (deckIsPlayingLoop (session.deck(), *rec.savedLoops[m.index]))
+                session.deck().clearLoop();
+            rec.savedLoops[m.index].reset();
+        }
         session.update (rec);
     });
 

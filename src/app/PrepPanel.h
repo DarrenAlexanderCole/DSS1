@@ -43,6 +43,8 @@ private:
     void loopIn();
     void loopOut();
     void playSavedLoop (std::size_t slot);
+    void deleteLoop (std::size_t slot);
+    std::optional<std::size_t> activeLoopSlot() const;
     void stepBeats (double beats);
     void jumpBeats (double beats);
     void cuePressed (bool down);
@@ -79,7 +81,7 @@ private:
 
     juce::TextButton addMemoryButton { "+ Memory Cue" }, prevMemoryButton { "<" }, nextMemoryButton { ">" };
     juce::ComboBox loopLengthBox;
-    juce::TextButton saveLoopButton { "Save Loop" }, loopInButton { "Loop In" }, loopOutButton { "Loop Out" }, exitLoopButton { "Exit Loop" };
+    juce::TextButton saveLoopButton { "Save Loop" }, loopInButton { "Loop In" }, loopOutButton { "Loop Out" }, exitLoopButton { "Exit Loop" }, deleteLoopButton { "Delete Loop" };
 
     juce::Label bpmLabel;
     juce::TextEditor bpmEditor;

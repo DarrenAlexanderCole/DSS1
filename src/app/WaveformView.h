@@ -83,6 +83,9 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (WaveformView)
 };
 
+/// True if the deck is looping exactly this saved loop.
+bool deckIsPlayingLoop (engine::Deck& deck, const SavedLoop& loop);
+
 /// Hot cue colours A–H when a cue has none of its own (Serato's defaults, which Rekordbox shows well too).
 juce::Colour hotCueColour (const TrackRecord& r, std::size_t slot);
 

@@ -29,7 +29,7 @@ DSS1 opens on **Catalog**.
    finds where the beats and bars fall, and that becomes the track's first grid. Tracks analysed by an
    earlier build: right-click → **Analyse Again (New Grid)** to get the improved grid.
 7. **Play:** double-click a track (or select it and press Return). The player along the bottom stays on every
-   tab. Space plays and pauses. The slider changes tempo by up to ±8% (double-click to reset), and the BPM next to it shows the new tempo; **Key lock**
+   tab. Space plays and pauses. The slider changes tempo by up to ±8% (**Reset**, or double-click the slider, goes back to 0), and the BPM next to it shows the new tempo; **Key lock**
    keeps the pitch.
 
 ## Prep (new)
@@ -46,7 +46,9 @@ Double-click a track in Catalog, then open **Prep**.
   Shift-click (or Shift + letter) deletes. Right-click a cue on the waveform to rename, recolour or delete.
 - **Memory cues:** **+ Memory Cue** (or M). **<** and **>** (or Up and Down) jump between them.
 - **Loops:** pick a length and **Save Loop** (or L), or **Loop In** then **Loop Out**. The numbers 1-8 play a
-  saved loop; **Exit Loop** (or Escape) carries on. Shift-click a number to delete that loop.
+  saved loop; **Exit Loop** (or Escape) carries on. **Delete Loop** deletes the loop that's playing (or
+  Shift-click its number) so you can set a better one. Drag a loop's blue bar to move it; the loop you hear
+  moves with it.
 - **Grid:** **Downbeat Here** makes the playhead beat 1. **Nudge** moves the grid 2 ms (Shift: 0.5 ms).
   **/2** and **x2** fix half or double tempo. Type a BPM and press Return. **Tempo Change Here** starts a new
   tempo for tracks that drift (live drums, edits); type its BPM with the playhead after it.

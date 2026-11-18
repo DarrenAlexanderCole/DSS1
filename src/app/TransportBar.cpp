@@ -44,6 +44,10 @@ TransportBar::TransportBar (Session& s) : session (s), deck (s.deck())
     };
     addAndMakeVisible (tempoSlider);
 
+    tempoResetButton.setTooltip ("Back to the track's own tempo (0 %)");
+    tempoResetButton.onClick = [this] { tempoSlider.setValue (0.0, juce::sendNotificationSync); };
+    addAndMakeVisible (tempoResetButton);
+
     tempoLabel.setText ("0.00 %", juce::dontSendNotification);
     tempoLabel.setJustificationType (juce::Justification::centredLeft);
     tempoLabel.setColour (juce::Label::textColourId, Colours::text);
@@ -100,6 +104,7 @@ void TransportBar::timerCallback()
 {
     updatePlayButton();
     updateTempoLabel();
+    tempoResetButton.setEnabled (std::abs (tempoSlider.getValue()) > 0.004);
     repaint (waveformArea.expanded (2).withTop (0));
 }
 
@@ -159,6 +164,8 @@ void TransportBar::resized()
     controls.removeFromLeft (16);
     keyLockButton.setBounds (controls.removeFromRight (100));
     tempoLabel.setBounds (controls.removeFromRight (170));
+    controls.removeFromRight (4);
+    tempoResetButton.setBounds (controls.removeFromRight (60).withSizeKeepingCentre (60, 26));
     controls.removeFromRight (8);
     tempoSlider.setBounds (controls.removeFromRight (std::min (320, controls.getWidth())));
 }
