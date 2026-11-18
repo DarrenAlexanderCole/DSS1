@@ -11,7 +11,6 @@ namespace dss1::ui
 
 namespace
 {
-    constexpr double loopBeats[] { 1, 2, 4, 8, 16, 32 };
 
     juce::String plural (std::size_t n, const char* one, const char* many)
     {
@@ -52,38 +51,21 @@ PrepPanel::PrepPanel (Session& s) : session (s), waveform (s)
     for (auto* b : { &zoomOut, &zoomIn, &wholeTrack })
         addAndMakeVisible (b);
 
-    // Transport: a CDJ-style CUE, play, and beat jumps.
-    startButton.setTooltip ("Back to the start (Home)");
-    startButton.onClick = [this] { session.deck().seek (0); };
-    jumpBackButton.setTooltip ("Jump back by the beat-jump size ([)");
-    jumpBackButton.onClick = [this] { jumpBeats (-jumpSizeBox.getSelectedId()); };
-    jumpForwardButton.setTooltip ("Jump forward by the beat-jump size (])");
-    jumpForwardButton.onClick = [this] { jumpBeats (jumpSizeBox.getSelectedId()); };
-    for (const int beats : { 1, 2, 4, 8, 16, 32, 64 })
-        jumpSizeBox.addItem (juce::String (beats) + (beats == 1 ? " beat" : " beats"), beats);
-    jumpSizeBox.setSelectedId (settings->getIntValue ("jumpBeats", 16), juce::dontSendNotification);
-    jumpSizeBox.onChange = [this] { settings->setValue ("jumpBeats", jumpSizeBox.getSelectedId()); };
-    cueButton.setTooltip ("Paused: set the cue point here, or hold to hear it from the cue. Playing: back to the cue "
-                          "point and stop. (Key Q)");
-    cueButton.onStateChange = [this] {
-        const bool down = cueButton.isDown();
-        if (down != cueWasDown)
-        {
-            cueWasDown = down;
-            cuePressed (down);
-        }
+    // Beat-jump size for the header's << and >> keys, as a knob.
+    jumpKnob.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+    jumpKnob.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+    jumpKnob.setRange (0, 6, 1);
+    hwScale (jumpKnob, "1|2|4|8|16|32|64");
+    jumpKnob.setValue (std::log2 (settings->getIntValue ("jumpBeats", 16)), juce::dontSendNotification);
+    jumpKnob.setTooltip ("Beat-jump size for << and >> ([ and ] keys)");
+    jumpKnob.onValueChange = [this] {
+        session.jumpSize = 1 << static_cast<int> (jumpKnob.getValue());
+        settings->setValue ("jumpBeats", session.jumpSize);
+        repaint();
     };
-    playButton.setTooltip ("Play or pause (Space)");
-    playButton.onClick = [this] {
-        cuePreviewing = false;
-        if (session.deck().isPlaying())
-            session.deck().pause();
-        else
-            session.deck().play();
-    };
-    for (auto* b : { &startButton, &jumpBackButton, &jumpForwardButton, &cueButton, &playButton })
-        addAndMakeVisible (b);
-    addAndMakeVisible (jumpSizeBox);
+    session.jumpSize = 1 << static_cast<int> (jumpKnob.getValue());
+    addAndMakeVisible (jumpKnob);
+    session.snap = [this] (Frame f) { return snapped (f); };
 
     for (std::size_t i = 0; i < hotButtons.size(); ++i)
     {
@@ -114,12 +96,18 @@ PrepPanel::PrepPanel (Session& s) : session (s), waveform (s)
     nextMemoryButton.setTooltip ("Next memory cue");
     nextMemoryButton.onClick = [this] { jumpMemory (1); };
 
-    for (const auto beats : loopBeats)
-        loopLengthBox.addItem (juce::String (beats, 0) + (beats < 1.5 ? " beat" : " beats"), static_cast<int> (beats));
-    loopLengthBox.setSelectedId (settings->getIntValue ("loopBeats", 8), juce::dontSendNotification);
-    loopLengthBox.onChange = [this] { settings->setValue ("loopBeats", loopLengthBox.getSelectedId()); };
+    loopKnob.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+    loopKnob.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+    loopKnob.setRange (0, 5, 1);
+    hwScale (loopKnob, "1|2|4|8|16|32");
+    loopKnob.setValue (std::log2 (settings->getIntValue ("loopBeats", 8)), juce::dontSendNotification);
+    loopKnob.setTooltip ("Length of Save Loop (key L)");
+    loopKnob.onValueChange = [this] {
+        settings->setValue ("loopBeats", loopLength());
+        repaint();
+    };
     saveLoopButton.setTooltip ("Save a loop of this many beats from the playhead into the next free slot (key L)");
-    saveLoopButton.onClick = [this] { saveLoop (snapped (playhead()), loopLengthBox.getSelectedId()); };
+    saveLoopButton.onClick = [this] { saveLoop (snapped (playhead()), loopLength()); };
     loopInButton.onClick = [this] { loopIn(); };
     loopOutButton.onClick = [this] { loopOut(); };
     exitLoopButton.onClick = [this] { session.deck().clearLoop(); };
@@ -131,7 +119,7 @@ PrepPanel::PrepPanel (Session& s) : session (s), waveform (s)
 
     for (auto* b : { &addMemoryButton, &prevMemoryButton, &nextMemoryButton, &saveLoopButton, &loopInButton, &loopOutButton, &exitLoopButton, &deleteLoopButton })
         addAndMakeVisible (b);
-    addAndMakeVisible (loopLengthBox);
+    addAndMakeVisible (loopKnob);
 
     bpmLabel.setText ("BPM", juce::dontSendNotification);
     bpmLabel.setColour (juce::Label::textColourId, Colours::dimText);
@@ -165,6 +153,30 @@ PrepPanel::PrepPanel (Session& s) : session (s), waveform (s)
     for (auto* b : { &downbeatButton, &nudgeEarlier, &nudgeLater, &halveButton, &doubleButton, &tempoChangeButton, &clearGridButton })
         addAndMakeVisible (b);
 
+    // Hardware styling and key caps.
+    addMemoryButton.setButtonText ("+ MEMORY");
+    prevMemoryButton.setButtonText ("< MEM");
+    nextMemoryButton.setButtonText ("MEM >");
+    saveLoopButton.setButtonText ("SAVE LOOP");
+    loopInButton.setButtonText ("LOOP IN");
+    loopOutButton.setButtonText ("LOOP OUT");
+    exitLoopButton.setButtonText ("EXIT LOOP");
+    downbeatButton.setButtonText ("BEAT 1");
+    nudgeEarlier.setButtonText ("< NUDGE");
+    nudgeLater.setButtonText ("NUDGE >");
+    tempoChangeButton.setButtonText ("TEMPO CHANGE");
+    clearGridButton.setButtonText ("CLEAR");
+    halveButton.setButtonText ("/2");
+    doubleButton.setButtonText ("X2");
+    wholeTrack.setButtonText ("WHOLE");
+    for (auto* b : { &addMemoryButton, &prevMemoryButton, &nextMemoryButton, &saveLoopButton, &loopInButton, &loopOutButton,
+                     &exitLoopButton, &deleteLoopButton })
+        hwStyle (*b, KeyStyle::cream);
+    snapButton.setButtonText ("SNAP");
+    bpmEditor.setFont (hw::vfd (34.0f));
+    bpmEditor.setIndents (12, 6);
+    bpmLabel.setVisible (false);
+
     session.addChangeListener (this);
     setWantsKeyboardFocus (true);
     refresh();
@@ -188,13 +200,6 @@ void PrepPanel::changeListenerCallback (juce::ChangeBroadcaster*)
     if (session.state() == Session::State::loading)
     {
         pendingLoopIn.reset();
-        cuePoint = -1;  // set from the track once it's loaded
-    }
-    if (session.state() == Session::State::loaded && cuePoint < 0)
-    {
-        // Like a CDJ: the cue starts at the first memory cue, or the start of the track.
-        const auto* r = session.record();
-        cuePoint = r != nullptr && ! r->memoryCues.empty() ? r->memoryCues.front().frame : 0;
     }
     refresh();
 }
@@ -207,7 +212,6 @@ void PrepPanel::timerCallback()
         message.clear();
     if (! bpmEditor.hasKeyboardFocus (true))
         refresh();
-    repaint (jumpForwardButton.getRight(), cueButton.getY(), 340, cueButton.getHeight());
 }
 
 void PrepPanel::refresh()
@@ -220,15 +224,14 @@ void PrepPanel::refresh()
         auto& b = *hotButtons[i];
         const bool set = ready && r->hotCues[i].has_value();
         b.setEnabled (ready);
-        b.setColour (juce::TextButton::buttonColourId, set ? hotCueColour (*r, i) : Colours::panel);
-        b.setColour (juce::TextButton::textColourOffId, set ? juce::Colours::white : Colours::dimText);
+        hwPad (b, set ? hotCueColour (*r, i) : juce::Colours::grey, set);
     }
     for (std::size_t i = 0; i < loopButtons.size(); ++i)
     {
         auto& b = *loopButtons[i];
         const bool set = ready && r->savedLoops[i].has_value();
         b.setEnabled (set);
-        b.setColour (juce::TextButton::buttonColourId, set ? juce::Colour (0xff2fa8d8) : Colours::panel);
+        hwPad (b, hw::colour::loopBlue, set);
     }
     for (auto* b : { &addMemoryButton, &prevMemoryButton, &nextMemoryButton, &saveLoopButton, &loopInButton, &loopOutButton,
                      &downbeatButton, &tempoChangeButton })
@@ -239,10 +242,7 @@ void PrepPanel::refresh()
     exitLoopButton.setEnabled (session.deck().isLooping());
     const auto active = ready ? activeLoopSlot() : std::nullopt;
     deleteLoopButton.setEnabled (active.has_value());
-    deleteLoopButton.setButtonText (active ? "Delete Loop " + juce::String (*active + 1) : juce::String ("Delete Loop"));
-    for (auto* b : { &startButton, &jumpBackButton, &jumpForwardButton, &cueButton, &playButton })
-        b->setEnabled (ready);
-    playButton.setButtonText (session.deck().isPlaying() && ! cuePreviewing ? "Pause" : "Play");
+    deleteLoopButton.setButtonText (active ? "DELETE LOOP " + juce::String (*active + 1) : juce::String ("DELETE LOOP"));
     loopOutButton.setEnabled (ready && pendingLoopIn.has_value());
     loopInButton.setToggleState (pendingLoopIn.has_value(), juce::dontSendNotification);
     bpmEditor.setEnabled (ready);
@@ -256,7 +256,12 @@ void PrepPanel::refresh()
         else
             bpmEditor.setText ({}, false);
     }
-    repaint (0, 0, getWidth(), waveform.getY());
+    repaint (messageArea);
+}
+
+int PrepPanel::loopLength() const
+{
+    return 1 << static_cast<int> (loopKnob.getValue());
 }
 
 Frame PrepPanel::playhead() const
@@ -286,7 +291,7 @@ void PrepPanel::say (const juce::String& m)
 {
     message = m;
     messageTime = juce::Time::getMillisecondCounter();
-    repaint (0, 0, getWidth(), waveform.getY());
+    repaint (messageArea);
 }
 
 // --- Cues and loops -----------------------------------------------------------------------------------------
@@ -464,72 +469,6 @@ void PrepPanel::stepBeats (double beats)
     session.deck().seek (std::clamp<Frame> (static_cast<Frame> (std::llround (target)), 0, std::max<Frame> (0, r->lengthFrames - 1)));
 }
 
-void PrepPanel::jumpBeats (double beats)
-{
-    const auto* r = session.record();
-    if (r == nullptr || session.state() != Session::State::loaded)
-        return;
-    // Keeps the playhead's place within the beat, like beat jump on a DJ app.
-    const auto now = static_cast<double> (playhead());
-    const auto target = r->grid && ! r->grid->isEmpty() ? r->grid->frameAt (r->grid->beatAt (now) + beats)
-                                                         : now + beats * 60.0 / r->info.bpm.value_or (120.0) * r->sampleRate;
-    session.deck().seek (std::clamp<Frame> (static_cast<Frame> (std::llround (target)), 0, std::max<Frame> (0, r->lengthFrames - 1)));
-}
-
-void PrepPanel::cuePressed (bool down)
-{
-    if (session.state() != Session::State::loaded)
-        return;
-    auto& deck = session.deck();
-    if (down)
-    {
-        if (deck.isPlaying() && ! cuePreviewing)
-        {
-            // Playing: back to the cue point, stopped.
-            deck.pause();
-            deck.seek (cuePoint);
-            return;
-        }
-        const auto here = playhead();
-        const auto rate = session.record()->sampleRate;
-        if (std::abs (here - cuePoint) > static_cast<Frame> (0.005 * rate))
-        {
-            // Paused somewhere new: that's the cue point now.
-            cuePoint = snapped (here);
-            deck.seek (cuePoint);
-            return;
-        }
-        // Paused on the cue point: play while it's held.
-        cuePreviewing = true;
-        deck.play();
-        return;
-    }
-    if (cuePreviewing)
-    {
-        cuePreviewing = false;
-        deck.pause();
-        deck.seek (cuePoint);
-    }
-}
-
-juce::String PrepPanel::positionText() const
-{
-    const auto* r = session.record();
-    if (r == nullptr || session.state() != Session::State::loaded || r->sampleRate <= 0)
-        return {};
-    const auto pos = session.deck().position();
-    juce::String text = formatTime (pos / r->sampleRate);
-    if (r->grid && ! r->grid->isEmpty())
-    {
-        const auto beat = r->grid->nearestBeat (pos);
-        const auto perBar = r->grid->beatsPerBarAt (pos);
-        const auto bar = static_cast<long long> (std::floor (static_cast<double> (beat.index) / perBar));
-        const auto inBar = static_cast<long long> (beat.index) - bar * static_cast<long long> (perBar);
-        text << "   Bar " << (bar + 1) << "." << (inBar + 1);
-    }
-    return text;
-}
-
 // --- Grid ---------------------------------------------------------------------------------------------------
 
 void PrepPanel::setDownbeat (Frame at)
@@ -642,7 +581,7 @@ void PrepPanel::addBackgroundActions (juce::PopupMenu& menu, Frame at)
         });
     menu.addSubMenu ("Set Hot Cue Here", hot);
     menu.addItem ("Add Memory Cue Here", [this, at] { addMemoryCue (at); });
-    menu.addItem ("Save " + loopLengthBox.getText() + " Loop From Here", [this, at] { saveLoop (at, loopLengthBox.getSelectedId()); });
+    menu.addItem ("Save " + juce::String (loopLength()) + "-Beat Loop From Here", [this, at] { saveLoop (at, loopLength()); });
     menu.addSeparator();
     menu.addItem ("Beat 1 Here", [this, at] { setDownbeat (at); });
     if (r->grid && ! r->grid->isEmpty())
@@ -693,137 +632,134 @@ juce::StringArray PrepPanel::targetNotes() const
 
 void PrepPanel::paint (juce::Graphics& g)
 {
-    g.fillAll (Colours::background);
-    auto area = getLocalBounds().reduced (16, 10);
-    auto header = area.removeFromTop (44);
-    header.removeFromRight (560);  // controls
+    const auto ear = static_cast<float> (hw::RackUnit::earWidth);
+    for (const auto& [unit, slots] : { std::pair { waveUnit, 4 }, std::pair { controlUnit, 3 } })
+    {
+        const auto b = unit.toFloat();
+        hw::faceplate (g, b.reduced (ear, 0));
+        hw::rackEar (g, b.withWidth (ear), slots);
+        hw::rackEar (g, b.withLeft (b.getRight() - ear), slots);
+        g.setColour (juce::Colours::black);
+        g.fillRect (b.withTop (b.getBottom() - 1.0f));
+    }
 
-    g.setColour (Colours::text);
-    g.setFont (juce::FontOptions (20.0f, juce::Font::bold));
-    const auto title = session.record() != nullptr ? session.title() : juce::String ("Prep");
-    g.drawText (title, header.removeFromTop (24), juce::Justification::centredLeft, true);
-    g.setColour (Colours::dimText);
-    g.setFont (juce::FontOptions (13.0f));
-    g.drawText (session.details(), header, juce::Justification::centredLeft, true);
+    const auto label = [&] (juce::Component& c, const juce::String& text, const juce::String& sub, int width = 400) {
+        hw::silk (g, text, sub, c.getBounds().toFloat().withWidth (static_cast<float> (width)).withHeight (16).translated (0, -21));
+    };
+    hw::silk (g, "WAVEFORM", "GRID / CUES / LOOPS", juce::Rectangle<float> (waveform.getX(), messageArea.getY() + 2.0f, 360, 16));
+    label (targetBox, "TARGET", {}, 120);
+    label (zoomOut, "ZOOM", {}, 120);
+    label (*hotButtons[0], "HOT CUES", "A-H   CLICK: SET OR JUMP   SHIFT-CLICK: DELETE");
+    label (addMemoryButton, "CUES", "MEMORY / LOOPS");
+    label (*loopButtons[0], "SAVED LOOPS", "1-8   CLICK: PLAY   SHIFT-CLICK: DELETE");
+    label (bpmEditor, "GRID", "BPM AT PLAYHEAD");
+    label (loopKnob, "LOOP", "BEATS", 120);
+    label (jumpKnob, "JUMP", "BEATS", 120);
 
-    // A line of notes about the target, or the last action's message.
-    auto notesArea = area.removeFromTop (20);
+    // Message / target notes on a small display, right of the unit's title.
+    const auto notesArea = messageArea.toFloat().withTrimmedLeft (370);
+    hw::recess (g, notesArea.reduced (0, 1));
     const auto notes = targetNotes();
-    g.setFont (juce::FontOptions (13.0f));
     if (message.isNotEmpty())
-    {
-        g.setColour (Colours::text.withAlpha (0.85f));
-        g.drawText (message, notesArea, juce::Justification::centredLeft, true);
-    }
+        hw::glowText (g, message.toUpperCase(), notesArea.reduced (10, 0), hw::vfd (20.0f));
     else if (! notes.isEmpty())
-    {
-        g.setColour (Colours::accent.brighter (0.4f));
-        g.drawText (notes.joinIntoString ("   |   "), notesArea, juce::Justification::centredLeft, true);
-    }
+        hw::glowText (g, notes.joinIntoString ("   |   ").toUpperCase(), notesArea.reduced (10, 0), hw::vfd (20.0f), hw::colour::amberMid);
+    hw::glass (g, notesArea.reduced (0, 1));
 
-    // Labels for the control rows.
-    g.setColour (Colours::dimText);
-    g.setFont (juce::FontOptions (12.0f));
-    for (const auto& [y, text] : { std::pair { cueButton.getY(), "TRANSPORT" }, std::pair { hotButtons[0]->getY(), "HOT CUES" }, std::pair { addMemoryButton.getY(), "CUES & LOOPS" },
-                                    std::pair { downbeatButton.getY(), "GRID" } })
-        g.drawText (text, 16, y, 90, 28, juce::Justification::centredLeft);
+    hw::recess (g, waveform.getBounds().toFloat());
 
-    g.setColour (Colours::text);
-    g.setFont (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), 16.0f, juce::Font::plain));
-    g.drawText (positionText(), jumpForwardButton.getRight() + 24, cueButton.getY(), 300, cueButton.getHeight(), juce::Justification::centredLeft);
+    // Knob readouts.
+    for (const auto& [knob, value] : { std::pair<juce::Slider*, int> { &loopKnob, loopLength() }, { &jumpKnob, session.jumpSize } })
+        hw::glowText (g, juce::String (value) + (value == 1 ? " BEAT" : " BEATS"),
+                      knob->getBounds().toFloat().withY (static_cast<float> (knob->getBottom()) - 4.0f).withHeight (22), hw::vfd (22.0f),
+                      hw::colour::amber, juce::Justification::centred);
+}
+
+void PrepPanel::paintOverChildren (juce::Graphics& g)
+{
+    hw::glass (g, waveform.getBounds().toFloat());
 }
 
 void PrepPanel::resized()
 {
-    auto area = getLocalBounds().reduced (16, 10);
-    auto header = area.removeFromTop (44).withSizeKeepingCentre (getWidth() - 32, 28);
-    wholeTrack.setBounds (header.removeFromRight (100));
-    header.removeFromRight (4);
-    zoomIn.setBounds (header.removeFromRight (32));
-    header.removeFromRight (4);
-    zoomOut.setBounds (header.removeFromRight (32));
-    header.removeFromRight (16);
-    snapButton.setBounds (header.removeFromRight (130));
-    header.removeFromRight (8);
-    targetBox.setBounds (header.removeFromRight (220));
+    auto all = getLocalBounds();
+    controlUnit = all.removeFromBottom (juce::jmin (290, all.getHeight() / 2));
+    waveUnit = all;
 
-    area.removeFromTop (22);  // notes line
+    // --- Waveform unit ---
+    auto area = waveUnit.reduced (hw::RackUnit::earWidth, 0).reduced (30, 0);
+    area.removeFromTop (30);
+    area.removeFromBottom (22);
+    auto top = area.removeFromTop (40);
+    wholeTrack.setBounds (top.removeFromRight (90).reduced (0, 2));
+    top.removeFromRight (6);
+    zoomIn.setBounds (top.removeFromRight (44).reduced (0, 2));
+    top.removeFromRight (6);
+    zoomOut.setBounds (top.removeFromRight (44).reduced (0, 2));
+    top.removeFromRight (20);
+    snapButton.setBounds (top.removeFromRight (100));
+    top.removeFromRight (12);
+    targetBox.setBounds (top.removeFromRight (190));
+    top.removeFromRight (20);
+    messageArea = top.withTrimmedTop (6).withTrimmedBottom (2);
+    area.removeFromTop (14);
+    waveform.setBounds (area.reduced (4));
 
-    constexpr int rowHeight = 30, gap = 8, labelWidth = 100;
-    auto controls = area.removeFromBottom (4 * (rowHeight + gap) + 6);
-    area.removeFromBottom (10);
-    waveform.setBounds (area);
+    // --- Control unit ---
+    area = controlUnit.reduced (hw::RackUnit::earWidth, 0).reduced (30, 0);
+    area.removeFromTop (40);
+    area.removeFromBottom (24);
+    auto knobs = area.removeFromRight (250);
+    area.removeFromRight (24);
+    auto grid = area.removeFromRight (juce::jmin (380, area.getWidth() / 3));
+    area.removeFromRight (24);
 
-    auto row = controls.removeFromTop (rowHeight + 6);
-    row.removeFromLeft (labelWidth);
-    cueButton.setBounds (row.removeFromLeft (80));
-    row.removeFromLeft (6);
-    playButton.setBounds (row.removeFromLeft (80));
-    row.removeFromLeft (20);
-    startButton.setBounds (row.removeFromLeft (40));
-    row.removeFromLeft (6);
-    jumpBackButton.setBounds (row.removeFromLeft (44));
-    row.removeFromLeft (4);
-    jumpSizeBox.setBounds (row.removeFromLeft (100).reduced (0, 3));
-    row.removeFromLeft (4);
-    jumpForwardButton.setBounds (row.removeFromLeft (44));
-
-    controls.removeFromTop (gap);
-    row = controls.removeFromTop (rowHeight);
-    row.removeFromLeft (labelWidth);
-    const auto hotWidth = std::min (80, (row.getWidth() - 7 * 6) / 8);
+    // Hot cues, then the cue & loop keys, then the saved loop slots.
+    auto row = area.removeFromTop (58);
+    const auto padW = (row.getWidth() - 7 * 8) / 8;
     for (auto& b : hotButtons)
     {
-        b->setBounds (row.removeFromLeft (hotWidth));
+        b->setBounds (row.removeFromLeft (padW));
+        row.removeFromLeft (8);
+    }
+    area.removeFromTop (30);
+    row = area.removeFromTop (42);
+    const auto keyW = (row.getWidth() - 7 * 6) / 8;
+    for (auto* b : { &addMemoryButton, &prevMemoryButton, &nextMemoryButton, &saveLoopButton, &loopInButton, &loopOutButton, &exitLoopButton, &deleteLoopButton })
+    {
+        b->setBounds (row.removeFromLeft (keyW));
+        row.removeFromLeft (6);
+    }
+    area.removeFromTop (30);
+    row = area.removeFromTop (36);
+    for (auto& b : loopButtons)
+    {
+        b->setBounds (row.removeFromLeft (44));
         row.removeFromLeft (6);
     }
 
-    controls.removeFromTop (gap);
-    row = controls.removeFromTop (rowHeight);
-    row.removeFromLeft (labelWidth);
-    addMemoryButton.setBounds (row.removeFromLeft (120));
-    row.removeFromLeft (4);
-    prevMemoryButton.setBounds (row.removeFromLeft (30));
-    row.removeFromLeft (2);
-    nextMemoryButton.setBounds (row.removeFromLeft (30));
-    row.removeFromLeft (20);
-    loopLengthBox.setBounds (row.removeFromLeft (100));
-    row.removeFromLeft (4);
-    saveLoopButton.setBounds (row.removeFromLeft (90));
-    row.removeFromLeft (12);
-    loopInButton.setBounds (row.removeFromLeft (70));
-    row.removeFromLeft (4);
-    loopOutButton.setBounds (row.removeFromLeft (76));
-    row.removeFromLeft (4);
-    exitLoopButton.setBounds (row.removeFromLeft (76));
-    row.removeFromLeft (4);
-    deleteLoopButton.setBounds (row.removeFromLeft (110));
-    row.removeFromLeft (12);
-    for (auto& b : loopButtons)
+    // Grid: BPM display, then two rows of keys.
+    bpmEditor.setBounds (grid.removeFromTop (50));
+    grid.removeFromTop (12);
+    auto g1 = grid.removeFromTop (42);
+    const auto gw = (g1.getWidth() - 3 * 6) / 4;
+    for (auto* b : { &downbeatButton, &nudgeEarlier, &nudgeLater, &halveButton })
     {
-        b->setBounds (row.removeFromLeft (30));
-        row.removeFromLeft (3);
+        b->setBounds (g1.removeFromLeft (gw));
+        g1.removeFromLeft (6);
+    }
+    grid.removeFromTop (10);
+    auto g2 = grid.removeFromTop (42);
+    for (auto* b : { &doubleButton, &tempoChangeButton, &clearGridButton })
+    {
+        b->setBounds (g2.removeFromLeft (b == &tempoChangeButton ? gw * 2 + 6 : gw));
+        g2.removeFromLeft (6);
     }
 
-    controls.removeFromTop (gap);
-    row = controls.removeFromTop (rowHeight);
-    row.removeFromLeft (labelWidth);
-    bpmLabel.setBounds (row.removeFromLeft (36));
-    bpmEditor.setBounds (row.removeFromLeft (74));
-    row.removeFromLeft (12);
-    downbeatButton.setBounds (row.removeFromLeft (120));
-    row.removeFromLeft (4);
-    nudgeEarlier.setBounds (row.removeFromLeft (80));
-    row.removeFromLeft (2);
-    nudgeLater.setBounds (row.removeFromLeft (80));
-    row.removeFromLeft (12);
-    halveButton.setBounds (row.removeFromLeft (40));
-    row.removeFromLeft (2);
-    doubleButton.setBounds (row.removeFromLeft (40));
-    row.removeFromLeft (12);
-    tempoChangeButton.setBounds (row.removeFromLeft (150));
-    row.removeFromLeft (12);
-    clearGridButton.setBounds (row.removeFromLeft (100));
+    // Knobs.
+    knobs.removeFromBottom (24);
+    loopKnob.setBounds (knobs.removeFromLeft (knobs.getWidth() / 2).withSizeKeepingCentre (120, 120));
+    jumpKnob.setBounds (knobs.withSizeKeepingCentre (120, 120));
 }
 
 bool PrepPanel::keyPressed (const juce::KeyPress& key)
@@ -832,11 +768,7 @@ bool PrepPanel::keyPressed (const juce::KeyPress& key)
     const bool shift = key.getModifiers().isShiftDown();
     if (key == juce::KeyPress::spaceKey)
     {
-        cuePreviewing = false;
-        if (session.deck().isPlaying())
-            session.deck().pause();
-        else
-            session.deck().play();
+        session.playPressed();
         return true;
     }
     if (key.getModifiers().isCommandDown() || key.getModifiers().isCtrlDown())
@@ -844,13 +776,13 @@ bool PrepPanel::keyPressed (const juce::KeyPress& key)
     if (c == 'q')
     {
         // A key press can't be held like the button, so Q acts as a tap: set the cue, or return to it.
-        cuePressed (true);
-        cuePressed (false);
+        session.cuePressed (true);
+        session.cuePressed (false);
         return true;
     }
     if (c == '[' || c == ']')
     {
-        jumpBeats ((c == '[' ? -1.0 : 1.0) * jumpSizeBox.getSelectedId());
+        session.jumpBeats ((c == '[' ? -1.0 : 1.0) * session.jumpSize);
         return true;
     }
     if (c == '=' || c == '+' || c == '-')
@@ -875,7 +807,7 @@ bool PrepPanel::keyPressed (const juce::KeyPress& key)
     }
     if (c == 'l')
     {
-        saveLoop (snapped (playhead()), loopLengthBox.getSelectedId());
+        saveLoop (snapped (playhead()), loopLength());
         return true;
     }
     if (key.getKeyCode() == juce::KeyPress::leftKey || key.getKeyCode() == juce::KeyPress::rightKey)

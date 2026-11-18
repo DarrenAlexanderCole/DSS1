@@ -23,6 +23,7 @@ public:
     void useSelection();
 
     void paint (juce::Graphics&) override;
+    void paintOverChildren (juce::Graphics&) override;
     void resized() override;
 
     /// Where exports go (inside the user's Music folder).

@@ -31,8 +31,6 @@ TransportBar::TransportBar (Session& s) : session (s), deck (s.deck())
 {
     session.addChangeListener (this);
     changeListenerCallback (nullptr);
-    playButton.onClick = [this] { togglePlay(); };
-    addAndMakeVisible (playButton);
 
     tempoSlider.setRange (-8.0, 8.0, 0.01);
     tempoSlider.setValue (0.0, juce::dontSendNotification);
@@ -44,13 +42,16 @@ TransportBar::TransportBar (Session& s) : session (s), deck (s.deck())
     };
     addAndMakeVisible (tempoSlider);
 
+    hwStyle (tempoResetButton, KeyStyle::cream);
+    tempoResetButton.setButtonText ("RESET");
     tempoResetButton.setTooltip ("Back to the track's own tempo (0 %)");
     tempoResetButton.onClick = [this] { tempoSlider.setValue (0.0, juce::sendNotificationSync); };
     addAndMakeVisible (tempoResetButton);
 
     tempoLabel.setText ("0.00 %", juce::dontSendNotification);
     tempoLabel.setJustificationType (juce::Justification::centredLeft);
-    tempoLabel.setColour (juce::Label::textColourId, Colours::text);
+    tempoLabel.setColour (juce::Label::textColourId, hw::colour::amber);
+    tempoLabel.setFont (hw::vfd (26.0f));
     tempoLabel.setTooltip ("Tempo change, and the track's BPM at this tempo");
     addAndMakeVisible (tempoLabel);
 
@@ -95,10 +96,7 @@ void TransportBar::togglePlay()
     updatePlayButton();
 }
 
-void TransportBar::updatePlayButton()
-{
-    playButton.setButtonText (deck.isPlaying() ? "Pause" : "Play");
-}
+void TransportBar::updatePlayButton() {}
 
 void TransportBar::timerCallback()
 {
@@ -110,29 +108,19 @@ void TransportBar::timerCallback()
 
 void TransportBar::paint (juce::Graphics& g)
 {
-    g.fillAll (Colours::panel);
+    const auto b = getLocalBounds().toFloat();
+    const auto ear = static_cast<float> (hw::RackUnit::earWidth);
+    hw::faceplate (g, b.reduced (ear, 0));
+    hw::rackEar (g, b.withWidth (ear), 2);
+    hw::rackEar (g, b.withLeft (b.getRight() - ear), 2);
 
-    // Title and time.
-    auto top = getLocalBounds().reduced (16, 8).removeFromTop (22);
-    const auto rate = deck.trackSampleRate();
-    const auto length = deck.length();
-    juce::String time;
-    if (rate > 0)
-        time = juce::String (formatTime (deck.position() / rate)) + " / " + juce::String (formatTime (static_cast<double> (length) / rate));
-    g.setColour (Colours::dimText);
-    g.setFont (juce::FontOptions (14.0f));
-    g.drawText (time, top.removeFromRight (200), juce::Justification::centredRight);
-    g.setColour (Colours::text);
-    g.setFont (juce::FontOptions (15.0f, juce::Font::bold));
-    g.drawText (trackTitle, top.removeFromLeft (top.getWidth() / 2), juce::Justification::centredLeft);
-    g.setColour (Colours::dimText);
-    g.setFont (juce::FontOptions (14.0f));
-    g.drawText (trackDetails, top, juce::Justification::centredLeft);
+    hw::silk (g, "OVERVIEW", "CLICK TO JUMP", waveformArea.toFloat().withHeight (16).translated (0, -22));
+    hw::silk (g, "PITCH", juce::String::fromUTF8 ("\xc2\xb1") + "8 %", pitchArea.toFloat().withHeight (16).translated (0, -22));
 
-    // Waveform overview with the played part dimmed and the playhead.
+    // The whole track: played part dim, playhead red.
     const auto area = waveformArea.toFloat();
-    g.setColour (Colours::background);
-    g.fillRoundedRectangle (area, 4.0f);
+    hw::recess (g, area);
+    const auto length = deck.length();
     if (! overview.empty())
     {
         const auto mid = area.getCentreY();
@@ -141,33 +129,42 @@ void TransportBar::paint (juce::Graphics& g)
         const auto columnWidth = area.getWidth() / static_cast<float> (columns);
         for (int c = 0; c < columns; ++c)
         {
-            const auto h = overview[static_cast<std::size_t> (c)] * area.getHeight() * 0.48f;
+            const auto h = overview[static_cast<std::size_t> (c)] * area.getHeight() * 0.44f;
             const auto x = area.getX() + static_cast<float> (c) * columnWidth;
             const bool done = static_cast<float> (c) / static_cast<float> (columns) < played;
-            g.setColour (done ? Colours::dimText.withAlpha (0.6f) : Colours::text.withAlpha (0.85f));
+            g.setColour (done ? hw::colour::amberDim : hw::colour::amber.withAlpha (0.9f));
             g.fillRect (x, mid - h, std::max (columnWidth - 0.5f, 0.5f), h * 2.0f);
         }
         g.setColour (Colours::accent);
         g.fillRect (area.getX() + played * area.getWidth() - 1.0f, area.getY(), 2.0f, area.getHeight());
     }
+    else
+    {
+        hw::glowText (g, session.audioProblem().isNotEmpty() ? "AUDIO: " + session.audioProblem().toUpperCase() : juce::String ("NO TRACK"),
+                      area.reduced (12, 0), hw::vfd (22.0f), hw::colour::amberDim);
+    }
+    hw::glass (g, area);
+
+    hw::recess (g, tempoLabel.getBounds().toFloat().reduced (0, 4));
 }
 
 void TransportBar::resized()
 {
-    auto area = getLocalBounds().reduced (16, 8);
-    area.removeFromTop (26);
-    auto controls = area.removeFromBottom (30);
-    area.removeFromBottom (6);
+    auto area = getLocalBounds().reduced (hw::RackUnit::earWidth, 0).reduced (30, 0);
+    area.removeFromTop (34);
+    area.removeFromBottom (16);
+    auto right = area.removeFromRight (juce::jmin (640, area.getWidth() / 2));
+    area.removeFromRight (28);
     waveformArea = area;
 
-    playButton.setBounds (controls.removeFromLeft (90));
-    controls.removeFromLeft (16);
-    keyLockButton.setBounds (controls.removeFromRight (100));
-    tempoLabel.setBounds (controls.removeFromRight (170));
-    controls.removeFromRight (4);
-    tempoResetButton.setBounds (controls.removeFromRight (60).withSizeKeepingCentre (60, 26));
-    controls.removeFromRight (8);
-    tempoSlider.setBounds (controls.removeFromRight (std::min (320, controls.getWidth())));
+    keyLockButton.setBounds (right.removeFromRight (110).withSizeKeepingCentre (110, 40));
+    right.removeFromRight (10);
+    tempoResetButton.setBounds (right.removeFromRight (70).withSizeKeepingCentre (70, 42));
+    right.removeFromRight (12);
+    tempoLabel.setBounds (right.removeFromRight (230).withSizeKeepingCentre (230, 44));
+    right.removeFromRight (16);
+    pitchArea = right;
+    tempoSlider.setBounds (right.withSizeKeepingCentre (right.getWidth(), 46));
 }
 
 void TransportBar::seekTo (int x)
@@ -210,7 +207,7 @@ void TransportBar::updateTempoLabel()
         else
             base = r->info.bpm;
         if (base)
-            text << "    " << juce::String (*base * (1.0 + percent / 100.0), 1) << " BPM";
+            text << "   " << juce::String (*base * (1.0 + percent / 100.0), 2) << " BPM";
     }
     if (text != tempoLabel.getText())
         tempoLabel.setText (text, juce::dontSendNotification);

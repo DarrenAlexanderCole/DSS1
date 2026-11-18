@@ -12,45 +12,60 @@ namespace dss1::ui
 MainComponent::MainComponent()
 {
     setLookAndFeel (&theme);
+    juce::LookAndFeel::setDefaultLookAndFeel (&theme);
 
     auto catalog = std::make_unique<CatalogPanel> (session);
     auto prep = std::make_unique<PrepPanel> (session);
-
     auto design = std::make_unique<StagePanel> (
-        "Listen & Design", "Hear it, shape it, make your own samples.",
-        juce::StringArray { "Listening deck with real-time effects",
-                            "Recorder for takes",
-                            "XY performance pad and a pad sampler" });
-
+        "Listen / Design", "Hear it, shape it, make your own samples.",
+        juce::StringArray { "Listening deck with real-time effects", "Recorder for takes", "XY performance pad and a pad sampler" });
     auto deliver = std::make_unique<DeliverPanel> (crate);
     catalog->onExportSelected = [this, d = deliver.get()] {
         d->useSelection();
-        stages.setCurrentTabIndex (3);
+        showStage (3);
     };
 
-    const auto bg = Colours::background;
-    stages.setTabBarDepth (44);
-    stages.addTab ("Catalog", bg, catalog.release(), true);
-    stages.addTab ("Prep", bg, prep.release(), true);
-    stages.addTab ("Listen & Design", bg, design.release(), true);
-    stages.addTab ("Deliver", bg, deliver.release(), true);
-    stages.setCurrentTabIndex (0);
-    addAndMakeVisible (stages);
-    addAndMakeVisible (transport);
+    stages.push_back (std::move (catalog));
+    stages.push_back (std::move (prep));
+    stages.push_back (std::move (design));
+    stages.push_back (std::move (deliver));
+    for (auto& s : stages)
+        addChildComponent (*s);
 
-    setSize (1280, 860);
+    header.onStage = [this] (int i) { showStage (i); };
+    addAndMakeVisible (header);
+    addAndMakeVisible (transport);
+    showStage (0);
+
+    setSize (1440, 980);
 }
 
 MainComponent::~MainComponent()
 {
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
     setLookAndFeel (nullptr);
+}
+
+void MainComponent::showStage (int index)
+{
+    currentStage = juce::jlimit (0, static_cast<int> (stages.size()) - 1, index);
+    header.setStage (currentStage);
+    for (std::size_t i = 0; i < stages.size(); ++i)
+        stages[i]->setVisible (static_cast<int> (i) == currentStage);
+}
+
+void MainComponent::paint (juce::Graphics& g)
+{
+    g.fillAll (juce::Colours::black);
 }
 
 void MainComponent::resized()
 {
     auto area = getLocalBounds();
-    transport.setBounds (area.removeFromBottom (130));
-    stages.setBounds (area);
+    header.setBounds (area.removeFromTop (Header::preferredHeight));
+    transport.setBounds (area.removeFromBottom (120));
+    for (auto& s : stages)
+        s->setBounds (area);
 }
 
 } // namespace dss1::ui

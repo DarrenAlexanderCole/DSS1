@@ -10,6 +10,18 @@ with macOS 13 or later.
      and click **Open Anyway**, then confirm.
    - **macOS 13–14:** right-click (or Control-click) DSS1 in Applications, choose **Open**, then **Open** again.
 
+## New look
+
+DSS1 now looks like a rack of worn 90s studio gear. Where things moved:
+
+- **Top unit (every screen):** the stage keys (Catalog, Prep, Listen / Design, Deliver), the track display
+  (title, artist, BPM at the current pitch, key, time, bar), VU meters, and the transport: **|<**, **<<**,
+  **>>**, **CUE** and **PLAY**.
+- **Bottom unit (every screen):** the whole-track overview (click to jump), the **pitch fader** with its BPM
+  readout, **RESET** and the **KEY LOCK** switch.
+- **Prep:** the loop length and beat-jump size are now **knobs** (drag up and down, or scroll). Hot cues are
+  backlit pads.
+
 ## Try it
 
 DSS1 opens on **Catalog**.

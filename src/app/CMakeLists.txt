@@ -1,3 +1,17 @@
+# Fonts (SIL Open Font License, see assets/fonts/OFL-*.txt) and the panel textures (made for DSS1).
+juce_add_binary_data(dss1_assets
+    NAMESPACE dss1_assets
+    SOURCES
+        ${PROJECT_SOURCE_DIR}/assets/fonts/ArchivoNarrow-Bold.ttf
+        ${PROJECT_SOURCE_DIR}/assets/fonts/ArchivoNarrow-Medium.ttf
+        ${PROJECT_SOURCE_DIR}/assets/fonts/Michroma-Regular.ttf
+        ${PROJECT_SOURCE_DIR}/assets/fonts/VT323-Regular.ttf
+        ${PROJECT_SOURCE_DIR}/assets/textures/panel-wear.png
+        ${PROJECT_SOURCE_DIR}/assets/textures/grime.png
+        ${PROJECT_SOURCE_DIR}/assets/textures/edge-wear.png
+        ${PROJECT_SOURCE_DIR}/assets/textures/aluminium.png
+        ${PROJECT_SOURCE_DIR}/assets/textures/ink-wear.png)
+
 juce_add_gui_app(DSS1
     PRODUCT_NAME          "DSS1"
     COMPANY_NAME          "DSS1"
@@ -18,6 +32,8 @@ target_sources(DSS1 PRIVATE
     Session.cpp
     StagePanel.cpp
     TestExportPanel.cpp
+    Hardware.cpp
+    Header.cpp
     Theme.cpp
     TransportBar.cpp
     WaveformView.cpp)
@@ -35,6 +51,7 @@ target_link_libraries(DSS1
         dss1_core
         dss1_io
         dss1_engine
+        dss1_assets
         juce::juce_audio_devices
         juce::juce_gui_extra
     PUBLIC

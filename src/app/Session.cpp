@@ -51,6 +51,8 @@ void Session::load (const StoredTrack& track, bool play)
 {
     engine.deck().pause();
     current = track;
+    cuePreviewing = false;
+    cue = ! track.record.memoryCues.empty() ? track.record.memoryCues.front().frame : 0;
     currentState = State::loading;
     loadProblem.clear();
     decoded.reset();
@@ -96,6 +98,98 @@ void Session::load (const StoredTrack& track, bool play)
             s->sendChangeMessage();
         });
     }).detach();
+}
+
+void Session::cuePressed (bool down)
+{
+    if (currentState != State::loaded || ! current)
+        return;
+    auto& deck = engine.deck();
+    if (down)
+    {
+        if (deck.isPlaying() && ! cuePreviewing)
+        {
+            deck.pause();
+            deck.seek (cue);
+            sendChangeMessage();
+            return;
+        }
+        const auto here = static_cast<Frame> (std::llround (deck.position()));
+        if (std::abs (here - cue) > static_cast<Frame> (0.005 * current->record.sampleRate))
+        {
+            cue = snap (here);
+            deck.seek (cue);
+            sendChangeMessage();
+            return;
+        }
+        cuePreviewing = true;
+        deck.play();
+        return;
+    }
+    if (cuePreviewing)
+    {
+        cuePreviewing = false;
+        deck.pause();
+        deck.seek (cue);
+    }
+}
+
+void Session::playPressed()
+{
+    cuePreviewing = false;
+    if (engine.deck().isPlaying())
+        engine.deck().pause();
+    else if (currentState == State::loaded)
+        engine.deck().play();
+}
+
+void Session::jumpBeats (double beats)
+{
+    if (currentState != State::loaded || ! current)
+        return;
+    const auto& r = current->record;
+    const auto now = engine.deck().position();
+    const auto target = r.grid && ! r.grid->isEmpty() ? r.grid->frameAt (r.grid->beatAt (now) + beats)
+                                                       : now + beats * 60.0 / r.info.bpm.value_or (120.0) * r.sampleRate;
+    engine.deck().seek (std::clamp<Frame> (static_cast<Frame> (std::llround (target)), 0, std::max<Frame> (0, r.lengthFrames - 1)));
+}
+
+juce::String Session::timeText() const
+{
+    if (! current || current->record.sampleRate <= 0)
+        return "-:--.---";
+    const auto seconds = engine.deck().position() / current->record.sampleRate;
+    const auto whole = static_cast<int> (seconds);
+    return juce::String (whole / 60) + ":" + juce::String (whole % 60).paddedLeft ('0', 2) + "."
+           + juce::String (static_cast<int> ((seconds - whole) * 1000)).paddedLeft ('0', 3);
+}
+
+juce::String Session::barText() const
+{
+    if (! current || ! current->record.grid || current->record.grid->isEmpty())
+        return "---.-";
+    const auto& grid = *current->record.grid;
+    const auto pos = engine.deck().position();
+    const auto beat = grid.nearestBeat (pos);
+    const auto perBar = static_cast<long long> (grid.beatsPerBarAt (pos));
+    const auto bar = static_cast<long long> (std::floor (static_cast<double> (beat.index) / static_cast<double> (perBar)));
+    const auto inBar = static_cast<long long> (beat.index) - bar * perBar;
+    return juce::String (bar + 1).paddedLeft ('0', 3) + "." + juce::String (inBar + 1);
+}
+
+std::optional<double> Session::playingBpm() const
+{
+    if (! current)
+        return std::nullopt;
+    const auto& r = current->record;
+    std::optional<double> base;
+    if (r.grid && ! r.grid->isEmpty() && (! r.grid->isConstantTempo() || ! r.info.bpm))
+        base = r.grid->bpmAt (engine.deck().position());
+    else
+        base = r.info.bpm;
+    if (! base)
+        return std::nullopt;
+    return *base * engine.deck().tempo();
 }
 
 void Session::update (const TrackRecord& record)

@@ -7,8 +7,8 @@
 namespace dss1::ui
 {
 
-/// The deck's controls along the bottom of the window, on every stage: the loaded track's waveform (click to
-/// jump), play, position, tempo and key lock.
+/// The bottom rack unit, on every stage: the whole track's waveform (click to jump), the pitch fader with its
+/// BPM readout and reset key, and the key lock switch.
 class TransportBar : public juce::Component, private juce::Timer, private juce::ChangeListener
 {
 public:
@@ -33,9 +33,8 @@ private:
     engine::Deck& deck;
     juce::String trackTitle { "No track loaded" }, trackDetails { "Double-click a track to play it" };
     std::vector<float> overview;
-    juce::Rectangle<int> waveformArea;
+    juce::Rectangle<int> waveformArea, pitchArea;
 
-    juce::TextButton playButton { "Play" };
     juce::Slider tempoSlider { juce::Slider::LinearHorizontal, juce::Slider::NoTextBox };
     juce::Label tempoLabel;
     juce::ToggleButton keyLockButton { "Key lock" };

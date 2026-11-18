@@ -1,5 +1,6 @@
 #include "WaveformView.h"
 #include "Theme.h"
+#include "Hardware.h"
 
 #include "core/SeratoTags.h"
 
@@ -161,18 +162,20 @@ void WaveformView::resized()
 void WaveformView::paint (juce::Graphics& g)
 {
     auto bounds = getLocalBounds().toFloat();
-    g.setColour (Colours::background);
-    g.fillRoundedRectangle (bounds, 6.0f);
+    g.setColour (hw::colour::glassBlack);
+    g.fillRoundedRectangle (bounds, 4.0f);
+    // Faint scan lines, like an old display.
+    g.setColour (hw::colour::amber.withAlpha (0.025f));
+    for (float y = bounds.getY(); y < bounds.getBottom(); y += 3.0f)
+        g.fillRect (bounds.getX(), y, bounds.getWidth(), 1.0f);
 
     const auto* record = session.record();
     if (record == nullptr || session.state() != Session::State::loaded)
     {
-        g.setColour (Colours::dimText);
-        g.setFont (juce::FontOptions (16.0f));
-        g.drawText (session.state() == Session::State::loading ? "Loading..."
-                    : session.state() == Session::State::failed ? "Couldn't open this track: " + session.problem()
-                                                                  : "Choose a track in Catalog (double-click it), then prepare it here.",
-                    bounds, juce::Justification::centred);
+        hw::glowText (g, session.state() == Session::State::loading ? "LOADING..."
+                         : session.state() == Session::State::failed ? "COULDN'T OPEN THIS TRACK: " + session.problem().toUpperCase()
+                                                                       : "CHOOSE A TRACK IN CATALOG (DOUBLE-CLICK IT), THEN PREP IT HERE",
+                      bounds, hw::vfd (26.0f), hw::colour::amberMid, juce::Justification::centred);
         return;
     }
 
@@ -212,7 +215,7 @@ void WaveformView::paintWaveform (juce::Graphics& g, juce::Rectangle<float> area
             hi = std::max (hi, peaks.high[b]);
         }
         const bool before = frameAtX (static_cast<float> (x)) < played;
-        g.setColour (before ? Colours::text.withAlpha (0.55f) : Colours::text.withAlpha (0.9f));
+        g.setColour (before ? hw::colour::amberDim : hw::colour::amber);
         g.fillRect (static_cast<float> (x), mid - hi * scale, 1.0f, std::max (1.0f, (hi - lo) * scale));
     }
 }
@@ -241,8 +244,9 @@ void WaveformView::paintGrid (juce::Graphics& g, juce::Rectangle<float> area, co
             const auto bar = static_cast<std::int64_t> (std::floor (static_cast<double> (beat.index) / grid.beatsPerBarAt (beat.frame))) + 1;
             if (pixelsPerBeat * grid.beatsPerBarAt (beat.frame) >= 28.0)
             {
-                g.setColour (Colours::dimText);
-                g.drawText (juce::String (bar), juce::Rectangle<float> (x + 3, area.getY() + 1, 40, 12), juce::Justification::left);
+                g.setColour (hw::colour::amberMid);
+                g.setFont (hw::vfd (16.0f));
+                g.drawText (juce::String (bar), juce::Rectangle<float> (x + 3, area.getY() + 1, 40, 14), juce::Justification::left);
             }
         }
         else

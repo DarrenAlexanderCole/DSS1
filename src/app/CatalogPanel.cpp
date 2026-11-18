@@ -45,13 +45,18 @@ CatalogPanel::CatalogPanel (Session& s) : session (s), crate (s.library())
     header.addColumn ("Key", key, 120, 60, 200, columnFlags);
     header.addColumn ("Loudness", loudness, 100, 60, 160, columnFlags);
     header.setSortColumnId (title, true);
-    header.setColour (juce::TableHeaderComponent::backgroundColourId, Colours::panel);
-    header.setColour (juce::TableHeaderComponent::textColourId, Colours::dimText);
+    header.setColour (juce::TableHeaderComponent::outlineColourId, juce::Colours::transparentBlack);
+    header.setColour (juce::TableHeaderComponent::textColourId, hw::colour::amberMid);
     table.setColour (juce::ListBox::backgroundColourId, Colours::background);
-    table.setRowHeight (28);
+    table.setRowHeight (30);
+    table.getHeader().setSize (table.getHeader().getWidth(), 30);
     table.setMultipleSelectionEnabled (true);
     addAndMakeVisible (table);
 
+    hwStyle (addButton, KeyStyle::cream);
+    hwStyle (findButton, KeyStyle::cue);
+    addButton.setButtonText ("ADD MUSIC");
+    foldersButton.setButtonText ("FOLDERS");
     addButton.onClick = [this] {
         chooser = std::make_unique<juce::FileChooser> ("Add music: files, folders or zips",
                                                        juce::File::getSpecialLocation (juce::File::userMusicDirectory));
@@ -73,7 +78,9 @@ CatalogPanel::CatalogPanel (Session& s) : session (s), crate (s.library())
     findButton.onClick = [this] { chooseMissingFolder(); };
     addChildComponent (findButton);
 
-    statusLabel.setColour (juce::Label::textColourId, Colours::dimText);
+    statusLabel.setColour (juce::Label::textColourId, hw::colour::amber);
+    statusLabel.setFont (hw::vfd (22.0f));
+    statusLabel.setBorderSize ({ 0, 12, 0, 8 });
     statusLabel.setJustificationType (juce::Justification::centredLeft);
     addAndMakeVisible (statusLabel);
 
@@ -102,7 +109,7 @@ void CatalogPanel::refreshRows()
     rows = crate.tracks();
     missing = crate.missing();
     findButton.setVisible (! missing.empty());
-    findButton.setButtonText ("Find " + juce::String (missing.size()) + " Missing...");
+    findButton.setButtonText ("FIND " + juce::String (missing.size()) + " MISSING");
     resized();
     sortRows();
     table.updateContent();
@@ -115,7 +122,7 @@ void CatalogPanel::refreshRows()
     if (status.isEmpty())
         status = rows.empty() ? "Drop music here, or click Add Music: files, folders or record-pool zips."
                               : juce::String (rows.size()) + (rows.size() == 1 ? " track" : " tracks");
-    statusLabel.setText (status, juce::dontSendNotification);
+    statusLabel.setText (status.toUpperCase(), juce::dontSendNotification);
     repaint();
 }
 
@@ -150,9 +157,11 @@ int CatalogPanel::getNumRows()
 void CatalogPanel::paintRowBackground (juce::Graphics& g, int row, int, int, bool selected)
 {
     if (selected)
-        g.fillAll (Colours::accent.withAlpha (0.35f));
+        g.fillAll (hw::colour::amber.withAlpha (0.22f));
     else if (row % 2 == 1)
-        g.fillAll (Colours::panel.withAlpha (0.5f));
+        g.fillAll (juce::Colour (0x0affb060));
+    g.setColour (juce::Colours::black.withAlpha (0.5f));
+    g.fillRect (0, g.getClipBounds().getBottom() - 1, g.getClipBounds().getWidth(), 1);
 }
 
 juce::String CatalogPanel::cellText (const StoredTrack& t, int column) const
@@ -186,10 +195,20 @@ void CatalogPanel::paintCell (juce::Graphics& g, int row, int column, int width,
     auto text = cellText (t, column);
     if (gone && column == title)
         text = "Missing:  " + text;
-    g.setColour (gone ? Colours::dimText.withAlpha (0.7f) : column == title ? Colours::text : Colours::text.withAlpha (0.8f));
-    g.setFont (juce::FontOptions (14.0f, gone && column == title ? juce::Font::italic : juce::Font::plain));
-    g.drawText (text, 8, 0, width - 16, height,
-                numeric ? juce::Justification::centredRight : juce::Justification::centredLeft, true);
+    const bool display = numeric || column == key;
+    const auto area = juce::Rectangle<float> (8, 0, static_cast<float> (width - 16), static_cast<float> (height));
+    const auto just = numeric ? juce::Justification::centredRight : juce::Justification::centredLeft;
+    if (display)
+    {
+        // Numbers read like the display.
+        g.setFont (hw::vfd (21.0f));
+        g.setColour (gone ? hw::colour::amberDim : hw::colour::amber.withAlpha (0.92f));
+        g.drawText (text.toUpperCase(), area, just, true);
+        return;
+    }
+    g.setColour (gone ? Colours::dimText.withAlpha (0.7f) : column == title ? hw::colour::silk : hw::colour::silk.withAlpha (0.72f));
+    g.setFont (hw::label (column == title ? 16.0f : 15.0f, column == title && ! gone));
+    g.drawText (text, area, just, true);
 }
 
 void CatalogPanel::sortOrderChanged (int column, bool ascending)
@@ -344,11 +363,28 @@ void CatalogPanel::play (int row)
 
 void CatalogPanel::paint (juce::Graphics& g)
 {
-    g.fillAll (Colours::background);
+    const auto b = getLocalBounds().toFloat();
+    const auto ear = static_cast<float> (hw::RackUnit::earWidth);
+    hw::faceplate (g, b.reduced (ear, 0));
+    hw::rackEar (g, b.withWidth (ear), 5);
+    hw::rackEar (g, b.withLeft (b.getRight() - ear), 5);
+    g.setColour (juce::Colours::black);
+    g.fillRect (b.withTop (b.getBottom() - 1.0f));
+
+    hw::silk (g, "LIBRARY", "CATALOG", addButton.getBounds().toFloat().withWidth (300).withHeight (16).translated (0, -22));
+    hw::silk (g, "STATUS", {}, statusLabel.getBounds().toFloat().withHeight (16).translated (0, -22));
+    hw::recess (g, statusLabel.getBounds().toFloat());
+    hw::recess (g, table.getBounds().toFloat());
+}
+
+void CatalogPanel::paintOverChildrenGlass (juce::Graphics& g)
+{
+    hw::glass (g, statusLabel.getBounds().toFloat());
 }
 
 void CatalogPanel::paintOverChildren (juce::Graphics& g)
 {
+    paintOverChildrenGlass (g);
     if (! dragOver && ! rows.empty())
         return;
     const auto area = table.getBounds().reduced (24).toFloat();
@@ -357,31 +393,33 @@ void CatalogPanel::paintOverChildren (juce::Graphics& g)
         g.setColour (Colours::accent.withAlpha (0.12f));
         g.fillRoundedRectangle (area, 12.0f);
     }
-    g.setColour (dragOver ? Colours::accent : Colours::dimText);
+    g.setColour (dragOver ? hw::colour::amber : hw::colour::amberDim);
     g.drawRoundedRectangle (area, 12.0f, 1.5f);
-    g.setFont (juce::FontOptions (18.0f, juce::Font::bold));
-    g.drawText (dragOver ? "Drop to add to your crate" : "Drop music here: files, folders or record-pool zips",
-                area.toNearestInt(), juce::Justification::centred);
+    hw::glowText (g, dragOver ? "DROP TO ADD TO YOUR CRATE" : "DROP MUSIC HERE: FILES, FOLDERS OR RECORD-POOL ZIPS",
+                  area, hw::vfd (28.0f), dragOver ? hw::colour::amber : hw::colour::amberMid, juce::Justification::centred);
 }
 
 void CatalogPanel::resized()
 {
-    auto area = getLocalBounds();
+    auto area = getLocalBounds().reduced (hw::RackUnit::earWidth, 0).reduced (30, 0);
+    area.removeFromTop (38);
+    area.removeFromBottom (22);
 
-    auto top = area.removeFromTop (52).reduced (16, 10);
+    auto top = area.removeFromTop (44);
     addButton.setBounds (top.removeFromLeft (130));
     top.removeFromLeft (8);
-    foldersButton.setBounds (top.removeFromLeft (90));
+    foldersButton.setBounds (top.removeFromLeft (110));
     top.removeFromLeft (8);
     if (findButton.isVisible())
     {
-        findButton.setBounds (top.removeFromRight (170));
-        top.removeFromRight (8);
+        findButton.setBounds (top.removeFromLeft (180));
+        top.removeFromLeft (8);
     }
-    top.removeFromLeft (8);
-    statusLabel.setBounds (top);
+    top.removeFromLeft (24);
+    statusLabel.setBounds (top.reduced (4, 3));
 
-    table.setBounds (area.reduced (8, 0));
+    area.removeFromTop (18);
+    table.setBounds (area.reduced (4));
 }
 
 void CatalogPanel::fileDragEnter (const juce::StringArray&, int, int)

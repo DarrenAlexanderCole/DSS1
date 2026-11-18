@@ -8,6 +8,7 @@
 #include <juce_events/juce_events.h>
 
 #include <memory>
+#include <functional>
 #include <optional>
 
 namespace dss1::ui
@@ -53,6 +54,28 @@ public:
     /// Empty when the audio output started fine.
     const juce::String& audioProblem() const noexcept { return engine.problem(); }
 
+    // --- Transport, shared by every stage -------------------------------------------------------------------
+
+    /// CDJ-style CUE. Paused somewhere new: sets the cue point there. Paused on it: plays while held. Playing:
+    /// back to the cue point, stopped. Call with true on press and false on release.
+    void cuePressed (bool down);
+    void playPressed();
+    /// Moves by `beats` on the grid, keeping the place within the beat (or by tempo without a grid).
+    void jumpBeats (double beats);
+    int jumpSize = 16;  ///< beats per jump
+    /// Where a new cue point lands (Prep sets this to snap to the grid when snapping is on).
+    std::function<Frame (Frame)> snap = [] (Frame f) { return f; };
+    Frame cuePoint() const noexcept { return cue; }
+    bool isCuePreviewing() const noexcept { return cuePreviewing; }
+
+    /// "1:23.456" and "012.3" (bar.beat; empty without a grid) for the playhead.
+    juce::String timeText() const;
+    juce::String barText() const;
+    /// The track's BPM at the deck's current tempo, if known.
+    std::optional<double> playingBpm() const;
+
+    float outputLevel (int channel) const noexcept { return engine.level (channel); }
+
     /// "Artist  |  128.0 BPM  |  8A F minor" for the loaded track.
     juce::String details() const;
     juce::String title() const;
@@ -69,6 +92,8 @@ private:
     WavePeaks detail;
     std::vector<float> overviewColumns;
     int generation = 0;
+    Frame cue = 0;
+    bool cuePreviewing = false;
 
     JUCE_DECLARE_WEAK_REFERENCEABLE (Session)
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Session)

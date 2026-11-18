@@ -19,6 +19,7 @@ public:
     ~PrepPanel() override;
 
     void paint (juce::Graphics&) override;
+    void paintOverChildren (juce::Graphics&) override;
     void resized() override;
     bool keyPressed (const juce::KeyPress&) override;
     void visibilityChanged() override;
@@ -46,9 +47,6 @@ private:
     void deleteLoop (std::size_t slot);
     std::optional<std::size_t> activeLoopSlot() const;
     void stepBeats (double beats);
-    void jumpBeats (double beats);
-    void cuePressed (bool down);
-    juce::String positionText() const;
 
     // Grid.
     void setDownbeat (Frame at);
@@ -72,15 +70,11 @@ private:
 
     std::array<std::unique_ptr<juce::TextButton>, TrackRecord::hotCueSlots> hotButtons;
     std::array<std::unique_ptr<juce::TextButton>, TrackRecord::savedLoopSlots> loopButtons;
-    juce::TextButton startButton { "|<" }, jumpBackButton { "<<" }, jumpForwardButton { ">>" };
-    juce::ComboBox jumpSizeBox;
-    juce::TextButton cueButton { "CUE" }, playButton { "Play" };
-    Frame cuePoint = -1;  ///< -1 until a track is loaded
-    bool cuePreviewing = false;
-    bool cueWasDown = false;
 
     juce::TextButton addMemoryButton { "+ Memory Cue" }, prevMemoryButton { "<" }, nextMemoryButton { ">" };
-    juce::ComboBox loopLengthBox;
+    juce::Slider loopKnob, jumpKnob;
+    juce::Rectangle<int> waveUnit, controlUnit, messageArea;
+    int loopLength() const;
     juce::TextButton saveLoopButton { "Save Loop" }, loopInButton { "Loop In" }, loopOutButton { "Loop Out" }, exitLoopButton { "Exit Loop" }, deleteLoopButton { "Delete Loop" };
 
     juce::Label bpmLabel;

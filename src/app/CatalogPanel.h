@@ -51,6 +51,7 @@ private:
     void refreshRows();
     void sortRows();
     void play (int row);
+    void paintOverChildrenGlass (juce::Graphics&);
     juce::String cellText (const StoredTrack& t, int column) const;
     std::vector<std::int64_t> selectedIds() const;
     void removeSelected();

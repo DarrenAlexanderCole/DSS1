@@ -55,11 +55,21 @@ DeliverPanel::DeliverPanel (Crate& c) : crate (c)
             settings->setValue ("deliverScope", scopeBox.getSelectedId());
         refreshCounts();
     };
-    chosenLabel.setColour (juce::Label::textColourId, Colours::dimText);
+    chosenLabel.setColour (juce::Label::textColourId, hw::colour::amber);
+    chosenLabel.setFont (hw::vfd (22.0f));
+    chosenLabel.setBorderSize ({ 0, 12, 0, 8 });
     chosenLabel.setJustificationType (juce::Justification::centredLeft);
     addAndMakeVisible (chosenLabel);
     addAndMakeVisible (scopeBox);
 
+    rekordboxButton.setButtonText ("EXPORT FOR REKORDBOX");
+    seratoButton.setButtonText ("EXPORT COPIES FOR SERATO");
+    rekordboxReveal.setButtonText ("SHOW IN FINDER");
+    seratoReveal.setButtonText ("SHOW IN FINDER");
+    timingButton.setButtonText ("EXPORT TIMING CHECK");
+    seratoGrid.setButtonText ("BEAT GRID");
+    hwStyle (rekordboxButton, KeyStyle::cue);
+    hwStyle (seratoButton, KeyStyle::cue);
     rekordboxButton.onClick = [this] { exportRekordbox(); };
     seratoButton.onClick = [this] { exportSerato(); };
     rekordboxReveal.onClick = [] { rekordboxXmlFile().revealToUser(); };
@@ -88,7 +98,9 @@ DeliverPanel::DeliverPanel (Crate& c) : crate (c)
     };
     addAndMakeVisible (timingButton);
 
-    status.setColour (juce::Label::textColourId, Colours::text);
+    status.setColour (juce::Label::textColourId, hw::colour::amber);
+    status.setFont (hw::vfd (22.0f));
+    status.setBorderSize ({ 0, 12, 0, 8 });
     status.setJustificationType (juce::Justification::centredLeft);
     addAndMakeVisible (status);
 
@@ -282,65 +294,78 @@ void DeliverPanel::exportSerato()
 
 void DeliverPanel::paint (juce::Graphics& g)
 {
-    g.fillAll (Colours::background);
-    auto area = getLocalBounds().reduced (24, 16);
+    const auto b = getLocalBounds().toFloat();
+    const auto ear = static_cast<float> (hw::RackUnit::earWidth);
+    hw::faceplate (g, b.reduced (ear, 0));
+    hw::rackEar (g, b.withWidth (ear), 5);
+    hw::rackEar (g, b.withLeft (b.getRight() - ear), 5);
 
-    g.setColour (Colours::text);
-    g.setFont (juce::FontOptions (26.0f, juce::Font::bold));
-    g.drawText ("Deliver", area.removeFromTop (34), juce::Justification::centredLeft);
-    g.setColour (Colours::dimText);
-    g.setFont (juce::FontOptions (14.0f));
-    g.drawText ("Send your prep to Rekordbox and Serato. Your music files are never changed.", area.removeFromTop (22),
-                juce::Justification::centredLeft);
+    hw::silk (g, "DELIVER", "YOUR MUSIC FILES ARE NEVER CHANGED", scopeBox.getBounds().toFloat().withWidth (500).withHeight (16).translated (0, -24));
+    hw::recess (g, chosenLabel.getBounds().toFloat());
 
-    const auto card = [&] (juce::Rectangle<int> r, const juce::String& title, const char* how) {
-        g.setColour (Colours::panel);
-        g.fillRoundedRectangle (r.toFloat(), 8.0f);
-        auto inner = r.reduced (18, 14);
-        g.setColour (Colours::text);
-        g.setFont (juce::FontOptions (18.0f, juce::Font::bold));
-        g.drawText (title, inner.removeFromTop (26), juce::Justification::centredLeft);
-        inner.removeFromTop (44);  // buttons
-        g.setColour (Colours::dimText);
-        g.setFont (juce::FontOptions (13.5f));
-        g.drawFittedText (how, inner.removeFromTop (60), juce::Justification::topLeft, 4, 1.0f);
+    // Two modules, each in its own sunken bay.
+    const auto module = [&] (juce::Rectangle<int> r, const juce::String& title, const juce::String& sub, const char* how) {
+        const auto rf = r.toFloat();
+        g.setColour (juce::Colours::black.withAlpha (0.35f));
+        g.fillRoundedRectangle (rf, 4.0f);
+        g.setColour (juce::Colours::white.withAlpha (0.06f));
+        g.drawRoundedRectangle (rf.reduced (0.5f), 4.0f, 1.0f);
+        auto inner = rf.reduced (22, 18);
+        hw::silk (g, title, sub, inner.removeFromTop (20), juce::Justification::centredLeft, 15.0f);
+        inner.removeFromTop (62);  // keys
+        g.setColour (hw::colour::silk.withAlpha (0.7f));
+        g.setFont (hw::label (15.0f, false));
+        g.drawFittedText (how, inner.removeFromTop (110).toNearestInt(), juce::Justification::topLeft, 6, 1.0f);
     };
-    card (rekordboxCard, "Rekordbox", rekordboxHow);
-    card (seratoCard, "Serato", seratoHow);
+    module (rekordboxCard, "REKORDBOX", "XML COLLECTION", rekordboxHow);
+    module (seratoCard, "SERATO", "TAGGED COPIES", seratoHow);
+
+    hw::silk (g, "STATUS", {}, status.getBounds().toFloat().withHeight (16).translated (0, -22));
+    hw::recess (g, status.getBounds().toFloat());
+}
+
+void DeliverPanel::paintOverChildren (juce::Graphics& g)
+{
+    hw::glass (g, chosenLabel.getBounds().toFloat());
+    hw::glass (g, status.getBounds().toFloat());
 }
 
 void DeliverPanel::resized()
 {
-    auto area = getLocalBounds().reduced (24, 16);
-    area.removeFromTop (64);
-    auto scopeRow = area.removeFromTop (30);
-    scopeBox.setBounds (scopeRow.removeFromLeft (320));
+    auto area = getLocalBounds().reduced (hw::RackUnit::earWidth, 0).reduced (30, 0);
+    area.removeFromTop (44);
+    area.removeFromBottom (24);
+    auto scopeRow = area.removeFromTop (46);
+    scopeBox.setBounds (scopeRow.removeFromLeft (380));
     scopeRow.removeFromLeft (16);
-    chosenLabel.setBounds (scopeRow);
-    area.removeFromTop (16);
+    chosenLabel.setBounds (scopeRow.reduced (4, 4));
+    area.removeFromTop (22);
 
-    const auto layoutCard = [&] (juce::Rectangle<int> r, juce::TextButton& action, juce::TextButton& reveal, juce::Component* extra) {
-        auto inner = r.reduced (18, 14);
+    timingButton.setBounds (area.removeFromBottom (42).removeFromLeft (220));
+    area.removeFromBottom (16);
+    status.setBounds (area.removeFromBottom (46).reduced (4, 4));
+    area.removeFromBottom (34);
+
+    auto modules = area;
+    rekordboxCard = modules.removeFromLeft (modules.getWidth() / 2 - 10);
+    modules.removeFromLeft (20);
+    seratoCard = modules;
+
+    const auto layoutModule = [&] (juce::Rectangle<int> r, juce::TextButton& action, juce::TextButton& reveal, juce::Component* extra) {
+        auto inner = r.reduced (22, 18);
         inner.removeFromTop (30);
-        auto row = inner.removeFromTop (32);
-        action.setBounds (row.removeFromLeft (220));
-        row.removeFromLeft (8);
-        reveal.setBounds (row.removeFromLeft (130));
+        auto row = inner.removeFromTop (46);
+        action.setBounds (row.removeFromLeft (240));
+        row.removeFromLeft (10);
+        reveal.setBounds (row.removeFromLeft (150));
         if (extra != nullptr)
         {
-            row.removeFromLeft (16);
+            row.removeFromLeft (20);
             extra->setBounds (row.removeFromLeft (180));
         }
     };
-    rekordboxCard = area.removeFromTop (150);
-    area.removeFromTop (14);
-    seratoCard = area.removeFromTop (150);
-    layoutCard (rekordboxCard, rekordboxButton, rekordboxReveal, nullptr);
-    layoutCard (seratoCard, seratoButton, seratoReveal, &seratoGrid);
-
-    area.removeFromTop (14);
-    status.setBounds (area.removeFromTop (28));
-    timingButton.setBounds (getLocalBounds().reduced (24, 16).removeFromBottom (30).removeFromLeft (200));
+    layoutModule (rekordboxCard, rekordboxButton, rekordboxReveal, nullptr);
+    layoutModule (seratoCard, seratoButton, seratoReveal, &seratoGrid);
 }
 
 } // namespace dss1::ui

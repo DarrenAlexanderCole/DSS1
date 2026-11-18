@@ -133,6 +133,19 @@ FLAC and M4A keep Serato data differently (Vorbis comments / MP4 atoms); for now
 About 2 seconds per 5-minute track on a laptop (release build). The Crate runs analysis on a background
 thread, one track at a time, and saves results with the track.
 
+## Look
+
+DSS1 looks like worn 90s studio rack gear (decided with the user, 2026-11-18, from a design canvas). Every
+screen is rack units: aluminium ears, a black anodised faceplate with scratches, grime and edge wear, Phillips
+screws, silk-screened labels with worn ink, cream VU meters, fluted knobs, chrome toggles, square keys and an
+orange vacuum-fluorescent-style display. `src/app/Hardware.h` draws those pieces; `src/app/Theme.h` is the
+LookAndFeel that makes every JUCE control match (key styles: dark, cream, cue, play, pad). Fonts and textures
+are compiled in (assets/README.md).
+
+The window: the header unit (badge, VU meters fed by the engine's output RMS, the track display, stage keys,
+transport keys) on top, the stage's units in the middle, the deck unit (overview, pitch fader, key lock) at the
+bottom. Transport (CUE, play, beat jump) lives in Session, so it works on every stage.
+
 ## Prep
 
 `src/app/Session.h` holds the track on the deck for every stage: Catalog loads it, Prep edits it, the
