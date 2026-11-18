@@ -1,4 +1,4 @@
-**This is an early test build of DSS1 V2.** It runs on Apple Silicon and Intel Macs
+**This is an early test build of DSS1 V2.**  It runs on Apple Silicon and Intel Macs
 with macOS 13 or later.
 
 ## Install
