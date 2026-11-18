@@ -18,7 +18,7 @@ DSS1 now looks like a rack of worn 90s studio gear. Where things moved:
   (title, artist, BPM at the current pitch, key, time, bar), VU meters, and the transport: **|<**, **<<**,
   **>>**, **CUE** and **PLAY**.
 - **Bottom unit (every screen):** the whole-track overview (click to jump), the **pitch fader** with its BPM
-  readout, **RESET** and the **KEY LOCK** switch.
+  readout, **RANGE** keys (8%, 16% or 50%), **RESET** and the **KEY LOCK** switch.
 - **Prep:** the loop length and beat-jump size are now **knobs** (drag up and down, or scroll). Hot cues are
   backlit pads.
 
@@ -82,6 +82,8 @@ just those. The line next to the menu says which tracks will go.
 - **Export Copies for Serato** copies the tracks into Music → DSS1 for Serato with your cues and loops inside.
   Drag that folder into Serato. Exporting again replaces the copies. **Include beat grid** is off unless you
   turn it on. FLAC isn't supported for Serato yet.
+- **Destination:** each export shows where it goes. **CHANGE...** picks another file (Rekordbox) or folder
+  (Serato). DSS1 won't put Serato copies inside a watched folder, and never replaces an original.
 - **Export Timing Check...** is still at the bottom.
 
 ## What to tell me

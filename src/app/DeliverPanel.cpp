@@ -1,5 +1,6 @@
 #include "DeliverPanel.h"
 #include "TestExportPanel.h"
+#include "Settings.h"
 #include "Theme.h"
 
 #include "core/Deliver.h"
@@ -14,7 +15,7 @@ namespace
     enum Scope { prepared = 1, everything = 2, selection = 3 };
 
     const char* const rekordboxHow =
-        "Writes one file that points at your music; your files aren't touched.\n"
+        "Writes one file that points at your music; your files aren't touched. "
         "In Rekordbox: Preferences > Advanced > Database > rekordbox xml, choose the file. Then in the sidebar "
         "open rekordbox xml > Playlists > DSS1, select the tracks, right-click > Import To Collection.";
 
@@ -31,24 +32,67 @@ namespace
     juce::File fileFor (const StoredTrack& t) { return juce::File (juce::String::fromUTF8 (t.record.identity.path.c_str())); }
 }
 
-juce::File DeliverPanel::rekordboxXmlFile()
+juce::File DeliverPanel::rekordboxXmlFile() const
 {
+    const auto chosen = settings->getValue ("rekordboxXml");
+    if (chosen.isNotEmpty() && juce::File::isAbsolutePath (chosen))
+        return juce::File (chosen);
     return juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile ("DSS1 Exports").getChildFile ("DSS1 rekordbox.xml");
 }
 
-juce::File DeliverPanel::seratoFolder()
+juce::File DeliverPanel::seratoFolder() const
 {
+    const auto chosen = settings->getValue ("seratoFolder");
+    if (chosen.isNotEmpty() && juce::File::isAbsolutePath (chosen))
+        return juce::File (chosen);
     return juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile ("DSS1 for Serato");
+}
+
+void DeliverPanel::chooseRekordboxFile()
+{
+    chooser = std::make_unique<juce::FileChooser> ("Where should the Rekordbox file go?", rekordboxXmlFile(), "*.xml");
+    chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
+                              | juce::FileBrowserComponent::warnAboutOverwriting,
+                          [this] (const juce::FileChooser& fc) {
+                              auto f = fc.getResult();
+                              if (f == juce::File())
+                                  return;
+                              if (! f.hasFileExtension ("xml"))
+                                  f = f.withFileExtension ("xml");
+                              settings->setValue ("rekordboxXml", f.getFullPathName());
+                              rekordboxReveal.setVisible (rekordboxXmlFile().existsAsFile());
+                              status.setText ("Rekordbox exports will go to " + f.getFullPathName(), juce::dontSendNotification);
+                              repaint();
+                          });
+}
+
+void DeliverPanel::chooseSeratoFolder()
+{
+    chooser = std::make_unique<juce::FileChooser> ("Choose a folder for the Serato copies", seratoFolder());
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
+                          [this] (const juce::FileChooser& fc) {
+                              const auto dir = fc.getResult();
+                              if (! dir.isDirectory())
+                                  return;
+                              // Copies inside a watched folder would be added to DSS1 as new tracks.
+                              for (const auto& w : crate.watchedFolders())
+                                  if (dir == juce::File (w) || dir.isAChildOf (juce::File (w)))
+                                  {
+                                      status.setText ("That folder is inside a watched folder (" + w
+                                                          + "): the copies would show up in DSS1 as new tracks. Choose another.",
+                                                      juce::dontSendNotification);
+                                      return;
+                                  }
+                              settings->setValue ("seratoFolder", dir.getFullPathName());
+                              seratoReveal.setVisible (dir.isDirectory());
+                              status.setText ("Serato copies will go to " + dir.getFullPathName(), juce::dontSendNotification);
+                              repaint();
+                          });
 }
 
 DeliverPanel::DeliverPanel (Crate& c) : crate (c)
 {
-    juce::PropertiesFile::Options options;
-    options.applicationName = "DSS1";
-    options.filenameSuffix = ".settings";
-    options.folderName = "DSS1";
-    options.osxLibrarySubFolder = "Application Support";
-    settings = std::make_unique<juce::PropertiesFile> (options);
+    settings = &appSettings();
 
     scopeBox.onChange = [this] {
         if (scopeBox.getSelectedId() != selection)
@@ -72,8 +116,16 @@ DeliverPanel::DeliverPanel (Crate& c) : crate (c)
     hwStyle (seratoButton, KeyStyle::cue);
     rekordboxButton.onClick = [this] { exportRekordbox(); };
     seratoButton.onClick = [this] { exportSerato(); };
-    rekordboxReveal.onClick = [] { rekordboxXmlFile().revealToUser(); };
-    seratoReveal.onClick = [] { seratoFolder().revealToUser(); };
+    rekordboxReveal.onClick = [this] { rekordboxXmlFile().revealToUser(); };
+    seratoReveal.onClick = [this] { seratoFolder().revealToUser(); };
+    rekordboxDest.setTooltip ("Choose where the Rekordbox XML file is saved");
+    rekordboxDest.onClick = [this] { chooseRekordboxFile(); };
+    seratoDest.setTooltip ("Choose the folder the Serato copies go to");
+    seratoDest.onClick = [this] { chooseSeratoFolder(); };
+    hwStyle (rekordboxDest, KeyStyle::cream);
+    hwStyle (seratoDest, KeyStyle::cream);
+    addAndMakeVisible (rekordboxDest);
+    addAndMakeVisible (seratoDest);
     seratoGrid.setTooltip ("Off: Serato keeps its own grid (or none). On: DSS1's grid goes into the copies.");
     seratoGrid.setToggleState (settings->getBoolValue ("seratoGrid", false), juce::dontSendNotification);
     seratoGrid.onClick = [this] { settings->setValue ("seratoGrid", seratoGrid.getToggleState()); };
@@ -261,6 +313,8 @@ void DeliverPanel::exportSerato()
                 const auto tagged = deliver::seratoTaggedCopy (deliver::Bytes (bytes, bytes + data.getSize()), t.record.identity.path,
                                                                t.record, options);
                 const auto target = folder.getChildFile (juce::String::fromUTF8 (names[i].c_str()));
+                if (target == fileFor (t))
+                    throw std::runtime_error ("the copy would replace the original, so it was skipped (choose another folder)");
                 if (! target.replaceWithData (tagged.data(), tagged.size()))
                     throw std::runtime_error ("couldn't write the copy");
                 ++copied;
@@ -279,8 +333,8 @@ void DeliverPanel::exportSerato()
                 });
         }
 
-        juce::String message = "Copied " + plural (static_cast<std::size_t> (copied), "track", "tracks") + " to Music > "
-                               + folder.getFileName() + ".";
+        juce::String message = "Copied " + plural (static_cast<std::size_t> (copied), "track", "tracks") + " to "
+                               + folder.getFullPathName() + ".";
         if (skipped > 0)
             message << " Skipped " << skipped << " FLAC (not supported for Serato yet).";
         if (failed > 0)
@@ -313,12 +367,27 @@ void DeliverPanel::paint (juce::Graphics& g)
         auto inner = rf.reduced (22, 18);
         hw::silk (g, title, sub, inner.removeFromTop (20), juce::Justification::centredLeft, 15.0f);
         inner.removeFromTop (62);  // keys
+        inner.removeFromTop (78);  // destination
         g.setColour (hw::colour::silk.withAlpha (0.7f));
         g.setFont (hw::label (15.0f, false));
         g.drawFittedText (how, inner.removeFromTop (110).toNearestInt(), juce::Justification::topLeft, 6, 1.0f);
     };
     module (rekordboxCard, "REKORDBOX", "XML COLLECTION", rekordboxHow);
     module (seratoCard, "SERATO", "TAGGED COPIES", seratoHow);
+
+    // Destinations: where each export goes.
+    const auto destination = [&] (juce::Rectangle<int> r, const juce::File& where) {
+        hw::silk (g, "DESTINATION", {}, r.toFloat().withHeight (16).translated (0, -21));
+        hw::recess (g, r.toFloat());
+        auto path = where.getFullPathName();
+        const auto home = juce::File::getSpecialLocation (juce::File::userHomeDirectory).getFullPathName();
+        if (path.startsWith (home))
+            path = "~" + path.substring (home.length());
+        hw::glowText (g, path, r.toFloat().reduced (10, 0), hw::vfd (20.0f));
+        hw::glass (g, r.toFloat());
+    };
+    destination (rekordboxDestArea, rekordboxXmlFile());
+    destination (seratoDestArea, seratoFolder());
 
     hw::silk (g, "STATUS", {}, status.getBounds().toFloat().withHeight (16).translated (0, -22));
     hw::recess (g, status.getBounds().toFloat());
@@ -366,6 +435,15 @@ void DeliverPanel::resized()
     };
     layoutModule (rekordboxCard, rekordboxButton, rekordboxReveal, nullptr);
     layoutModule (seratoCard, seratoButton, seratoReveal, &seratoGrid);
+
+    const auto layoutDest = [] (juce::Rectangle<int> r, juce::TextButton& change) {
+        auto row = r.reduced (22, 18).withTrimmedTop (30 + 46 + 36).removeFromTop (40);
+        change.setBounds (row.removeFromRight (110));
+        row.removeFromRight (10);
+        return row.reduced (4, 3);
+    };
+    rekordboxDestArea = layoutDest (rekordboxCard, rekordboxDest);
+    seratoDestArea = layoutDest (seratoCard, seratoDest);
 }
 
 } // namespace dss1::ui

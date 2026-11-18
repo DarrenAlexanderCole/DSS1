@@ -1,4 +1,5 @@
 #include "PrepPanel.h"
+#include "Settings.h"
 #include "Theme.h"
 
 #include "core/SeratoTags.h"
@@ -20,12 +21,7 @@ namespace
 
 PrepPanel::PrepPanel (Session& s) : session (s), waveform (s)
 {
-    juce::PropertiesFile::Options options;
-    options.applicationName = "DSS1";
-    options.filenameSuffix = ".settings";
-    options.folderName = "DSS1";
-    options.osxLibrarySubFolder = "Application Support";
-    settings = std::make_unique<juce::PropertiesFile> (options);
+    settings = &appSettings();
 
     waveform.snap = [this] (Frame f) { return snapped (f); };
     waveform.addBackgroundActions = [this] (juce::PopupMenu& m, Frame at) { addBackgroundActions (m, at); };

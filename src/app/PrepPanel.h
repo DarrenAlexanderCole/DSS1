@@ -61,7 +61,7 @@ private:
     juce::StringArray targetNotes() const;
 
     Session& session;
-    std::unique_ptr<juce::PropertiesFile> settings;
+    juce::PropertiesFile* settings = nullptr;
     WaveformView waveform;
 
     juce::ComboBox targetBox;

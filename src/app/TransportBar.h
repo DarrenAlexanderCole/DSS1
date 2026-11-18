@@ -2,7 +2,10 @@
 
 #include "Session.h"
 
+#include <juce_data_structures/juce_data_structures.h>
 #include <juce_gui_basics/juce_gui_basics.h>
+
+#include <array>
 
 namespace dss1::ui
 {
@@ -39,6 +42,11 @@ private:
     juce::Label tempoLabel;
     juce::ToggleButton keyLockButton { "Key lock" };
     juce::TextButton tempoResetButton { "Reset" };
+    std::array<juce::TextButton, 3> rangeKeys;
+    juce::Rectangle<int> rangeArea;
+    double pitchRange = 8.0;
+    juce::PropertiesFile* settings = nullptr;
+    void setPitchRange (double percent);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TransportBar)
 };

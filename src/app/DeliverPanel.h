@@ -27,8 +27,9 @@ public:
     void resized() override;
 
     /// Where exports go (inside the user's Music folder).
-    static juce::File rekordboxXmlFile();
-    static juce::File seratoFolder();
+    /// Where exports go: the user's choice, or DSS1 Exports / DSS1 for Serato in their Music folder.
+    juce::File rekordboxXmlFile() const;
+    juce::File seratoFolder() const;
 
 private:
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
@@ -39,9 +40,14 @@ private:
     void finished (const juce::String& message, const juce::File& reveal);
 
     Crate& crate;
-    std::unique_ptr<juce::PropertiesFile> settings;
+    juce::PropertiesFile* settings = nullptr;
 
     juce::ComboBox scopeBox;
+    juce::TextButton rekordboxDest { "CHANGE..." }, seratoDest { "CHANGE..." };
+    juce::Rectangle<int> rekordboxDestArea, seratoDestArea;
+    std::unique_ptr<juce::FileChooser> chooser;
+    void chooseRekordboxFile();
+    void chooseSeratoFolder();
     juce::TextButton rekordboxButton { "Export for Rekordbox" }, rekordboxReveal { "Show in Finder" };
     juce::TextButton seratoButton { "Export Copies for Serato" }, seratoReveal { "Show in Finder" };
     juce::ToggleButton seratoGrid { "Include beat grid" };

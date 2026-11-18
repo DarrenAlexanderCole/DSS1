@@ -1,4 +1,5 @@
 #include "TransportBar.h"
+#include "Settings.h"
 #include "Theme.h"
 
 #include "core/TestExport.h"
@@ -32,8 +33,20 @@ TransportBar::TransportBar (Session& s) : session (s), deck (s.deck())
     session.addChangeListener (this);
     changeListenerCallback (nullptr);
 
+    settings = &appSettings();
+
     tempoSlider.setRange (-8.0, 8.0, 0.01);
     tempoSlider.setValue (0.0, juce::dontSendNotification);
+    const double ranges[] { 8.0, 16.0, 50.0 };
+    for (std::size_t i = 0; i < rangeKeys.size(); ++i)
+    {
+        auto& k = rangeKeys[i];
+        const auto r = ranges[i];
+        k.setButtonText (juce::String (static_cast<int> (r)) + "%");
+        k.setTooltip ("Pitch fader range: " + juce::String::fromUTF8 ("\xc2\xb1") + juce::String (static_cast<int> (r)) + " %");
+        k.onClick = [this, r] { setPitchRange (r); };
+        addAndMakeVisible (k);
+    }
     tempoSlider.setDoubleClickReturnValue (true, 0.0);
     tempoSlider.setColour (juce::Slider::thumbColourId, Colours::accent);
     tempoSlider.onValueChange = [this] {
@@ -59,7 +72,21 @@ TransportBar::TransportBar (Session& s) : session (s), deck (s.deck())
     keyLockButton.onClick = [this] { deck.setKeyLock (keyLockButton.getToggleState()); };
     addAndMakeVisible (keyLockButton);
 
+    setPitchRange (settings->getDoubleValue ("pitchRange", 8.0));
     startTimerHz (30);
+}
+
+void TransportBar::setPitchRange (double percent)
+{
+    pitchRange = percent > 30.0 ? 50.0 : percent > 12.0 ? 16.0 : 8.0;
+    settings->setValue ("pitchRange", pitchRange);
+    const auto current = juce::jlimit (-pitchRange, pitchRange, tempoSlider.getValue());
+    tempoSlider.setRange (-pitchRange, pitchRange, pitchRange > 20 ? 0.05 : 0.01);
+    tempoSlider.setValue (current, juce::sendNotificationSync);
+    const double ranges[] { 8.0, 16.0, 50.0 };
+    for (std::size_t i = 0; i < rangeKeys.size(); ++i)
+        rangeKeys[i].setToggleState (std::abs (ranges[i] - pitchRange) < 0.5, juce::dontSendNotification);
+    repaint();
 }
 
 TransportBar::~TransportBar()
@@ -115,7 +142,8 @@ void TransportBar::paint (juce::Graphics& g)
     hw::rackEar (g, b.withLeft (b.getRight() - ear), 2);
 
     hw::silk (g, "OVERVIEW", "CLICK TO JUMP", waveformArea.toFloat().withHeight (16).translated (0, -22));
-    hw::silk (g, "PITCH", juce::String::fromUTF8 ("\xc2\xb1") + "8 %", pitchArea.toFloat().withHeight (16).translated (0, -22));
+    hw::silk (g, "PITCH", juce::String::fromUTF8 ("\xc2\xb1") + juce::String (static_cast<int> (pitchRange)) + " %", pitchArea.toFloat().withHeight (16).translated (0, -22));
+    hw::silk (g, "RANGE", {}, rangeArea.toFloat().withHeight (16).translated (0, -22));
 
     // The whole track: played part dim, playhead red.
     const auto area = waveformArea.toFloat();
@@ -153,7 +181,7 @@ void TransportBar::resized()
     auto area = getLocalBounds().reduced (hw::RackUnit::earWidth, 0).reduced (30, 0);
     area.removeFromTop (34);
     area.removeFromBottom (16);
-    auto right = area.removeFromRight (juce::jmin (640, area.getWidth() / 2));
+    auto right = area.removeFromRight (juce::jmin (860, area.getWidth() * 3 / 5));
     area.removeFromRight (28);
     waveformArea = area;
 
@@ -161,8 +189,18 @@ void TransportBar::resized()
     right.removeFromRight (10);
     tempoResetButton.setBounds (right.removeFromRight (70).withSizeKeepingCentre (70, 42));
     right.removeFromRight (12);
-    tempoLabel.setBounds (right.removeFromRight (230).withSizeKeepingCentre (230, 44));
+    tempoLabel.setBounds (right.removeFromRight (200).withSizeKeepingCentre (200, 44));
     right.removeFromRight (16);
+    rangeArea = right.removeFromLeft (3 * 50 + 8);
+    {
+        auto r = rangeArea.withSizeKeepingCentre (rangeArea.getWidth(), 40);
+        for (auto& k : rangeKeys)
+        {
+            k.setBounds (r.removeFromLeft (50));
+            r.removeFromLeft (4);
+        }
+    }
+    right.removeFromLeft (16);
     pitchArea = right;
     tempoSlider.setBounds (right.withSizeKeepingCentre (right.getWidth(), 46));
 }
