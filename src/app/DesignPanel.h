@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Crate.h"
+#include "SamplerSection.h"
 #include "Session.h"
 
 #include <juce_data_structures/juce_data_structures.h>
@@ -46,8 +47,8 @@ private:
 };
 
 /// The Listen & Design stage: an effects rack (filter, echo, reverb, crusher) that plays over whatever the
-/// deck plays, the XY performance pad, and a recorder that captures what you hear to a WAV and adds the take to
-/// the library, ready to prep and export.
+/// deck plays, the XY performance pad, the pad sampler (8 banks x 16 pads), and a recorder that captures what
+/// you hear to a WAV (drawing its waveform as it goes) and adds the take to the library.
 class DesignPanel : public juce::Component, private juce::Timer
 {
 public:
@@ -88,7 +89,11 @@ private:
     juce::ToggleButton holdButton { "HOLD" };
     juce::TextButton resetFxButton { "ALL OFF" };
 
+    SamplerSection sampler;
+
     juce::TextButton recordButton { "REC" }, revealButton { "SHOW TAKES" };
+    std::vector<float> takePeaks;
+    juce::Rectangle<int> waveArea;
     juce::String lastTake, recorderMessage;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (DesignPanel)

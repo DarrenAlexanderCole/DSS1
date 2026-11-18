@@ -76,7 +76,7 @@ public:
 
     float outputLevel (int channel) const noexcept { return engine.level (channel); }
     engine::Effects& effects() noexcept { return engine.effects(); }
-    AudioEngine& audio() noexcept { return engine; }
+    AudioEngine& output() noexcept { return engine; }
 
     /// "Artist  |  128.0 BPM  |  8A F minor" for the loaded track.
     juce::String details() const;

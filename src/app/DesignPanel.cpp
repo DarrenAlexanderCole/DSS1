@@ -144,8 +144,9 @@ DesignPanel::Knob& DesignPanel::addKnob (const juce::String& name, double min, d
     return *knobs.back();
 }
 
-DesignPanel::DesignPanel (Session& s, Crate& c) : session (s), crate (c), fx (s.effects()), pad (s.effects())
+DesignPanel::DesignPanel (Session& s, Crate& c) : session (s), crate (c), fx (s.effects()), pad (s.effects()), sampler (s)
 {
+    addAndMakeVisible (sampler);
     settings = &appSettings();
 
     addKnob ("FREQ", -1.0, 1.0, 0.005, 0.0, "LP||||||0||||||HP", [this] (double v) { fx.filter = static_cast<float> (v); }, filterReadout);
@@ -202,13 +203,13 @@ DesignPanel::DesignPanel (Session& s, Crate& c) : session (s), crate (c), fx (s.
     };
     addAndMakeVisible (revealButton);
 
-    startTimerHz (10);
+    startTimerHz (30);
 }
 
 DesignPanel::~DesignPanel()
 {
-    if (session.audio().isRecording())
-        if (const auto file = session.audio().stopRecording(); file.existsAsFile())
+    if (session.output().isRecording())
+        if (const auto file = session.output().stopRecording(); file.existsAsFile())
             crate.add ({ file });
 }
 
@@ -222,7 +223,7 @@ void DesignPanel::syncFromEffects()
 
 void DesignPanel::toggleRecording()
 {
-    auto& audio = session.audio();
+    auto& audio = session.output();
     if (audio.isRecording())
     {
         const auto file = audio.stopRecording();
@@ -245,6 +246,7 @@ void DesignPanel::toggleRecording()
         }
         else
         {
+            takePeaks.clear();
             recordButton.setToggleState (true, juce::dontSendNotification);
             recordButton.setButtonText ("STOP");
             recorderMessage = "RECORDING WHAT YOU HEAR";
@@ -256,8 +258,12 @@ void DesignPanel::toggleRecording()
 
 void DesignPanel::timerCallback()
 {
-    if (session.audio().isRecording())
+    if (session.output().isRecording())
+    {
+        session.output().drainRecordedPeaks (takePeaks);
         repaint (timeArea.expanded (6));
+        repaint (waveArea.expanded (6));
+    }
 }
 
 void DesignPanel::paint (juce::Graphics& g)
@@ -298,8 +304,8 @@ void DesignPanel::paint (juce::Graphics& g)
 
     hw::silk (g, "RECORDER", "WHAT YOU HEAR, WITH EFFECTS", recorderArea.toFloat().withHeight (16).translated (0, -22));
     hw::recess (g, timeArea.toFloat());
-    const bool recording = session.audio().isRecording();
-    const auto secs = session.audio().recordedSeconds();
+    const bool recording = session.output().isRecording();
+    const auto secs = session.output().recordedSeconds();
     const auto whole = static_cast<int> (secs);
     const auto clock = juce::String (whole / 60).paddedLeft ('0', 2) + ":" + juce::String (whole % 60).paddedLeft ('0', 2) + "."
                        + juce::String (static_cast<int> ((secs - whole) * 10));
@@ -310,6 +316,39 @@ void DesignPanel::paint (juce::Graphics& g)
                   hw::colour::amberMid);
     hw::glowText (g, recorderMessage, t.removeFromTop (22), hw::vfd (20.0f), hw::colour::amberDim);
     hw::glass (g, timeArea.toFloat());
+
+    // The take's waveform, growing as it records (squeezed to fit once it's longer than the window).
+    hw::silk (g, "TAKE", "WAVEFORM", waveArea.toFloat().withHeight (16).translated (0, -21));
+    hw::recess (g, waveArea.toFloat());
+    if (! takePeaks.empty())
+    {
+        const auto area = waveArea.toFloat().reduced (6, 6);
+        const auto columns = juce::jmax (1, static_cast<int> (area.getWidth()));
+        // Fixed scale of ~10 s per window width until the take is longer, then the whole take.
+        const auto blocksPerSecond = session.output().sampleRate() / 512.0;
+        const auto shown = juce::jmax (static_cast<double> (takePeaks.size()), 10.0 * blocksPerSecond);
+        const auto perColumn = shown / columns;
+        const auto mid = area.getCentreY();
+        g.setColour (recording ? juce::Colour (0xffff6a4a) : hw::colour::amber);
+        for (int x = 0; x < columns; ++x)
+        {
+            const auto from = static_cast<std::size_t> (x * perColumn);
+            if (from >= takePeaks.size())
+                break;
+            const auto to = juce::jmin (takePeaks.size(), static_cast<std::size_t> ((x + 1) * perColumn) + 1);
+            float peak = 0;
+            for (auto i = from; i < to; ++i)
+                peak = juce::jmax (peak, takePeaks[i]);
+            const auto h = juce::jmin (1.0f, peak) * area.getHeight() * 0.48f;
+            g.fillRect (area.getX() + static_cast<float> (x), mid - h, 1.0f, juce::jmax (1.0f, h * 2));
+        }
+    }
+    else
+    {
+        hw::glowText (g, "PRESS REC: THE TAKE DRAWS HERE", waveArea.toFloat().reduced (12, 0), hw::vfd (20.0f), hw::colour::amberDim,
+                      juce::Justification::centred);
+    }
+    hw::glass (g, waveArea.toFloat());
     if (recording)
         hw::led (g, { static_cast<float> (recordButton.getRight() + 18), static_cast<float> (recordButton.getBounds().getCentreY()) }, 6.0f,
                  juce::Colour (0xffff3020), (juce::Time::getMillisecondCounter() / 500) % 2 == 0);
@@ -323,13 +362,13 @@ void DesignPanel::paintOverChildren (juce::Graphics& g)
 void DesignPanel::resized()
 {
     auto all = getLocalBounds();
-    effectsUnit = all.removeFromTop (juce::jmin (300, all.getHeight() / 2));
+    effectsUnit = all.removeFromTop (juce::jmin (232, all.getHeight() * 2 / 5));
     lowerUnit = all;
 
     // Effects: four bays sized by how many knobs they hold (1, 3, 2, 3).
     auto area = effectsUnit.reduced (hw::RackUnit::earWidth, 0).reduced (30, 0);
-    area.removeFromTop (44);
-    area.removeFromBottom (22);
+    area.removeFromTop (38);
+    area.removeFromBottom (16);
     const int gap = 14;
     const auto slot = (area.getWidth() - 3 * gap) / 9;
     filterArea = area.removeFromLeft (slot);
@@ -342,8 +381,8 @@ void DesignPanel::resized()
 
     const auto layBay = [&] (juce::Rectangle<int> bay, juce::ToggleButton& on, std::initializer_list<int> knobIndices) {
         auto inner = bay.reduced (10, 10);
-        on.setBounds (inner.removeFromTop (36).removeFromLeft (130));
-        inner.removeFromTop (24);
+        on.setBounds (inner.removeFromTop (34).removeFromLeft (130));
+        inner.removeFromTop (20);
         inner.removeFromBottom (22);
         const auto w = inner.getWidth() / static_cast<int> (knobIndices.size());
         for (const auto i : knobIndices)
@@ -358,28 +397,34 @@ void DesignPanel::resized()
     layBay (reverbArea, reverbOn, { 4, 5 });
     layBay (crushArea, crushOn, { 6, 7, 8 });
 
-    // Lower unit: the XY pad on the left, the recorder on the right.
+    // Lower unit: the XY pad, the sampler, the recorder.
     area = lowerUnit.reduced (hw::RackUnit::earWidth, 0).reduced (30, 0);
-    area.removeFromTop (44);
-    area.removeFromBottom (24);
-    auto padColumn = area.removeFromLeft (area.getWidth() / 2);
-    auto padControls = padColumn.removeFromRight (130);
-    padColumn.removeFromRight (14);
-    padArea = padColumn.reduced (4);
-    pad.setBounds (padArea);
-    holdButton.setBounds (padControls.removeFromTop (44));
-    padControls.removeFromTop (14);
-    resetFxButton.setBounds (padControls.removeFromTop (44).withWidth (110));
+    area.removeFromTop (36);
+    area.removeFromBottom (20);
+    auto padColumn = area.removeFromLeft (juce::jmin (300, area.getWidth() / 4));
+    area.removeFromLeft (30);
+    auto samplerColumn = area.removeFromLeft (juce::jmin (560, area.getWidth() * 3 / 5));
+    area.removeFromLeft (30);
 
-    area.removeFromLeft (40);
+    auto padRow = padColumn.removeFromBottom (44);
+    padColumn.removeFromBottom (10);
+    padArea = padColumn.withSizeKeepingCentre (padColumn.getWidth(), juce::jmin (padColumn.getHeight(), padColumn.getWidth())).withY (padColumn.getY()).reduced (4);
+    pad.setBounds (padArea);
+    holdButton.setBounds (padRow.removeFromLeft (110));
+    resetFxButton.setBounds (padRow.removeFromRight (110));
+
+    sampler.setBounds (samplerColumn.withTrimmedTop (-22));
+
     recorderArea = area;
     auto rec = area;
-    auto keys = rec.removeFromTop (60);
-    recordButton.setBounds (keys.removeFromLeft (120));
-    keys.removeFromLeft (44);
-    revealButton.setBounds (keys.removeFromLeft (150).withSizeKeepingCentre (150, 44));
-    rec.removeFromTop (20);
-    timeArea = rec.removeFromTop (110).reduced (4);
+    auto keys = rec.removeFromTop (54);
+    recordButton.setBounds (keys.removeFromLeft (110));
+    keys.removeFromLeft (30);
+    revealButton.setBounds (keys.removeFromLeft (140).withSizeKeepingCentre (140, 42));
+    rec.removeFromTop (14);
+    timeArea = rec.removeFromTop (96).reduced (4);
+    rec.removeFromTop (30);
+    waveArea = rec.reduced (4);
 }
 
 } // namespace dss1::ui

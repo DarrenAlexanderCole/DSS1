@@ -24,12 +24,14 @@ void AudioEngine::audioDeviceAboutToStart (juce::AudioIODevice* device)
     deviceRate = device->getCurrentSampleRate();
     previewDeck.prepare (deviceRate, device->getCurrentBufferSizeSamples());
     fx.prepare (deviceRate, device->getCurrentBufferSizeSamples());
+    pads.prepare (deviceRate);
 }
 
 void AudioEngine::audioDeviceIOCallbackWithContext (const float* const*, int, float* const* outputs, int numOutputs,
                                                     int numFrames, const juce::AudioIODeviceCallbackContext&)
 {
     previewDeck.render (outputs, numOutputs, numFrames);
+    pads.render (outputs, juce::jmin (numOutputs, 2), numFrames);
     fx.process (outputs, juce::jmin (numOutputs, 2), numFrames);
 
     {
@@ -39,6 +41,13 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const*, int, fl
             {
                 writer->write (outputs, numFrames);
                 recordedFrames += numFrames;
+                float peak = 0;
+                for (int c = 0; c < 2; ++c)
+                    for (int i = 0; i < numFrames; ++i)
+                        peak = std::max (peak, std::abs (outputs[c][i]));
+                const auto w = peakWrite.load (std::memory_order_relaxed);
+                peakRing[static_cast<std::size_t> (w)].store (peak, std::memory_order_relaxed);
+                peakWrite.store ((w + 1) % peakRingSize, std::memory_order_release);
             }
     }
     for (int c = 0; c < 2; ++c)
@@ -71,6 +80,7 @@ juce::String AudioEngine::startRecording (const juce::File& file)
         writerThread.startThread();
     threadedWriter = std::make_unique<juce::AudioFormatWriter::ThreadedWriter> (writer.release(), writerThread, 32768);
     recordedFrames = 0;
+    peakRead = peakWrite.load();
     recordingFile = file;
     const juce::ScopedLock lock (writerLock);
     activeWriter = threadedWriter.get();
@@ -87,6 +97,16 @@ juce::File AudioEngine::stopRecording()
         return {};
     threadedWriter.reset();  // flushes and closes the file
     return std::exchange (recordingFile, juce::File());
+}
+
+void AudioEngine::drainRecordedPeaks (std::vector<float>& into)
+{
+    const auto w = peakWrite.load (std::memory_order_acquire);
+    while (peakRead != w)
+    {
+        into.push_back (peakRing[static_cast<std::size_t> (peakRead)].load (std::memory_order_relaxed));
+        peakRead = (peakRead + 1) % peakRingSize;
+    }
 }
 
 double AudioEngine::recordedSeconds() const noexcept

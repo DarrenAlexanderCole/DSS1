@@ -339,10 +339,7 @@ bool CatalogPanel::keyPressed (const juce::KeyPress& key)
 {
     if (key == juce::KeyPress::spaceKey)
     {
-        if (session.deck().isPlaying())
-            session.deck().pause();
-        else
-            session.deck().play();
+        session.playPressed();
         return true;
     }
     return false;

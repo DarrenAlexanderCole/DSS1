@@ -2,11 +2,13 @@
 
 #include "engine/Deck.h"
 #include "engine/Effects.h"
+#include "engine/Sampler.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
 #include <juce_audio_devices/juce_audio_devices.h>
 
+#include <array>
 #include <atomic>
 
 namespace dss1::ui
@@ -21,6 +23,12 @@ public:
 
     engine::Deck& deck() noexcept { return previewDeck; }
     engine::Effects& effects() noexcept { return fx; }
+    engine::Sampler& sampler() noexcept { return pads; }
+    double sampleRate() const noexcept { return deviceRate; }
+
+    /// Peaks of what's being recorded, one per audio block, for drawing the take as it records. Call from the
+    /// message thread: appends the peaks since the last call to `into`.
+    void drainRecordedPeaks (std::vector<float>& into);
 
     // --- Recorder: what you hear (after effects), to a 24-bit WAV ----------------------------------------
     /// Starts recording to `file`. Returns an error message, or empty on success.
@@ -46,6 +54,11 @@ private:
 
     engine::Deck previewDeck;
     engine::Effects fx;
+    engine::Sampler pads;
+    static constexpr int peakRingSize = 4096;
+    std::array<std::atomic<float>, peakRingSize> peakRing {};
+    std::atomic<int> peakWrite { 0 };
+    int peakRead = 0;
     double deviceRate = 44100.0;
 
     juce::TimeSliceThread writerThread { "DSS1 recorder" };

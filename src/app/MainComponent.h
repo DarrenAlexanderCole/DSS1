@@ -22,6 +22,7 @@ public:
 
     void resized() override;
     void paint (juce::Graphics&) override;
+    bool keyPressed (const juce::KeyPress&) override;
 
 private:
     Theme theme;

@@ -17,6 +17,8 @@ public:
         setResizeLimits (1200, 860, 4000, 3000);
         centreWithSize (getWidth(), getHeight());
         setVisible (true);
+        if (auto* content = getContentComponent())
+            content->grabKeyboardFocus();  // Space and P work from the start
     }
 
     void closeButtonPressed() override

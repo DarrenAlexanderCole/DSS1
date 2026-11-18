@@ -82,7 +82,14 @@ Load a track (double-click it in Catalog), press PLAY, then open **Listen / Desi
 - **XY pad:** hold the mouse down on it and move: left and right sweep the filter, up adds echo. Let go and it
   springs back. With **HOLD** on, it stays where you leave it.
 - **Recorder:** **REC** records what you hear, effects included, to a WAV in Music > DSS1 Recordings. Press
-  **STOP** and the take is added to Catalog, ready to prep and export like any track.
+  **STOP** and the take is added to Catalog, ready to prep and export like any track. The **TAKE** window draws
+  the waveform live as it records.
+- **Sampler:** 8 banks (**A-H**) x 16 pads = 128 samples. Pick a bank and a pad, then press **CAPTURE** to grab
+  the playing loop (or **LENGTH** beats from the playhead) onto it, or **LOAD...** any audio file. Click a pad to
+  play it. Right-click a pad for Capture, Load, Show in Finder and Clear. **STOP ALL** silences every pad.
+  Captured samples are saved as WAVs to the folder under **SAMPLES TO**: press **CHANGE...** to pick another.
+  Your kit is still there next time you open DSS1.
+- **Space** or **P** plays and pauses on every screen (except while typing in a search box).
 
 ## Deliver (new)
 

@@ -174,7 +174,15 @@ darkened feedback loop and a 150 ms glide when the time changes) and reverb (Fre
 set by the UI and smoothed per sample, so knob moves never click; with everything off audio passes untouched.
 The XY pad drives the filter and echo mix and restores them on release unless HOLD is on. The recorder
 (AudioEngine) writes what you hear, after effects, to a 24-bit WAV through a background writer thread, then the
-take is added to the library.
+take is added to the library. While recording, the audio thread also pushes one peak per 512 samples into a
+lock-free ring that the Design screen drains 30 times a second to draw the take as it grows.
+
+`src/engine/Sampler.h` is the pad sampler: 8 banks (A-H) of 16 pads, 128 slots, 16 voices, mixed in after the deck
+and before the effects. The UI hands it samples through atomics and triggers through a lock-free queue, so the
+audio thread never locks or frees memory; a replaced sample is kept alive until any voice still playing it has
+finished. CAPTURE writes the playing loop (or LENGTH beats from the playhead) to
+`<samples folder>/Bank X/X07 Title.wav` with 3 ms fades and loads it onto the pad. The kit (128 paths) and the
+samples folder are kept in settings.
 
 ## Playback
 

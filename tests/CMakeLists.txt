@@ -7,6 +7,7 @@ add_executable(dss1_tests
     DeckTests.cpp
     LibraryTests.cpp
     RekordboxTests.cpp
+    SamplerTests.cpp
     SeratoTests.cpp
     TagTests.cpp
     TrackRecordTests.cpp)
