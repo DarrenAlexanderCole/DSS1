@@ -38,6 +38,9 @@ public:
     /// Saves a track's record (its path says which track). The snapshot updates once it's written.
     void save (const TrackRecord& record);
 
+    /// Analyses tracks again: BPM, key, loudness and a new grid (the old grid is replaced).
+    void analyseAgain (const std::vector<std::int64_t>& ids);
+
     /// Takes tracks out of the library. Files on disk are never touched.
     void remove (const std::vector<std::int64_t>& ids);
 

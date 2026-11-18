@@ -121,7 +121,9 @@ FLAC and M4A keep Serato data differently (Vorbis comments / MP4 atoms); for now
 - **Key:** a chromagram (55–2000 Hz) correlated with Krumhansl–Kessler profiles; reported as a name and a
   Camelot code.
 - **Beats and bars:** for the tempo found, the beat phase that lines up spectral-flux and bass onsets best
-  across the track, then refined on the waveform (median of the energy jumps nearest each beat, about 1 ms).
+  across the track. Then a straight line is fitted (robustly) through the energy jumps nearest each beat: its
+  slope corrects the tempo, so the grid still holds at the end of the track, and its start sets the phase
+  (about 1 ms). A tempo within 0.04 BPM of a whole number becomes that number when it fits as well.
   Beat 1 of the bar (4/4 assumed) is the beat where bass power rises and the chroma changes most, measured over
   the half beats either side so claps and snares don't count. The result becomes the track's first grid,
   unless it already has one.

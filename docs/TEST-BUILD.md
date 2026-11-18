@@ -26,7 +26,8 @@ DSS1 opens on **Catalog**.
 5. **Remove:** select tracks (Shift or Command for several) and press Delete, or right-click → **Remove from
    DSS1**. Only DSS1's entry goes; the audio files stay. Right-click also has **Show in Finder**.
 6. **Analysis:** BPM, key (Camelot and name) and loudness fill in, a couple of seconds per track. DSS1 also
-   finds where the beats and bars fall, and that becomes the track's first grid.
+   finds where the beats and bars fall, and that becomes the track's first grid. Tracks analysed by an
+   earlier build: right-click → **Analyse Again (New Grid)** to get the improved grid.
 7. **Play:** double-click a track (or select it and press Return). The player along the bottom stays on every
    tab. Space plays and pauses. The slider changes tempo by up to ±8% (double-click to reset), and the BPM next to it shows the new tempo; **Key lock**
    keeps the pitch.

@@ -297,7 +297,7 @@ std::optional<BeatPlacement> placeBeats (const std::vector<float>& mono, double 
     const auto bassTop = std::max<std::size_t> (2, static_cast<std::size_t> (150.0 / binHz));
     const auto chromaBottom = std::max<std::size_t> (1, static_cast<std::size_t> (100.0 / binHz));
     const auto chromaTop = std::min<std::size_t> (size / 2, static_cast<std::size_t> (2000.0 / binHz));
-    const auto hopsPerBeat = 60.0 * sampleRate / bpm / static_cast<double> (hop);
+    auto hopsPerBeat = 60.0 * sampleRate / bpm / static_cast<double> (hop);
 
     std::vector<int> pitchClass (size / 2, -1);
     for (auto k = chromaBottom; k < chromaTop; ++k)
@@ -383,8 +383,12 @@ std::optional<BeatPlacement> placeBeats (const std::vector<float>& mono, double 
     if (bestScore < 2.6)
         return std::nullopt;  // nothing lines up well above average (2 = no pulse): no beat to place
 
-    // Refine the phase on the waveform: near each beat, find where the energy jumps (in 32-frame blocks) and
-    // take the median distance from the predicted beat. This pins beats to within a millisecond or so.
+    // Refine on the waveform: near each beat, find where the energy jumps (in 32-frame blocks), then fit a straight
+    // line through those hits (robustly, ignoring stray ones). The line's slope corrects the tempo, its start the
+    // phase. Two passes: the first catches the tempo error from the beats it can reach, the second measures
+    // every beat with the corrected tempo. A tempo within 0.04 BPM of a whole number is taken as that number
+    // when it fits the hits as well: most produced music is, and a tiny error drifts by the end of a track.
+    double refinedBpm = bpm;
     {
         constexpr std::size_t block = 32;
         std::vector<double> energy (mono.size() / block);
@@ -395,33 +399,103 @@ std::optional<BeatPlacement> placeBeats (const std::vector<float>& mono, double 
                 e += static_cast<double> (mono[k * block + n]) * mono[k * block + n];
             energy[k] = std::log (e + 1e-9);
         }
-        const auto beatFramesNow = hopsPerBeat * static_cast<double> (hop);
-        const auto reach = static_cast<long> (std::min (beatFramesNow / 4.0, 0.015 * sampleRate) / block);
-        std::vector<double> offsets;
-        for (double beatFrame = frameOf (bestPhase); beatFrame < static_cast<double> (mono.size()); beatFrame += beatFramesNow)
-        {
-            const auto centre = static_cast<long> (beatFrame / block);
-            long bestK = -1;
-            double bestRise = 1.0;  // at least e (x2.7) louder than the 4 blocks before: a real hit
-            for (auto k = std::max (centre - reach, 4L); k <= centre + reach && k < static_cast<long> (energy.size()); ++k)
+
+        struct Hit { double beat, frame; };
+        const auto measure = [&] (double first, double period, double reachSeconds) {
+            std::vector<Hit> hits;
+            const auto reach = static_cast<long> (std::min (period / 4.0, reachSeconds * sampleRate) / block);
+            int k = 0;
+            for (double beatFrame = first; beatFrame < static_cast<double> (mono.size()); beatFrame = first + ++k * period)
             {
-                const auto ku = static_cast<std::size_t> (k);
-                const auto before = std::max ({ energy[ku - 1], energy[ku - 2], energy[ku - 3], energy[ku - 4] });
-                const auto rise = energy[ku] - before;
-                if (rise > bestRise)
+                const auto centre = static_cast<long> (beatFrame / block);
+                long bestK = -1;
+                double bestRise = 1.0;  // at least e (x2.7) louder than the 4 blocks before: a real hit
+                for (auto j = std::max (centre - reach, 4L); j <= centre + reach && j < static_cast<long> (energy.size()); ++j)
                 {
-                    bestRise = rise;
-                    bestK = k;
+                    const auto ju = static_cast<std::size_t> (j);
+                    const auto before = std::max ({ energy[ju - 1], energy[ju - 2], energy[ju - 3], energy[ju - 4] });
+                    if (const auto rise = energy[ju] - before; rise > bestRise)
+                    {
+                        bestRise = rise;
+                        bestK = j;
+                    }
+                }
+                if (bestK >= 0)
+                    hits.push_back ({ static_cast<double> (k), static_cast<double> (bestK) * block });
+            }
+            return hits;
+        };
+
+        struct Line { double start = 0, period = 0, error = 0; bool ok = false; };
+        // Least squares through the hits, then again without the ones far off the first line.
+        const auto fit = [&] (const std::vector<Hit>& hits, std::optional<double> fixedPeriod) {
+            Line line;
+            std::vector<Hit> use = hits;
+            for (int pass = 0; pass < 2 && use.size() >= 8; ++pass)
+            {
+                const auto n = static_cast<double> (use.size());
+                double sb = 0, sf = 0, sbb = 0, sbf = 0;
+                for (const auto& h : use)
+                {
+                    sb += h.beat;
+                    sf += h.frame;
+                    sbb += h.beat * h.beat;
+                    sbf += h.beat * h.frame;
+                }
+                const auto denom = n * sbb - sb * sb;
+                line.period = fixedPeriod ? *fixedPeriod : (denom > 0 ? (n * sbf - sb * sf) / denom : 0);
+                line.start = (sf - line.period * sb) / n;
+                std::vector<double> residuals;
+                for (const auto& h : use)
+                    residuals.push_back (std::abs (h.frame - (line.start + line.period * h.beat)));
+                auto sorted = residuals;
+                std::nth_element (sorted.begin(), sorted.begin() + static_cast<std::ptrdiff_t> (sorted.size() / 2), sorted.end());
+                const auto limit = std::max (3.0 * sorted[sorted.size() / 2], 0.0015 * sampleRate);
+                double sq = 0;
+                std::vector<Hit> kept;
+                for (std::size_t i = 0; i < use.size(); ++i)
+                    if (residuals[i] <= limit)
+                    {
+                        kept.push_back (use[i]);
+                        sq += residuals[i] * residuals[i];
+                    }
+                line.error = kept.empty() ? 0 : std::sqrt (sq / static_cast<double> (kept.size()));
+                line.ok = line.period > 0;
+                use = std::move (kept);
+            }
+            return line;
+        };
+
+        auto period = hopsPerBeat * static_cast<double> (hop);
+        auto first = frameOf (bestPhase);
+        for (int pass = 0; pass < 2; ++pass)
+        {
+            // The first pass looks wider (50 ms): a small tempo error puts the far ends of a long track that far out.
+            const auto hits = measure (first, period, pass == 0 ? 0.05 : 0.015);
+            const auto line = fit (hits, std::nullopt);
+            // Trust the slope only when it's a small correction (a wrong one would mean the hits don't line up).
+            if (! line.ok || std::abs (line.period / period - 1.0) > 0.01)
+                break;
+            first = line.start;
+            period = line.period;
+            if (pass == 1)
+            {
+                const auto whole = std::round (60.0 * sampleRate / period);
+                if (std::abs (60.0 * sampleRate / period - whole) < 0.04)
+                {
+                    const auto snappedLine = fit (hits, 60.0 * sampleRate / whole);
+                    if (snappedLine.ok && snappedLine.error <= line.error * 1.2 + 0.0005 * sampleRate)
+                    {
+                        first = snappedLine.start;
+                        period = snappedLine.period;
+                    }
                 }
             }
-            if (bestK >= 0)
-                offsets.push_back (static_cast<double> (bestK) * block - beatFrame);
         }
-        if (offsets.size() >= 8)
-        {
-            std::nth_element (offsets.begin(), offsets.begin() + static_cast<std::ptrdiff_t> (offsets.size() / 2), offsets.end());
-            bestPhase += offsets[offsets.size() / 2] / static_cast<double> (hop);
-        }
+        refinedBpm = 60.0 * sampleRate / period;
+        hopsPerBeat = period / static_cast<double> (hop);
+        // frameOf (bestPhase) == first
+        bestPhase = (first - (static_cast<double> (size) - 160.0)) / static_cast<double> (hop);
     }
 
     // Beat 1 of 4: where bass notes start (bass power rises from the half beat before to the half beat after)
@@ -483,7 +557,7 @@ std::optional<BeatPlacement> placeBeats (const std::vector<float>& mono, double 
         firstBeat -= beatFrames;
     while (firstDownbeat - 4 * beatFrames >= 0)
         firstDownbeat -= 4 * beatFrames;
-    return BeatPlacement { firstBeat, firstDownbeat, confidence };
+    return BeatPlacement { firstBeat, firstDownbeat, confidence, refinedBpm };
 }
 
 // --- Key --------------------------------------------------------------------------------------------------

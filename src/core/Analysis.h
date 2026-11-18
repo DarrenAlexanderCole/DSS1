@@ -21,9 +21,10 @@ struct BeatPlacement
     double firstBeat = 0;       ///< frame of the first beat at or after the start of the track
     double firstDownbeat = 0;   ///< frame of the first beat 1 at or after the start
     double downbeatConfidence = 0;  ///< 0 … 1: how much beat 1 stood out from the other beats of the bar
+    double bpm = 0;             ///< the tempo refined against the hits across the whole track
 };
 
-/// Finds the beat phase (where the beats fall at `bpm`) and which beat starts the bar, assuming 4/4: beat 1 is
+/// Refines `bpm` against the beats across the whole track, then finds the beat phase (where the beats fall) and which beat starts the bar, assuming 4/4: beat 1 is
 /// the beat where the bass hits hardest and the harmony changes most. nullopt if there's no pulse to place.
 std::optional<BeatPlacement> placeBeats (const std::vector<float>& mono, double sampleRate, double bpm);
 

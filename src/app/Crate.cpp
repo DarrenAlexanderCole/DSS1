@@ -202,6 +202,26 @@ void Crate::save (const TrackRecord& record)
     });
 }
 
+void Crate::analyseAgain (const std::vector<std::int64_t>& ids)
+{
+    post ([this, ids] {
+        {
+            const std::lock_guard lock (storeLock);
+            store->transaction ([&] {
+                for (const auto id : ids)
+                    if (auto t = store->byId (id))
+                    {
+                        t->record.info.analysed = false;
+                        t->record.grid.reset();
+                        store->save (t->record);
+                    }
+            });
+        }
+        refreshSnapshot();
+        setStatus ("Analysing " + plural (ids.size(), "track", "tracks") + " again...");
+    });
+}
+
 void Crate::remove (const std::vector<std::int64_t>& ids)
 {
     post ([this, ids] {
@@ -593,7 +613,10 @@ bool Crate::analyseNext()
         // A first grid from the analysis, unless the track already has one (set by hand or imported).
         if (record.info.bpm && ! record.grid)
             if (const auto beats = analysis::placeBeats (mono, rate, *record.info.bpm))
-                record.grid = BeatGrid::constant (rate, *record.info.bpm, static_cast<Frame> (std::llround (beats->firstDownbeat)));
+            {
+                record.info.bpm = beats->bpm;  // refined against every beat of the track
+                record.grid = BeatGrid::constant (rate, beats->bpm, static_cast<Frame> (std::llround (beats->firstDownbeat)));
+            }
         if (const auto key = analysis::detectKey (mono, rate))
         {
             record.info.key = key->name();

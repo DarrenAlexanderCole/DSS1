@@ -119,6 +119,12 @@ void Session::changeListenerCallback (juce::ChangeBroadcaster*)
             continue;
         auto& mine = current->record;
         bool changed = false;
+        if (mine.info.analysed && ! t.record.info.analysed)
+        {
+            // "Analyse Again": the old grid goes, and the new one arrives with the analysis.
+            mine.grid.reset();
+            changed = true;
+        }
         if (t.record.info != mine.info)
         {
             mine.info = t.record.info;

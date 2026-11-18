@@ -6,6 +6,7 @@
 #include <cmath>
 #include <numbers>
 #include <random>
+#include <tuple>
 
 using namespace dss1::analysis;
 using Catch::Approx;
@@ -211,4 +212,27 @@ TEST_CASE ("Beats are placed on a plain drum loop, and not at all in silence", "
     REQUIRE (placed);
     CHECK (phaseError (placed->firstBeat, 0.0, 60.0 / 122.0 * rate) < 0.004 * rate);
     CHECK_FALSE (placeBeats (std::vector<float> (static_cast<std::size_t> (10 * rate), 0.0f), rate, 120.0));
+}
+
+TEST_CASE ("Beat placement corrects a slightly wrong tempo, so the grid holds to the end", "[analysis]")
+{
+    // Three minutes: a 0.03 BPM error would put the last beats ~20 ms out.
+    for (const auto& [actual, given, whole] : { std::tuple { 124.0, 123.97, true }, std::tuple { 123.45, 123.48, false } })
+    {
+        CAPTURE (actual, given);
+        const auto offset = 0.62;
+        const auto audio = barLoop (actual, 180.0, offset);
+        const auto placed = placeBeats (audio, rate, given);
+        REQUIRE (placed);
+        if (whole)
+            CHECK (placed->bpm == Approx (actual).margin (1e-9));
+        else
+            CHECK (placed->bpm == Approx (actual).margin (0.005));
+
+        // A beat near the end lands within 3 ms of the real one.
+        const auto period = 60.0 / placed->bpm * rate;
+        const auto lateBeat = placed->firstDownbeat + period * std::floor ((175.0 * rate - placed->firstDownbeat) / period);
+        CHECK (phaseError (lateBeat, offset * rate, 60.0 / actual * rate) < 0.003 * rate);
+        CHECK (phaseError (placed->firstDownbeat, offset * rate, 4 * 60.0 / actual * rate) < 0.004 * rate);
+    }
 }
