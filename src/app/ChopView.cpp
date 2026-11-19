@@ -345,6 +345,25 @@ void ChopView::paint (juce::Graphics& g)
             g.drawText (juce::String (p + 1) + " " + juce::String::charToString (static_cast<juce::juce_wchar> (owner.padKeys[p])).toUpperCase(), tag, juce::Justification::centred, false);
         }
 
+    // MM: the END marker, where the last slice ends.
+    if (owner.manualLength() && chopped)
+    {
+        int lastPad = -1;
+        for (int p = 0; p < 16; ++p)
+            if (const auto& m = b.marks[static_cast<std::size_t> (p)]; m && (lastPad < 0 || *m > *b.marks[static_cast<std::size_t> (lastPad)]))
+                lastPad = p;
+        if (lastPad >= 0)
+        {
+            const auto x = xForFrame (static_cast<double> (owner.sliceEnd (owner.bank, lastPad).value_or (0)));
+            g.setColour (juce::Colour (0xfff4f2ec));
+            g.fillRect (x - 1.0f, area.getY(), 2.0f, area.getHeight());
+            const auto tag = juce::Rectangle<float> (x - 38.0f, bounds.getBottom() - 20.0f, 38.0f, 18.0f);
+            g.fillRoundedRectangle (tag, 2.0f);
+            g.setColour (juce::Colours::black);
+            g.drawText ("END", tag, juce::Justification::centred, false);
+        }
+    }
+
     // Playheads: the deck (or file preview) in red, each playing slice in green.
     bool playing = false;
     const auto ph = xForFrame (playhead (playing));
@@ -372,6 +391,20 @@ int ChopView::markerNear (float x) const
     const auto& b = owner.current();
     int best = -1;
     float bestDistance = 7.0f;
+    // MM: the END marker (16).
+    if (owner.manualLength() && ! b.empty())
+    {
+        int lastPad = -1;
+        for (int p = 0; p < 16; ++p)
+            if (const auto& m = b.marks[static_cast<std::size_t> (p)]; m && (lastPad < 0 || *m > *b.marks[static_cast<std::size_t> (lastPad)]))
+                lastPad = p;
+        if (lastPad >= 0)
+            if (const auto d = std::abs (xForFrame (static_cast<double> (owner.sliceEnd (owner.bank, lastPad).value_or (0))) - x); d < bestDistance)
+            {
+                best = 16;
+                bestDistance = d;
+            }
+    }
     for (int p = 0; p < 16; ++p)
         if (const auto& m = b.marks[static_cast<std::size_t> (p)]; m)
             if (const auto d = std::abs (xForFrame (static_cast<double> (*m)) - x); d < bestDistance)
@@ -451,7 +484,8 @@ void ChopView::mouseDown (const juce::MouseEvent& e)
         owner.rememberForUndo();
         drag = Drag::marker;
         dragMarker = p;
-        owner.selectPad (p);
+        if (p < 16)
+            owner.selectPad (p);
         return;
     }
     const bool chosenEmpty = ! b.marks[static_cast<std::size_t> (owner.selected)].has_value();
@@ -483,11 +517,19 @@ void ChopView::mouseDrag (const juce::MouseEvent& e)
         return moveViewToOverview (e.position.x);
     if (drag == Drag::marker && dragMarker >= 0)
     {
-        auto& m = owner.current().marks[static_cast<std::size_t> (dragMarker)];
         const auto at = static_cast<Frame> (juce::jlimit (0.0, juce::jmax (0.0, length() - 1), frameAtX (e.position.x)));
-        m = owner.snapped (at);
-        owner.updateRegions (owner.bank);
-        owner.say ("PAD " + juce::String (dragMarker + 1) + " " + owner.describe (dragMarker).fromFirstOccurrenceOf ("]", false, false).trim());
+        if (dragMarker == 16)
+        {
+            owner.setEndMarker (owner.snapped (at));
+            owner.say ("END OF THE LAST SLICE");
+        }
+        else
+        {
+            auto& m = owner.current().marks[static_cast<std::size_t> (dragMarker)];
+            m = owner.snapped (at);
+            owner.updateRegions (owner.bank);
+            owner.say ("PAD " + juce::String (dragMarker + 1) + " " + owner.describe (dragMarker).fromFirstOccurrenceOf ("]", false, false).trim());
+        }
         // Near the edges, scroll.
         if (e.position.x > waveArea.getRight() - 20)
             viewStart += visibleFrames() * 0.02;

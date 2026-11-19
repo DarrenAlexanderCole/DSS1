@@ -15,8 +15,9 @@ namespace dss1::ui
 
 namespace
 {
-    constexpr double lengths[] { 0.25, 0.5, 1, 2, 4, 8, 16 };
-    const char* const lengthNames[] { "1/4", "1/2", "1", "2", "4", "8", "16" };
+    // SLICE: MM (manual) at 6 o'clock, then 1/4 … 16 beats round the dial.
+    constexpr double lengths[] { 0, 0.25, 0.5, 1, 2, 4, 8, 16 };
+    const char* const lengthNames[] { "MM", "1/4", "1/2", "1", "2", "4", "8", "16" };
     // Which pad sits where: rows from the top are 13–16, 9–12, 5–8, 1–4 (like an MPC).
     constexpr int padAt (int row, int col) { return (3 - row) * 4 + col; }
 
@@ -128,14 +129,39 @@ ChopPanel::ChopPanel (Session& s) : session (s), sampler (s.output().sampler())
     nudgeLeft.onClick = [this] { nudge (-1, juce::ModifierKeys::currentModifiers.isShiftDown()); };
     nudgeRight.onClick = [this] { nudge (1, juce::ModifierKeys::currentModifiers.isShiftDown()); };
 
-    sliceKnob.setRange (0, 6, 1);
-    sliceKnob.setValue (settings->getIntValue ("sliceBeats", 2), juce::dontSendNotification);
-    sliceKnob.setTooltip ("Beats per slice for EQUAL 16, and how long the last slice plays");
-    hwScale (sliceKnob, "1/4|1/2|1|2|4|8|16");
+    // A detented selector all the way round: MM (manual) at 6 o'clock, then 1/4 … 16 beats.
+    sliceKnob.setRange (0, 7, 1);
+    sliceKnob.setRotaryParameters (juce::MathConstants<float>::pi, juce::MathConstants<float>::pi * 2.75f, true);
+    sliceKnob.setValue (settings->getIntValue ("sliceLength", settings->getIntValue ("sliceBeats", 2) + 1), juce::dontSendNotification);
+    previousSliceSetting = sliceKnob.getValue();
+    sliceKnob.setTooltip ("Beats per slice for EQUAL 16, and how long the last slice plays. MM (manual): you set the end with the END marker, "
+                          "and EQUAL 16 chops what's on screen.");
+    hwScale (sliceKnob, "MM|1/4|1/2|1|2|4|8|16");
     sliceKnob.onValueChange = [this] {
-        settings->setValue ("sliceBeats", static_cast<int> (sliceKnob.getValue()));
+        if (manualLength() && previousSliceSetting >= 0.5)
+        {
+            // Into MM: each bank's last slice keeps the length it had, now as an END marker you can move.
+            for (auto& b : bankData)
+                if (b.audio != nullptr && ! b.empty())
+                {
+                    Frame last = 0;
+                    for (const auto& m : b.marks)
+                        if (m)
+                            last = juce::jmax (last, *m);
+                    if (! b.chopEnd || *b.chopEnd <= last)
+                    {
+                        const auto perBeat = b.framesPerBeat > 0 ? b.framesPerBeat : b.audio->info.sampleRate * 0.5;
+                        b.chopEnd = juce::jmin (static_cast<Frame> (b.audio->channels.front().size()),
+                                                last + static_cast<Frame> (lengths[juce::jlimit (1, 7, static_cast<int> (previousSliceSetting))] * perBeat));
+                    }
+                }
+            saveKit();
+        }
+        previousSliceSetting = sliceKnob.getValue();
+        settings->setValue ("sliceLength", static_cast<int> (sliceKnob.getValue()));
         for (int b = 0; b < 8; ++b)
             updateRegions (b);
+        say (manualLength() ? "MM: DRAG THE END MARKER TO SET WHERE THE LAST SLICE ENDS" : juce::String ("LAST SLICE: ") + lengthNames[static_cast<int> (sliceKnob.getValue())] + " BEAT");
         repaint();
     };
 
@@ -151,6 +177,13 @@ ChopPanel::ChopPanel (Session& s) : session (s), sampler (s.output().sampler())
     stopKey.onClick = [this] {
         sampler.stopAll();
         session.output().chopPreview().stop();
+    };
+    showSavedKey.setTooltip ("Open the samples folder in Finder, to see what SAVE BANK has written");
+    showSavedKey.onClick = [this] {
+        const auto folder = samplesFolder();
+        folder.createDirectory();
+        const auto bankFolder = folder.getChildFile ("Bank " + slotName (slotOf (0)).substring (0, 1));
+        (bankFolder.isDirectory() ? bankFolder : folder).startAsProcess();
     };
     hwStyle (folderKey, KeyStyle::cream);
     folderKey.setTooltip ("Choose the folder SAVE BANK writes to");
@@ -193,9 +226,35 @@ ChopPanel::ChopPanel (Session& s) : session (s), sampler (s.output().sampler())
     };
 
     for (auto* k : { &chopKey, &playKey, &holdKey, &chokeKey, &equalKey, &transientKey, &undoKey, &nudgeLeft, &nudgeRight, &loadKey, &saveKey,
-                     &clearKey, &clearBankKey, &stopKey, &folderKey, &reverseKey })
+                     &clearKey, &clearBankKey, &stopKey, &folderKey, &reverseKey, &showSavedKey, &midiKey })
         addAndMakeVisible (k);
     addAndMakeVisible (sliceKnob);
+
+    // MIDI: pads from any controller (Akai MPD / MPK pads send notes 36–51 out of the box), and play.
+    {
+        const auto stored = juce::StringArray::fromTokens (settings->getValue ("midiPadNotes"), ",", {});
+        for (int p = 0; p < 16; ++p)
+            padNotes[static_cast<std::size_t> (p)] = stored.size() == 16 ? stored[p].getIntValue() : 36 + p;
+        playController = settings->getIntValue ("midiPlayCC", -1);
+        playNote = settings->getIntValue ("midiPlayNote", -1);
+    }
+    midi.onNoteOn = [this] (int note, float velocity) { midiNoteOn (note, velocity); };
+    midi.onNoteOff = [this] (int note) { midiNoteOff (note); };
+    midi.onControl = [this] (int cc, int value) { midiControl (cc, value); };
+    midi.onTransport = [this] (bool play) { midiPlay (play); };
+    midi.onActivity = [this] {
+        midiSeenAt = juce::Time::getMillisecondCounter();
+        repaint (midiArea);
+    };
+    hwStyle (midiKey, KeyStyle::cream);
+    midiKey.setTooltip ("MIDI LEARN: hit a controller pad for each DSS1 pad in turn (click a DSS1 pad to choose which), and press the controller's "
+                        "play button to use it for play. Right-click for presets.");
+    midiKey.onClick = [this] {
+        if (juce::ModifierKeys::currentModifiers.isPopupMenu())
+            return;
+        setLearning (! learning);
+    };
+    midiKey.addMouseListener (this, false);
 
     cycleSnap();
     cycleSnap();
@@ -349,6 +408,8 @@ void ChopPanel::timerCallback()
     sampler.collectGarbage();
     if (isShowing())
         view->tick();
+    if (juce::Time::getMillisecondCounter() - midiSeenAt < 400)
+        repaint (midiArea);
     if (message.isNotEmpty() && juce::Time::getMillisecondCounter() - messageTime > 3000)
     {
         message.clear();
@@ -418,6 +479,8 @@ void ChopPanel::keysChanged()
 
 void ChopPanel::mouseDown (const juce::MouseEvent& e)
 {
+    if (e.eventComponent == &midiKey && e.mods.isPopupMenu())
+        return showMidiMenu();
     for (int p = 0; p < 16; ++p)
         if (e.eventComponent == &pads[static_cast<std::size_t> (p)])
         {
@@ -438,8 +501,16 @@ void ChopPanel::mouseUp (const juce::MouseEvent&)
         padUp (std::exchange (mouseHeldPad, -1));
 }
 
-void ChopPanel::padDown (int pad)
+void ChopPanel::padDown (int pad, float velocity)
 {
+    if (learning)
+    {
+        // Choosing which pad the next controller pad is learned for.
+        learnTarget = pad;
+        selectPad (pad);
+        say ("LEARN: HIT A CONTROLLER PAD FOR PAD " + juce::String (pad + 1) + " [" + keyName (pad) + "]");
+        return;
+    }
     const auto& b = current();
     const bool marked = b.marks[static_cast<std::size_t> (pad)].has_value() && b.audio != nullptr;
     selected = pad;
@@ -448,7 +519,7 @@ void ChopPanel::padDown (int pad)
         markAtPlayhead (pad);
     else
     {
-        sampler.trigger (slotOf (pad));
+        sampler.trigger (slotOf (pad), velocity);
         say (describe (pad));
     }
     refreshPads();
@@ -607,9 +678,29 @@ std::optional<Frame> ChopPanel::sliceEnd (int bankIndex, int pad) const
         return *next;
     if (b.chopEnd && *b.chopEnd > *m)
         return juce::jmin (total, *b.chopEnd);
+    // MM with no END yet: a beat, until you drag the END marker.
     const auto perBeat = b.framesPerBeat > 0 ? b.framesPerBeat : b.audio->info.sampleRate * 0.5;
-    const auto beats = lengths[juce::jlimit (0, 6, static_cast<int> (sliceKnob.getValue()))];
-    return juce::jmin (total, *m + static_cast<Frame> (beats * perBeat));
+    return juce::jmin (total, *m + static_cast<Frame> (sliceBeats().value_or (1.0) * perBeat));
+}
+
+std::optional<double> ChopPanel::sliceBeats() const
+{
+    if (manualLength())
+        return std::nullopt;
+    return lengths[juce::jlimit (1, 7, static_cast<int> (sliceKnob.getValue()))];
+}
+
+void ChopPanel::setEndMarker (Frame at)
+{
+    auto& b = current();
+    if (b.audio == nullptr)
+        return;
+    Frame last = 0;
+    for (const auto& m : b.marks)
+        if (m)
+            last = juce::jmax (last, *m);
+    b.chopEnd = juce::jlimit<Frame> (last + 1, static_cast<Frame> (b.audio->channels.front().size()), at);
+    updateRegions (bank);
 }
 
 void ChopPanel::updateRegions (int bankIndex)
@@ -690,7 +781,15 @@ void ChopPanel::chopEqual()
         auto& b = current();
         Frame from = 0, to = 0;
         if (b.audio != nullptr && ! sourceIsOnDeck (b))
-            to = static_cast<Frame> (b.audio->channels.front().size());  // a sound file: all of it
+        {
+            to = static_cast<Frame> (b.audio->channels.front().size());  // a sound file: all of it (MM: what's on screen)
+            if (manualLength())
+            {
+                const auto [v0, v1] = view->visibleRange();
+                from = juce::jlimit<Frame> (0, to - 1, static_cast<Frame> (v0));
+                to = juce::jlimit<Frame> (from + 1, to, static_cast<Frame> (v1));
+            }
+        }
         else
         {
             if (! startBankFromDeck())
@@ -702,14 +801,20 @@ void ChopPanel::chopEqual()
                 from = static_cast<Frame> (deck.loopStartFrame());
                 to = static_cast<Frame> (deck.loopEndFrame());
             }
+            else if (manualLength())
+            {
+                // MM: what's on screen.
+                const auto [v0, v1] = view->visibleRange();
+                from = static_cast<Frame> (juce::jmax (0.0, v0));
+                to = static_cast<Frame> (v1);
+            }
             else
             {
                 const auto* record = session.record();
                 from = static_cast<Frame> (deck.position());
                 if (record != nullptr && record->grid && ! record->grid->isEmpty())
                     from = static_cast<Frame> (record->grid->frameAt (std::round (record->grid->beatAt (static_cast<double> (from)))));
-                const auto beats = lengths[juce::jlimit (0, 6, static_cast<int> (sliceKnob.getValue()))];
-                to = from + static_cast<Frame> (16 * beats * current().framesPerBeat);
+                to = from + static_cast<Frame> (16 * sliceBeats().value_or (1.0) * current().framesPerBeat);
             }
             from = juce::jlimit<Frame> (0, total - 1, from);
             to = juce::jlimit<Frame> (from + 1, total, to);
@@ -1073,6 +1178,118 @@ void ChopPanel::chooseFolder()
     });
 }
 
+//--- MIDI ------------------------------------------------------------------------------------------------------
+
+void ChopPanel::midiNoteOn (int note, float velocity)
+{
+    if (learning)
+    {
+        // This controller pad now plays DSS1 pad learnTarget; then on to the next.
+        for (auto& n : padNotes)
+            if (n == note)
+                n = -1;
+        if (note == playNote)
+            playNote = -1;
+        padNotes[static_cast<std::size_t> (learnTarget)] = note;
+        saveMidiMap();
+        const auto learned = learnTarget;
+        learnTarget = (learnTarget + 1) % 16;
+        selectPad (learnTarget);
+        say ("NOTE " + juce::String (note) + " PLAYS PAD " + juce::String (learned + 1) + ". NEXT: PAD " + juce::String (learnTarget + 1));
+        return;
+    }
+    if (note == playNote)
+        return midiPlay (std::nullopt);
+    for (int p = 0; p < 16; ++p)
+        if (padNotes[static_cast<std::size_t> (p)] == note)
+            return padDown (p, juce::jlimit (0.05f, 1.0f, velocity));
+}
+
+void ChopPanel::midiNoteOff (int note)
+{
+    for (int p = 0; p < 16; ++p)
+        if (padNotes[static_cast<std::size_t> (p)] == note)
+            return padUp (p);
+}
+
+void ChopPanel::midiControl (int controller, int value)
+{
+    if (learning)
+    {
+        if (value < 64)
+            return;  // learn on the press
+        playController = controller;
+        playNote = -1;
+        saveMidiMap();
+        say ("CONTROL " + juce::String (controller) + " IS NOW PLAY / PAUSE");
+        return;
+    }
+    if (controller == playController && value >= 64)
+        midiPlay (std::nullopt);
+}
+
+void ChopPanel::midiPlay (std::optional<bool> play)
+{
+    // Like Space: a sound file being chopped (on this screen), otherwise the deck.
+    const auto& b = current();
+    if (isShowing() && b.audio != nullptr && ! sourceIsOnDeck (b))
+    {
+        if (! play || *play != session.output().chopPreview().isPlaying())
+            toggleFilePreview();
+        return;
+    }
+    if (! play || *play != session.deck().isPlaying())
+        session.playPressed();
+}
+
+void ChopPanel::setLearning (bool on)
+{
+    learning = on;
+    midiKey.setToggleState (on, juce::dontSendNotification);
+    if (on)
+    {
+        learnTarget = selected;
+        const auto devices = midi.deviceNames();
+        say (devices.isEmpty() ? juce::String ("NO MIDI CONTROLLER FOUND: PLUG ONE IN")
+                               : "LEARN: HIT A CONTROLLER PAD FOR PAD " + juce::String (learnTarget + 1) + ", OR ITS PLAY BUTTON");
+    }
+    else
+        say ("MIDI LEARN DONE");
+    repaint (midiArea);
+}
+
+void ChopPanel::showMidiMenu()
+{
+    juce::PopupMenu menu;
+    const auto devices = midi.deviceNames();
+    menu.addSectionHeader (devices.isEmpty() ? juce::String ("NO MIDI CONTROLLERS") : "MIDI: " + devices.joinIntoString (", ").substring (0, 60));
+    const auto preset = [this] (int first, const juce::String& what) {
+        for (int p = 0; p < 16; ++p)
+            padNotes[static_cast<std::size_t> (p)] = first + p;
+        saveMidiMap();
+        say ("PADS: " + what);
+    };
+    menu.addItem ("Akai MPD / MPK Pads (Notes 36-51)", [preset] { preset (36, "AKAI MPD / MPK, NOTES 36-51"); });
+    menu.addItem ("Akai MPC Pads (Notes 37-52)", [preset] { preset (37, "AKAI MPC, NOTES 37-52"); });
+    menu.addSeparator();
+    menu.addItem ("Forget the Learned Play Button", playController >= 0 || playNote >= 0, false, [this] {
+        playController = playNote = -1;
+        saveMidiMap();
+        say ("PLAY: MIDI START / STOP AND MMC ONLY");
+    });
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (midiKey));
+}
+
+void ChopPanel::saveMidiMap()
+{
+    juce::StringArray notes;
+    for (const auto n : padNotes)
+        notes.add (juce::String (n));
+    settings->setValue ("midiPadNotes", notes.joinIntoString (","));
+    settings->setValue ("midiPlayCC", playController);
+    settings->setValue ("midiPlayNote", playNote);
+}
+
 //--- Drawing ---------------------------------------------------------------------------------------------------
 
 void ChopPanel::paint (juce::Graphics& g)
@@ -1104,6 +1321,14 @@ void ChopPanel::paint (juce::Graphics& g)
     hw::glass (g, messageArea.toFloat().withTrimmedLeft (430).reduced (0, 1));
     label (zoomOutKey, "ZOOM", {}, 120);
     label (snapKey, "SNAP", {}, 120);
+    {
+        // MIDI: a light that blinks with what arrives, and the controller's name.
+        const auto devices = midi.deviceNames();
+        const bool recent = juce::Time::getMillisecondCounter() - midiSeenAt < 120;
+        auto r = midiArea.toFloat();
+        hw::led (g, { r.getX() + 4.0f, r.getY() + 8.0f }, 3.5f, learning ? hw::colour::red : hw::colour::playGreen, recent || learning);
+        hw::silk (g, "MIDI", devices.isEmpty() ? juce::String ("NONE") : devices[0].toUpperCase().substring (0, 18), r.withTrimmedLeft (12).withHeight (16));
+    }
 
     // Control unit labels.
     label (bankKeys[0], "BANKS", "A-H");
@@ -1111,7 +1336,7 @@ void ChopPanel::paint (juce::Graphics& g)
     label (equalKey, "CHOP", "EQUAL / AT THE HITS");
     label (nudgeLeft, "NUDGE", "ARROWS", 120);
     label (loadKey, "SAMPLE", "FILE / SAVE / CLEAR");
-    hw::silk (g, "SLICE", lengthNames[juce::jlimit (0, 6, static_cast<int> (sliceKnob.getValue()))] + juce::String (" BEAT"),
+    hw::silk (g, "SLICE", manualLength() ? juce::String ("MANUAL") : lengthNames[juce::jlimit (0, 7, static_cast<int> (sliceKnob.getValue()))] + juce::String (" BEAT"),
               sliceKnob.getBounds().toFloat().withHeight (14).translated (0, -16), juce::Justification::centred, 11.0f);
 
     // The chosen pad's settings.
@@ -1181,6 +1406,9 @@ void ChopPanel::resized()
     top.removeFromRight (20);
     snapKey.setBounds (top.removeFromRight (120).reduced (0, 2));
     top.removeFromRight (20);
+    midiKey.setBounds (top.removeFromRight (120).reduced (0, 2));
+    midiArea = midiKey.getBounds().withY (midiKey.getY() - 22).withHeight (18).withWidth (200).translated (-80, 0);
+    top.removeFromRight (20);
     messageArea = top.withTrimmedTop (4).withTrimmedBottom (2);
     area.removeFromTop (12);
     view->setBounds (area);
@@ -1236,8 +1464,12 @@ void ChopPanel::resized()
     folderArea = folderRow;
     middle.removeFromBottom (10);
     auto block = middle;
-    sliceKnob.setBounds (block.removeFromLeft (70).withTrimmedTop (14).withSizeKeepingCentre (64, 64));
-    block.removeFromLeft (12);
+    {
+        auto knobCell = block.removeFromLeft (96).withTrimmedTop (12);
+        const auto ks = juce::jmin (knobCell.getWidth(), knobCell.getHeight() + 10, 96);
+        sliceKnob.setBounds (knobCell.withSizeKeepingCentre (ks, ks));
+    }
+    block.removeFromLeft (8);
     const auto kw = (block.getWidth() - 2 * 6) / 3;
     auto r1 = block.removeFromTop (32);
     block.removeFromTop (6);
@@ -1247,7 +1479,7 @@ void ChopPanel::resized()
         k->setBounds (r1.removeFromLeft (kw));
         r1.removeFromLeft (6);
     }
-    for (auto* k : { &clearKey, &clearBankKey })
+    for (auto* k : { &clearKey, &clearBankKey, &showSavedKey })
     {
         k->setBounds (r2.removeFromLeft (kw));
         r2.removeFromLeft (6);

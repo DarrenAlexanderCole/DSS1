@@ -114,12 +114,70 @@ TEST_CASE ("Reverb leaves a tail, crusher quantises", "[effects]")
     Effects crush;
     crush.prepare (rate, 256);
     crush.crushOn = true;
-    crush.crushBits = 3.0f;
-    crush.crushRate = 1.0f;
-    crush.crushMix = 1.0f;
     auto t = sine (220.0f, 0.5);
     run (crush, t);
-    // After the mix has faded in, every sample is a multiple of 1/4 (3 bits: 4 levels per side).
+    // After it has faded in: 12-bit steps, each held for 3 samples.
     for (std::size_t i = t.l.size() / 2; i < t.l.size(); ++i)
-        REQUIRE (std::abs (t.l[i] * 4.0f - std::round (t.l[i] * 4.0f)) < 1e-3f);
+        REQUIRE (std::abs (t.l[i] * 2048.0f - std::round (t.l[i] * 2048.0f)) < 1e-2f);
+    int changes = 0;
+    for (std::size_t i = t.l.size() / 2; i + 1 < t.l.size(); ++i)
+        changes += std::abs (t.l[i] - t.l[i + 1]) > 1e-4f;
+    CHECK (changes <= static_cast<int> (t.l.size() / 2 / 3) + 1);
+}
+
+TEST_CASE ("Compressor: each type squeezes loud sound, leaves quiet sound alone", "[effects]")
+{
+    for (const auto type : { Effects::CompType::opto, Effects::CompType::vca, Effects::CompType::tube, Effects::CompType::fet })
+    {
+        Effects fx;
+        fx.prepare (rate, 256);
+        fx.compOn = true;
+        fx.compType = static_cast<int> (type);
+        fx.compAmount = 0.75f;  // threshold -27 dB
+        fx.compMix = 1.0f;
+
+        auto loud = sine (200.0f, 1.0, 0.9f);
+        run (fx, loud);
+        CHECK (fx.gainReduction.load() < -6.0f);
+        // Squeezed: louder input doesn't come out proportionally louder (make-up is only half the reduction).
+        CHECK (rms (loud.l, 30000, 44000) < 0.9f / 1.414f);
+
+        Effects calm;
+        calm.prepare (rate, 256);
+        calm.compOn = true;
+        calm.compType = static_cast<int> (type);
+        calm.compAmount = 0.25f;  // threshold -9 dB
+        auto quiet = sine (200.0f, 1.0, 0.02f);  // -34 dB
+        run (calm, quiet);
+        CHECK (calm.gainReduction.load() > -0.5f);
+    }
+}
+
+TEST_CASE ("Compressor switches: high ratio squeezes harder, mix brings back the dry sound", "[effects]")
+{
+    const auto reduction = [] (bool highRatio) {
+        Effects fx;
+        fx.prepare (rate, 256);
+        fx.compOn = true;
+        fx.compType = static_cast<int> (Effects::CompType::vca);
+        fx.compAmount = 0.75f;
+        fx.compHighRatio = highRatio;
+        auto s = sine (200.0f, 1.0, 0.9f);
+        run (fx, s);
+        return fx.gainReduction.load();
+    };
+    CHECK (reduction (true) < reduction (false) - 2.0f);
+
+    Effects off;
+    off.prepare (rate, 256);
+    auto dry = sine (200.0f, 1.0, 0.9f);
+    run (off, dry);
+    Effects parallel;
+    parallel.prepare (rate, 256);
+    parallel.compOn = true;
+    parallel.compAmount = 0.75f;
+    parallel.compMix = 0.0f;
+    auto wet = sine (200.0f, 1.0, 0.9f);
+    run (parallel, wet);
+    CHECK (rms (wet.l, 30000, 44000) == Approx (rms (dry.l, 30000, 44000)).epsilon (0.01));
 }

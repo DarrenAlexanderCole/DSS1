@@ -77,7 +77,11 @@ Load a track (double-click it in Catalog), press PLAY, then open **Listen / Desi
   - **FILTER:** one knob, low-pass to the left, high-pass to the right, open in the middle.
   - **ECHO:** TIME in beats (synced to the track's BPM at your pitch), FEEDBACK and MIX.
   - **REVERB:** SIZE and MIX.
-  - **CRUSH:** BITS and RATE for a lo-fi sampler sound, and MIX.
+  - **COMP:** pick a character with the keys: **OPTO** (slow, smooth), **VCA** (clean, punchy glue), **TUBE**
+    (warm, squeezes harder the harder you push) or **FET** (fast, aggressive). **AMOUNT** sets how hard it works
+    (its readout shows the gain reduction while it's on), **COMP MIX** blends in the dry sound (parallel
+    compression). Switches: **ATTACK** fast/slow, **RELEASE** fast/slow, **RATIO** high/low, **SC HPF** (ignore
+    the low end so the kick doesn't pump the mix) and **CRUSH** (12-bit, old-sampler grit).
   - Double-click a knob to reset it. **ALL OFF** turns every effect off.
 - **XY pad:** hold the mouse down on it and move: left and right sweep the filter, up adds echo. Let go and it
   springs back. With **HOLD** on, it stays where you leave it.
@@ -117,6 +121,15 @@ recorder (**TO CHOP**). Pads are laid out and keyed like a drum machine:
 - **Pad settings** (right): **GAIN**, **TUNE** (semitones), **ATTACK**, **FADE** and **REVERSE** for the chosen
   pad. Double-click a knob to reset it. Pads with settings show a small light.
 - **Space** plays and pauses the deck, or the sound file you're chopping (from where you last clicked).
+- **SLICE** sets how long the last slice plays, in beats, and the slice size for EQUAL 16. At **MM** (6 o'clock,
+  manual) nothing is automatic: drag the **END** marker to where the last slice should stop, and EQUAL 16 chops
+  what's on screen.
+- **MIDI:** plug in a pad controller (an Akai MPD, MPK, MPC, or anything that sends notes): its 16 pads play
+  DSS1's pads (Akai pads work out of the box, harder hits play louder), and MIDI Start/Stop or MMC plays and
+  pauses. **MIDI LEARN** to map your own: hit a controller pad for each DSS1 pad in turn (click a DSS1 pad to
+  pick which), press a button on the controller to make it play/pause, then press **MIDI LEARN** again. Right-
+  click it for Akai presets. The light by **MIDI** blinks with what arrives.
+- **SHOW SAVED** opens the samples folder in Finder.
 - **SAVE BANK** writes the slices, with their settings, as WAVs to the **SAVE TO** folder (Bank A … Bank H).
   **CLEAR** clears the chosen pad, **CLEAR BANK** the whole bank. Your chops are still there next time.
 

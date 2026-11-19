@@ -32,6 +32,7 @@ target_sources(DSS1 PRIVATE
     MainComponent.cpp
     PrepPanel.cpp
     ChopPanel.cpp
+    MidiPads.cpp
     ChopView.cpp
     Session.cpp
     StagePanel.cpp

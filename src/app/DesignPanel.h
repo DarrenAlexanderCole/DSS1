@@ -91,8 +91,13 @@ private:
     juce::PropertiesFile* settings = nullptr;
 
     std::vector<std::unique_ptr<Knob>> knobs;
-    juce::ToggleButton filterOn { "FILTER" }, echoOn { "ECHO" }, reverbOn { "REVERB" }, crushOn { "CRUSH" };
-    juce::Rectangle<int> filterArea, echoArea, reverbArea, crushArea, effectsUnit, lowerUnit, padArea, recorderArea, timeArea, takeArea;
+    juce::ToggleButton filterOn { "FILTER" }, echoOn { "ECHO" }, reverbOn { "REVERB" }, compOn { "COMP" };
+    // The compressor: its type keys, and a row of switches.
+    std::array<juce::TextButton, 4> compTypeKeys;
+    juce::ToggleButton attackSwitch { "ATTACK" }, releaseSwitch { "RELEASE" }, ratioSwitch { "RATIO" }, hpfSwitch { "SC HPF" }, crushSwitch { "CRUSH" };
+    void selectCompType (int type);
+    float shownReduction = 0;
+    juce::Rectangle<int> filterArea, echoArea, reverbArea, compArea, effectsUnit, lowerUnit, padArea, recorderArea, timeArea, takeArea;
 
     XyPad pad;
     juce::ToggleButton holdButton { "HOLD" };

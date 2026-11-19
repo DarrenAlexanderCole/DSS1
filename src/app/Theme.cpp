@@ -214,9 +214,14 @@ void Theme::drawButtonText (juce::Graphics& g, juce::TextButton& b, bool, bool d
 
 void Theme::drawToggleButton (juce::Graphics& g, juce::ToggleButton& b, bool, bool)
 {
-    // A chrome bat-handle toggle switch: up is on.
+    // A chrome bat-handle toggle switch: up is on. Wide: name and state to the right. Tall and narrow (a row
+    // of switches): name above, state below.
     const auto h = static_cast<float> (b.getHeight());
-    const auto sw = juce::Rectangle<float> (0, 0, 22.0f, juce::jmin (h, 34.0f)).withCentre ({ 13.0f, h / 2 });
+    const bool stacked = b.getHeight() > 50 && b.getWidth() < 110;
+    const auto onText = b.getProperties().getWithDefault ("onText", "ON").toString();
+    const auto offText = b.getProperties().getWithDefault ("offText", "OFF").toString();
+    const auto centreX = stacked ? static_cast<float> (b.getWidth()) / 2 : 13.0f;
+    const auto sw = juce::Rectangle<float> (0, 0, 22.0f, juce::jmin (stacked ? h - 30.0f : h, 34.0f)).withCentre ({ centreX, h / 2 });
     const auto c = sw.getCentre();
     g.setColour (juce::Colours::black.withAlpha (0.5f));
     g.fillEllipse (juce::Rectangle<float> (22, 22).withCentre (c.translated (1, 2)));
@@ -243,14 +248,25 @@ void Theme::drawToggleButton (juce::Graphics& g, juce::ToggleButton& b, bool, bo
     g.setColour (juce::Colour (0xffcfd0d2));
     g.fillEllipse (juce::Rectangle<float> (8.5f, 6.0f).withCentre ({ c.x, tipY }));
 
-    auto text = b.getLocalBounds().toFloat().withTrimmedLeft (32.0f);
     const auto alpha = b.isEnabled() ? 1.0f : 0.45f;
+    if (stacked)
+    {
+        const auto all = b.getLocalBounds().toFloat();
+        g.setFont (hw::label (11.0f));
+        g.setColour (hw::colour::silk.withAlpha (alpha));
+        g.drawText (b.getButtonText().toUpperCase(), all.withHeight (13.0f), juce::Justification::centred);
+        g.setColour ((on ? hw::colour::amber : hw::colour::red).withAlpha (alpha));
+        g.setFont (hw::label (10.5f));
+        g.drawText (on ? onText : offText, all.withTop (all.getBottom() - 13.0f), juce::Justification::centred);
+        return;
+    }
+    auto text = b.getLocalBounds().toFloat().withTrimmedLeft (32.0f);
     g.setFont (hw::label (12.0f));
     g.setColour (hw::colour::silk.withAlpha (alpha));
     g.drawText (b.getButtonText().toUpperCase(), text.withTrimmedBottom (h / 2 - 1), juce::Justification::bottomLeft);
     g.setColour (hw::colour::red.withAlpha (alpha));
     g.setFont (hw::label (11.0f));
-    g.drawText (on ? "ON" : "OFF", text.withTrimmedTop (h / 2 + 1), juce::Justification::topLeft);
+    g.drawText (on ? onText : offText, text.withTrimmedTop (h / 2 + 1), juce::Justification::topLeft);
 }
 
 void Theme::drawRotarySlider (juce::Graphics& g, int x, int y, int w, int h, float pos, float start, float end, juce::Slider& s)

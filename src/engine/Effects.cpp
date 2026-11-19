@@ -48,7 +48,7 @@ void Effects::prepare (double sampleRate, int)
     }
     // Smoothing: about 20 ms for levels and the filter, 150 ms for delay time (a tape-like glide).
     const auto per = [this] (double seconds) { return static_cast<float> (1.0 - std::exp (-1.0 / (seconds * rate))); };
-    for (auto* s : { &filterAmount, &filterWet, &echoWet, &echoFb, &reverbWet, &reverbRoom, &crushWet })
+    for (auto* s : { &filterAmount, &filterWet, &echoWet, &echoFb, &reverbWet, &reverbRoom, &crushWet, &compWet })
         s->step = per (0.02);
     echoTime.step = per (0.15);
     echoTime.value = echoTime.target = static_cast<float> (60.0 / 120.0 * 0.75 * rate);
@@ -75,6 +75,9 @@ void Effects::reset() noexcept
             std::fill (a.buffer.begin(), a.buffer.end(), 0.0f);
     crushHeld = {};
     crushCounter = 0;
+    compEnvelope = compRms = compSlow = 0;
+    sidechainState = {};
+    gainReduction.store (0.0f);
 }
 
 void Effects::process (float* const* channels, int numChannels, int numFrames) noexcept
@@ -95,10 +98,36 @@ void Effects::process (float* const* channels, int numChannels, int numFrames) n
     echoFb.target = std::clamp (echoFeedback.load (std::memory_order_relaxed), 0.0f, 0.95f);
     reverbWet.target = reverbOn.load (std::memory_order_relaxed) ? std::clamp (reverbMix.load (std::memory_order_relaxed), 0.0f, 1.0f) : 0.0f;
     reverbRoom.target = 0.7f + 0.28f * std::clamp (reverbSize.load (std::memory_order_relaxed), 0.0f, 1.0f);
-    crushWet.target = crushOn.load (std::memory_order_relaxed) ? std::clamp (crushMix.load (std::memory_order_relaxed), 0.0f, 1.0f) : 0.0f;
-    const auto bits = std::clamp (crushBits.load (std::memory_order_relaxed), 2.0f, 16.0f);
-    const auto levels = std::pow (2.0f, bits - 1.0f);
-    const auto hold = std::clamp (static_cast<int> (crushRate.load (std::memory_order_relaxed)), 1, 32);
+    crushWet.target = crushOn.load (std::memory_order_relaxed) ? 1.0f : 0.0f;
+    const auto levels = std::pow (2.0f, 11.0f);  // 12 bit
+    const int hold = 3;                           // a third of the rate
+
+    // Compressor settings for this block, by type.
+    compWet.target = compOn.load (std::memory_order_relaxed) ? std::clamp (compMix.load (std::memory_order_relaxed), 0.0f, 1.0f) : 0.0f;
+    const auto type = static_cast<CompType> (std::clamp (compType.load (std::memory_order_relaxed), 0, 3));
+    const bool fastA = compFastAttack.load (std::memory_order_relaxed), fastR = compFastRelease.load (std::memory_order_relaxed);
+    const bool high = compHighRatio.load (std::memory_order_relaxed);
+    struct Character
+    {
+        float attackMs, releaseMs, ratio, kneeDb, drive;
+    };
+    Character ch {};
+    switch (type)
+    {
+        case CompType::opto: ch = { fastA ? 3.0f : 10.0f, fastR ? 150.0f : 500.0f, high ? 6.0f : 3.0f, 10.0f, 0.0f }; break;
+        case CompType::vca:  ch = { fastA ? 0.3f : 3.0f, fastR ? 40.0f : 120.0f, high ? 10.0f : 4.0f, 2.0f, 0.0f }; break;
+        case CompType::tube: ch = { fastA ? 8.0f : 20.0f, fastR ? 150.0f : 400.0f, high ? 4.0f : 2.0f, 18.0f, 0.5f }; break;
+        case CompType::fet:  ch = { fastA ? 0.05f : 0.8f, fastR ? 30.0f : 80.0f, high ? 20.0f : 4.0f, 1.0f, 0.25f }; break;
+    }
+    const auto thresholdDb = -36.0f * std::clamp (compAmount.load (std::memory_order_relaxed), 0.0f, 1.0f);
+    const auto attackCoeff = std::exp (-1.0f / (0.001f * ch.attackMs * static_cast<float> (rate)));
+    const auto releaseCoeff = std::exp (-1.0f / (0.001f * ch.releaseMs * static_cast<float> (rate)));
+    const auto rmsCoeff = std::exp (-1.0f / (0.010f * static_cast<float> (rate)));
+    const auto hpfCoeff = std::exp (-2.0f * pi * 100.0f / static_cast<float> (rate));
+    const bool hpf = compSidechainHpf.load (std::memory_order_relaxed);
+    // Make-up gain: about half of what the threshold and ratio take away at full scale.
+    const auto makeupDb = -thresholdDb * (1.0f - 1.0f / ch.ratio) * 0.5f;
+    float deepest = 0;
 
     const auto lineSize = echoLine[0].size();
     const auto nyquistGuard = static_cast<float> (rate * 0.45);
@@ -131,7 +160,7 @@ void Effects::process (float* const* channels, int numChannels, int numFrames) n
             }
         }
 
-        // --- Crusher: hold samples (lower rate), then quantise (fewer bits).
+        // --- Crush switch: hold samples (lower rate), then quantise (fewer bits).
         const auto cWet = crushWet.next();
         if (cWet > 1e-4f)
         {
@@ -141,6 +170,61 @@ void Effects::process (float* const* channels, int numChannels, int numFrames) n
             crushCounter = (crushCounter + 1) % hold;
             for (std::size_t c = 0; c < 2; ++c)
                 out[c] += (crushHeld[c] - out[c]) * cWet;
+        }
+
+        // --- Compressor: a stereo-linked detector, a soft-knee gain computer, attack/release in dB, make-up,
+        // and each type's colour.
+        const auto kWet = compWet.next();
+        if (kWet > 1e-4f)
+        {
+            float detect[2] { out[0], out[1] };
+            if (hpf)  // ignore the low end, so the kick doesn't pump everything
+                for (std::size_t c = 0; c < 2; ++c)
+                {
+                    sidechainState[c] = hpfCoeff * sidechainState[c] + (1.0f - hpfCoeff) * detect[c];
+                    detect[c] -= sidechainState[c];
+                }
+            auto level = std::max (std::abs (detect[0]), std::abs (detect[1]));
+            if (type == CompType::vca)
+            {
+                compRms = rmsCoeff * compRms + (1.0f - rmsCoeff) * level * level;
+                level = std::sqrt (compRms) * 1.414f;
+            }
+            const auto levelDb = 20.0f * std::log10 (std::max (level, 1e-6f));
+            auto ratio = ch.ratio;
+            if (type == CompType::tube)  // vari-mu: the ratio rises the harder it's pushed
+                ratio = std::min (ch.ratio * 3.0f, ch.ratio + std::max (0.0f, levelDb - thresholdDb) * 0.15f);
+            const auto over = levelDb - thresholdDb;
+            float target = 0;
+            if (2.0f * over < -ch.kneeDb)
+                target = 0;
+            else if (2.0f * std::abs (over) <= ch.kneeDb)
+                target = (1.0f / ratio - 1.0f) * (over + ch.kneeDb / 2.0f) * (over + ch.kneeDb / 2.0f) / (2.0f * std::max (ch.kneeDb, 0.01f));
+            else
+                target = (1.0f / ratio - 1.0f) * over;
+            auto release = releaseCoeff;
+            if (type == CompType::opto)
+            {
+                // The light cell: the longer it's been squeezing, the slower it lets go.
+                compSlow = 0.9999f * compSlow + 0.0001f * std::min (0.0f, compEnvelope);
+                release = std::pow (releaseCoeff, 1.0f / (1.0f + std::abs (compSlow) * 0.4f));
+            }
+            compEnvelope = target < compEnvelope ? attackCoeff * compEnvelope + (1.0f - attackCoeff) * target
+                                                 : release * compEnvelope + (1.0f - release) * target;
+            deepest = std::min (deepest, compEnvelope);
+            const auto gain = std::pow (10.0f, (compEnvelope + makeupDb) / 20.0f);
+            for (std::size_t c = 0; c < 2; ++c)
+            {
+                auto squeezed = out[c] * gain;
+                if (ch.drive > 0)
+                {
+                    // Tube: warm, even harmonics (a little asymmetry). FET: a touch of odd-harmonic bite.
+                    const auto d = 1.0f + ch.drive * 2.0f;
+                    squeezed = type == CompType::tube ? (std::tanh (d * squeezed + 0.1f) - std::tanh (0.1f)) / d
+                                                      : std::tanh (d * squeezed) / d;
+                }
+                out[c] += (squeezed - out[c]) * kWet;
+            }
         }
 
         // --- Echo: read behind the write head (linear interpolation), darken the repeats, feed back.
@@ -196,6 +280,7 @@ void Effects::process (float* const* channels, int numChannels, int numFrames) n
         if (stereo)
             right[i] = out[1];
     }
+    gainReduction.store (compWet.value > 1e-4f ? deepest : 0.0f, std::memory_order_relaxed);
 }
 
 } // namespace dss1::engine

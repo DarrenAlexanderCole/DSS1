@@ -200,6 +200,15 @@ to nudge, Cmd+Z to undo, Space for a sound file, which plays through `AudioEngin
 settings, not audio, are kept in settings ("sliceKit", one line per bank); SAVE BANK renders the slices with
 their settings as WAVs into `<samples folder>/Bank X/`.
 
+`MidiPads` listens to every MIDI input (re-scanning when devices come and go) and hands notes, controls and
+transport (Start/Stop/Continue, MMC) to the message thread; `ChopPanel` maps notes to pads (default 36-51, the
+Akai MPD/MPK layout; MIDI LEARN; velocity sets the pad's level) and a learned control or note to play/pause.
+
+The effects' compressor (`Effects::CompType`) has four characters: OPTO (program-dependent release, soft knee),
+VCA (RMS detector, firm knee), TUBE (vari-mu: ratio rises with level, wide knee, even-harmonic saturation) and
+FET (very fast, odd-harmonic bite), with switches for attack, release, ratio, a sidechain high-pass and a
+12-bit crusher in front; gain reduction is published for the readout.
+
 `src/engine/TakePlayer.h` plays the last take back, mixed in after the effects. Takes record into the temp
 folder and move to Music/DSS1 Recordings (and into the library) only when saved.
 

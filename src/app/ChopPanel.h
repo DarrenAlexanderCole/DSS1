@@ -1,5 +1,6 @@
 #pragma once
 
+#include "MidiPads.h"
 #include "Session.h"
 
 #include <juce_data_structures/juce_data_structures.h>
@@ -20,7 +21,7 @@ struct ChopBank
     std::array<std::optional<Frame>, 16> marks;          // where each pad's slice starts
     std::array<engine::Sampler::PadSettings, 16> settings;
     double framesPerBeat = 0;
-    std::optional<Frame> chopEnd;                        // where the last slice ends after EQUAL 16 / TRANSIENTS
+    std::optional<Frame> chopEnd;                        // where the last slice ends (EQUAL 16, TRANSIENTS, or the END marker in MM)
     bool empty() const noexcept;
 };
 
@@ -76,7 +77,7 @@ private:
 
     void selectBank (int b);
     void selectPad (int pad);
-    void padDown (int pad);
+    void padDown (int pad, float velocity = 1.0f);
     void padUp (int pad);
     void showPadMenu (int pad);
     void markAtPlayhead (int pad);
@@ -93,6 +94,17 @@ private:
     void setMode (bool chop);
     void cycleSnap();
     std::optional<Frame> sliceEnd (int bankIndex, int pad) const;
+    /// SLICE at MM (manual): the last slice ends at the END marker you place, not after so many beats.
+    bool manualLength() const { return sliceKnob.getValue() < 0.5; }
+    std::optional<double> sliceBeats() const;
+    void setEndMarker (Frame at);
+    void midiNoteOn (int note, float velocity);
+    void midiNoteOff (int note);
+    void midiControl (int controller, int value);
+    void midiPlay (std::optional<bool> play);
+    void setLearning (bool on);
+    void showMidiMenu();
+    void saveMidiMap();
     void updateRegions (int bankIndex);
     void pushSettings (int bankIndex, int pad);
     bool startBankFromDeck();
@@ -126,6 +138,15 @@ private:
     std::array<bool, 16> held {}, wasPlaying {};
     int mouseHeldPad = -1;
 
+    MidiPads midi;
+    std::array<int, 16> padNotes {};       // MIDI note for each pad
+    int playController = -1, playNote = -1; // a learned play button (a CC or a note)
+    bool learning = false;
+    int learnTarget = 0;
+    juce::uint32 midiSeenAt = 0;
+    juce::TextButton midiKey { "MIDI LEARN" }, showSavedKey { "SHOW SAVED" };
+    juce::Rectangle<int> midiArea;
+    double previousSliceSetting = 3;
     juce::TextButton snapKey, zoomOutKey { "-" }, zoomInKey { "+" }, sliceZoomKey { "SLICE" }, wholeKey { "WHOLE" };
     juce::TextButton chopKey { "CHOP" }, playKey { "PLAY" }, holdKey { "HOLD" }, chokeKey { "CHOKE" };
     juce::TextButton equalKey { "EQUAL 16" }, transientKey { "TRANSIENTS" }, undoKey { "UNDO" }, nudgeLeft { "<" }, nudgeRight { ">" };

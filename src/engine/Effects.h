@@ -7,7 +7,8 @@
 namespace dss1::engine
 {
 
-/// The Listen & Design effects, in order: filter, crusher, echo, reverb. Stereo, real time, no allocation on
+/// The Listen & Design effects, in order: filter, compressor (with an optional crusher in front of it), echo,
+/// reverb. Stereo, real time, no allocation on
 /// the audio thread. Parameters are atomics set from the message thread (knobs, the XY pad) and smoothed on the
 /// audio thread so moves never click. With every effect off the chain passes audio through untouched.
 class Effects
@@ -30,11 +31,21 @@ public:
     std::atomic<float> reverbMix { 0.3f };
     std::atomic<bool> reverbOn { false };
 
-    /// Crusher: bits 2 … 16, rate 1 … 32 (hold each sample this many times), mix 0 … 1.
-    std::atomic<float> crushBits { 8.0f };
-    std::atomic<float> crushRate { 4.0f };
-    std::atomic<float> crushMix { 1.0f };
+    /// Compressor, modelled on four classic designs:
+    /// - OPTO (LA-2A style): slow, smooth, program-dependent release, soft knee.
+    /// - VCA (SSL bus style): clean and punchy, RMS detector, firm knee.
+    /// - TUBE (vari-mu, Fairchild style): ratio rises with level, wide knee, warm saturation.
+    /// - FET (1176 style): very fast, aggressive, a little bite.
+    enum class CompType { opto = 0, vca = 1, tube = 2, fet = 3 };
+    std::atomic<int> compType { static_cast<int> (CompType::vca) };
+    std::atomic<bool> compOn { false };
+    std::atomic<float> compAmount { 0.4f };   ///< 0 … 1: how hard it squeezes (threshold 0 … -36 dB)
+    std::atomic<float> compMix { 1.0f };      ///< 0 … 1: dry/compressed (parallel compression below 1)
+    std::atomic<bool> compFastAttack { false }, compFastRelease { false }, compHighRatio { false }, compSidechainHpf { false };
+    /// The CRUSH switch: 12-bit, a third of the rate, like an old drum sampler, in front of the compressor.
     std::atomic<bool> crushOn { false };
+    /// Gain reduction right now, in dB (0 or negative), for the meter.
+    std::atomic<float> gainReduction { 0.0f };
 
     /// The tempo echo syncs to (the playing track's BPM at the deck's tempo).
     std::atomic<float> bpm { 120.0f };
@@ -73,7 +84,11 @@ private:
     };
 
     double rate = 44100.0;
-    Smoothed filterAmount, filterWet, echoTime, echoWet, echoFb, reverbWet, reverbRoom, crushWet;
+    Smoothed filterAmount, filterWet, echoTime, echoWet, echoFb, reverbWet, reverbRoom, crushWet, compWet;
+    float compEnvelope = 0;      // gain reduction, dB
+    float compRms = 0;           // detector (VCA)
+    float compSlow = 0;          // opto: how long it's been working, for the program-dependent release
+    std::array<float, 2> sidechainState {};
     std::array<Svf, 2> lowpass, highpass;
 
     std::array<std::vector<float>, 2> echoLine;

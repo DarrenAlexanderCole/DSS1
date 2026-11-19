@@ -158,11 +158,14 @@ DesignPanel::DesignPanel (Session& s, Crate& c) : session (s), crate (c), fx (s.
     addKnob ("ECHO MIX", 0.0, 1.0, 0.01, 0.35, "0|||||10", [this] (double v) { fx.echoMix = static_cast<float> (v); }, percent);
     addKnob ("SIZE", 0.0, 1.0, 0.01, 0.6, "S|||||L", [this] (double v) { fx.reverbSize = static_cast<float> (v); }, percent);
     addKnob ("VERB MIX", 0.0, 1.0, 0.01, 0.3, "0|||||10", [this] (double v) { fx.reverbMix = static_cast<float> (v); }, percent);
-    addKnob ("BITS", 2.0, 16.0, 1.0, 8.0, "2||||||16", [this] (double v) { fx.crushBits = static_cast<float> (v); },
-             [] (double v) { return juce::String (juce::roundToInt (v)) + " BIT"; });
-    addKnob ("RATE", 1.0, 32.0, 1.0, 4.0, "1|||||32", [this] (double v) { fx.crushRate = static_cast<float> (v); },
-             [] (double v) { return "/" + juce::String (juce::roundToInt (v)); });
-    addKnob ("CRUSH MIX", 0.0, 1.0, 0.01, 1.0, "0|||||10", [this] (double v) { fx.crushMix = static_cast<float> (v); }, percent);
+    // AMOUNT shows the gain reduction while the compressor is on.
+    addKnob ("AMOUNT", 0.0, 1.0, 0.01, 0.4, "0|||||10", [this] (double v) { fx.compAmount = static_cast<float> (v); },
+             [this] (double v) {
+                 if (fx.compOn.load())
+                     return juce::String (shownReduction, 1) + " DB";
+                 return percent (v);
+             });
+    addKnob ("COMP MIX", 0.0, 1.0, 0.01, 1.0, "DRY||||||WET", [this] (double v) { fx.compMix = static_cast<float> (v); }, percent);
 
     // Effects start off each time DSS1 opens; their knob settings are remembered.
     const auto toggle = [this] (juce::ToggleButton& b, std::atomic<bool>& flag) {
@@ -174,7 +177,41 @@ DesignPanel::DesignPanel (Session& s, Crate& c) : session (s), crate (c), fx (s.
     toggle (filterOn, fx.filterOn);
     toggle (echoOn, fx.echoOn);
     toggle (reverbOn, fx.reverbOn);
-    toggle (crushOn, fx.crushOn);
+    toggle (compOn, fx.compOn);
+
+    // Compressor type and switches (remembered, unlike on/off).
+    const char* typeNames[] { "OPTO", "VCA", "TUBE", "FET" };
+    const char* typeTips[] { "Opto: slow and smooth, lets go gently (LA-2A style)", "VCA: clean and punchy, glues a mix (SSL bus style)",
+                             "Tube: vari-mu, warm, squeezes harder the harder you push (Fairchild style)", "FET: fast and aggressive, with bite (1176 style)" };
+    for (int t = 0; t < 4; ++t)
+    {
+        auto& k = compTypeKeys[static_cast<std::size_t> (t)];
+        k.setButtonText (typeNames[t]);
+        k.setTooltip (typeTips[t]);
+        hwStyle (k, KeyStyle::cream);
+        k.onClick = [this, t] { selectCompType (t); };
+        addAndMakeVisible (k);
+    }
+    selectCompType (settings->getIntValue ("fx.compType", 1));
+    const auto sw = [this] (juce::ToggleButton& b, std::atomic<bool>& flag, const char* key, const char* on, const char* off, const char* tip) {
+        b.getProperties().set ("onText", on);
+        b.getProperties().set ("offText", off);
+        b.setTooltip (tip);
+        b.setToggleState (settings->getBoolValue (key, false), juce::dontSendNotification);
+        flag = b.getToggleState();
+        b.onClick = [this, &b, &flag, key] {
+            flag = b.getToggleState();
+            settings->setValue (key, b.getToggleState());
+        };
+        addAndMakeVisible (b);
+    };
+    sw (attackSwitch, fx.compFastAttack, "fx.compFastAttack", "FAST", "SLOW", "Attack: fast catches every transient, slow lets the punch through");
+    sw (releaseSwitch, fx.compFastRelease, "fx.compFastRelease", "FAST", "SLOW", "Release: fast pumps and breathes, slow stays smooth");
+    sw (ratioSwitch, fx.compHighRatio, "fx.compHighRatio", "HIGH", "LOW", "Ratio: high is close to limiting");
+    sw (hpfSwitch, fx.compSidechainHpf, "fx.compSidechainHpf", "ON", "OFF", "Sidechain high-pass: the compressor ignores the low end, so the kick doesn't pump the mix");
+    sw (crushSwitch, fx.crushOn, "fx.crush", "ON", "OFF", "Crush: 12-bit grit at a third of the rate, like an old drum sampler, before the compressor");
+    crushSwitch.setToggleState (false, juce::dontSendNotification);  // starts off, like the effects
+    fx.crushOn = false;
 
     pad.onChange = [this] { syncFromEffects(); };
     addAndMakeVisible (pad);
@@ -187,7 +224,7 @@ DesignPanel::DesignPanel (Session& s, Crate& c) : session (s), crate (c), fx (s.
     addAndMakeVisible (holdButton);
     resetFxButton.setTooltip ("Turn every effect off");
     resetFxButton.onClick = [this] {
-        for (auto* b : { &filterOn, &echoOn, &reverbOn, &crushOn })
+        for (auto* b : { &filterOn, &echoOn, &reverbOn, &compOn, &crushSwitch })
             b->setToggleState (false, juce::sendNotificationSync);
         fx.reset();
     };
@@ -400,8 +437,26 @@ void DesignPanel::toggleRecording()
     repaint();
 }
 
+void DesignPanel::selectCompType (int type)
+{
+    type = juce::jlimit (0, 3, type);
+    fx.compType = type;
+    settings->setValue ("fx.compType", type);
+    for (int t = 0; t < 4; ++t)
+        compTypeKeys[static_cast<std::size_t> (t)].setToggleState (t == type, juce::dontSendNotification);
+}
+
 void DesignPanel::timerCallback()
 {
+    // The gain-reduction readout (with a little ballistics, like a meter).
+    if (fx.compOn.load() || std::abs (shownReduction) > 0.0f)
+    {
+        const auto gr = fx.gainReduction.load();
+        shownReduction = gr < shownReduction ? gr : shownReduction + (gr - shownReduction) * 0.25f;
+        if (std::abs (shownReduction) < 0.05f && ! fx.compOn.load())
+            shownReduction = 0.0f;
+        repaint (compArea);
+    }
     {
         auto& player = session.output().takePlayer();
         const bool playingTake = player.isPlaying();
@@ -438,7 +493,7 @@ void DesignPanel::paint (juce::Graphics& g)
     hw::silk (g, "EFFECTS", "PLAY OVER EVERYTHING YOU HEAR", effectsUnit.reduced (hw::RackUnit::earWidth + 30, 0).withTop (effectsUnit.getY() + 14).withHeight (18).toFloat());
 
     // Module bays.
-    for (const auto& r : { filterArea, echoArea, reverbArea, crushArea })
+    for (const auto& r : { filterArea, echoArea, reverbArea, compArea })
     {
         g.setColour (juce::Colours::black.withAlpha (0.3f));
         g.fillRoundedRectangle (r.toFloat(), 4.0f);
@@ -552,7 +607,7 @@ void DesignPanel::resized()
     area.removeFromLeft (gap);
     reverbArea = area.removeFromLeft (slot * 2);
     area.removeFromLeft (gap);
-    crushArea = area;
+    compArea = area;
 
     const auto layBay = [&] (juce::Rectangle<int> bay, juce::ToggleButton& on, std::initializer_list<int> knobIndices) {
         auto inner = bay.reduced (10, 10);
@@ -570,7 +625,33 @@ void DesignPanel::resized()
     layBay (filterArea, filterOn, { 0 });
     layBay (echoArea, echoOn, { 1, 2, 3 });
     layBay (reverbArea, reverbOn, { 4, 5 });
-    layBay (crushArea, crushOn, { 6, 7, 8 });
+    {
+        // COMP: on switch and type keys along the top; the switches, then AMOUNT and MIX.
+        auto inner = compArea.reduced (10, 10);
+        auto topRow = inner.removeFromTop (34);
+        compOn.setBounds (topRow.removeFromLeft (100));
+        topRow.removeFromLeft (6);
+        const auto tw = (topRow.getWidth() - 3 * 5) / 4;
+        for (auto& k : compTypeKeys)
+        {
+            k.setBounds (topRow.removeFromLeft (tw).reduced (0, 3));
+            topRow.removeFromLeft (5);
+        }
+        inner.removeFromTop (20);
+        inner.removeFromBottom (22);
+        auto knobArea = inner.removeFromRight (inner.getWidth() * 2 / 5);
+        const auto kw = knobArea.getWidth() / 2;
+        for (const auto i : { 6, 7 })
+        {
+            const auto cell = knobArea.removeFromLeft (kw);
+            const auto size = juce::jmin (cell.getWidth(), cell.getHeight(), 110);
+            knobs[static_cast<std::size_t> (i)]->slider.setBounds (cell.withSizeKeepingCentre (size, size));
+        }
+        inner.removeFromRight (8);
+        const auto swW = inner.getWidth() / 5;
+        for (auto* b : { &attackSwitch, &releaseSwitch, &ratioSwitch, &hpfSwitch, &crushSwitch })
+            b->setBounds (inner.removeFromLeft (swW).withSizeKeepingCentre (swW, 64));
+    }
 
     // Lower unit: the XY pad, then the recorder (keys and clock, the take's waveform).
     area = lowerUnit.reduced (hw::RackUnit::earWidth, 0).reduced (30, 0);
