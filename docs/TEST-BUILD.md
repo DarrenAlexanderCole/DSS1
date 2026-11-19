@@ -86,7 +86,8 @@ Load a track (double-click it in Catalog), press PLAY, then open **Listen / Desi
   **SAVE** keeps it (Music > DSS1 Recordings, and into Catalog); **DISCARD** throws it away; pressing **REC**
   again records another and throws away the one you didn't save. A take left unsaved when you quit is kept in
   DSS1 Recordings > Unsaved Takes.
-- **Sampler (slicer):** 8 banks (**A-H**) x 16 pads, laid out and keyed like a drum machine:
+- **Sampler (chop):** works like MPC Chop. Each bank (**A-H**) chops one sample, the track on the deck or a
+  sound file (**LOAD...**), into 16 slices, one per pad. Pads are laid out and keyed like a drum machine:
 
   | | | | |
   |---|---|---|---|
@@ -95,12 +96,19 @@ Load a track (double-click it in Catalog), press PLAY, then open **Listen / Desi
   | 5 `A` | 6 `S` | 7 `D` | 8 `F` |
   | 1 `Z` | 2 `X` | 3 `C` | 4 `V` |
 
-  The first press of an empty pad marks the playhead. After that the pad plays its slice: from its mark to the
-  next mark in the same track in this bank. The last slice plays **LAST SLICE** beats. Play the track and tap Z,
-  X, C, V … on the beats you want. **CLEAR** empties the chosen pad so it marks again; right-click a pad to mark
-  it again, load a sound file onto it, or clear the bank. **SAVE BANK** writes the bank's slices as WAVs into
-  the folder under **SAMPLES TO** (Bank A … Bank H); **CHANGE...** picks the folder. Your pads are still there
-  next time you open DSS1.
+  - **Chop:** play the track and tap empty pads on the beats you want (each press marks the playhead), or press
+    **AUTO 16** to cut the playing loop (or 16 x **SLICE** beats from the playhead) into 16 equal slices. A slice
+    runs to the next mark; the last one plays **SLICE** beats. The waveform shows the markers: drag one to move
+    it, click a slice to hear it.
+  - **CHOP / PLAY:** in **CHOP**, a pad press moves that pad's mark to the playhead and a click on the waveform
+    moves the chosen pad's mark there. In **PLAY**, pads play (empty pads still mark).
+  - **CHOKE** (on): a pad cuts whatever else is playing in its bank, so slices play one at a time. Pressing a
+    pad again restarts it. Off: slices layer.
+  - **HOLD** (off): a slice plays only while its key or pad is held. Off: one-shot, it plays to its end.
+  - Nothing clicks: every start and cut is crossfaded in a few ms.
+  - **SAVE BANK** writes the bank's slices as WAVs to the **SAVE TO** folder (Bank A … Bank H); **CHANGE...**
+    picks the folder. **CLEAR** clears the chosen pad, **CLEAR BANK** the whole bank. Your chops are still there
+    next time you open DSS1.
 - **Space** or **P** plays and pauses on every screen (except while typing in a search box).
 
 ## Deliver (new)

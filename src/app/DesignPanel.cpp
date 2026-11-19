@@ -564,9 +564,9 @@ void DesignPanel::resized()
     area = lowerUnit.reduced (hw::RackUnit::earWidth, 0).reduced (30, 0);
     area.removeFromTop (36);
     area.removeFromBottom (20);
-    auto padColumn = area.removeFromLeft (juce::jmin (300, area.getWidth() / 4));
+    auto padColumn = area.removeFromLeft (juce::jmin (210, area.getWidth() / 6));
     area.removeFromLeft (30);
-    auto samplerColumn = area.removeFromLeft (juce::jmin (560, area.getWidth() * 3 / 5));
+    auto samplerColumn = area.removeFromLeft (juce::jmin (800, area.getWidth() - 30 - 330));
     area.removeFromLeft (30);
 
     auto padRow = padColumn.removeFromBottom (44);

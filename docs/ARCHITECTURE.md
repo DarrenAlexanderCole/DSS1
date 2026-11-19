@@ -178,14 +178,19 @@ take is added to the library. While recording, the audio thread also pushes one 
 lock-free ring that the Design screen drains 30 times a second to draw the take as it grows.
 
 `src/engine/Sampler.h` is the pad sampler: 8 banks (A-H) of 16 pads, 128 slots, 16 voices, mixed in after the deck
-and before the effects. A slot holds a sample and a region of it, so the slices of a track share one decoded copy;
-3 ms fades at each end of the region keep slices from clicking. The UI hands it samples and regions through
-atomics and triggers through a lock-free queue, so the audio thread never locks or frees memory; a replaced
-sample is kept alive until any voice still playing it has finished. `SamplerSection` keeps the slicer's marks:
-a slice runs from its mark to the next mark of the same track in its bank, the last one LAST SLICE beats. Pads
-are keyed Z X C V / A S D F / Q W E R / 1 2 3 4 from the bottom row up (MainComponent passes keys on while the
-Listen & Design screen shows). Marks, not audio, are kept in settings ("padKit"); SAVE BANK writes the slices
-as WAVs into `<samples folder>/Bank X/`.
+and before the effects. A slot plays a region (a slice) of a sample that the pads of a bank share. Voices follow
+MPC conventions (see the drum example in inMusic's MPC plugin SDK): a pad is monophonic (a press restarts it),
+choke (on by default) cuts the other pads of the bank, and `release` ends a held pad. Every cut is an equal
+crossfade (the new slice fades in as fast as the old one fades out, 4 ms), so pads never stack up or click.
+The UI hands it samples and regions through atomics and presses/releases through a lock-free queue, so the
+audio thread never locks or frees memory; a replaced sample is kept alive until no voice can be playing it.
+
+`SamplerSection` is the chop screen: each bank chops one sample (the deck's track or a loaded file) and keeps up
+to 16 marks; a slice runs from its mark to the next mark, the last one SLICE beats (or to where AUTO 16 ended).
+Its `SliceView` draws the sample with markers and live playheads (`Sampler::voicePosition`) and lets markers be
+dragged. Pads are keyed Z X C V / A S D F / Q W E R / 1 2 3 4 from the bottom row up (MainComponent passes keys
+on while the Listen & Design screen shows; key-ups end HOLD pads). Marks, not audio, are kept in settings
+("sliceKit", one line per bank); SAVE BANK writes the slices as WAVs into `<samples folder>/Bank X/`.
 
 `src/engine/TakePlayer.h` plays the last take back, mixed in after the effects. Takes record into the temp
 folder and move to Music/DSS1 Recordings (and into the library) only when saved.

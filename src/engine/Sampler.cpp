@@ -16,6 +16,11 @@ Sampler::Sampler()
         regionStart[i].store (0);
         regionEnd[i].store (-1);
     }
+    for (std::size_t v = 0; v < static_cast<std::size_t> (maxVoices); ++v)
+    {
+        shownSlot[v].store (-1);
+        shownPosition[v].store (0);
+    }
 }
 
 Sampler::~Sampler() = default;
@@ -33,13 +38,13 @@ void Sampler::setSample (int slot, std::shared_ptr<const io::DecodedAudio> audio
     if (slot < 0 || slot >= slots)
         return;
     const auto i = static_cast<std::size_t> (slot);
-    if (owned[i])
+    if (owned[i] && owned[i] != audio)
     {
         // A voice may still be reading the old sample: keep it until it would have finished from the start.
         auto length = static_cast<std::int64_t> (owned[i]->channels.empty() ? 0 : owned[i]->channels.front().size());
         if (const auto e = regionEnd[i].load(); e > 0)
             length = std::min (length, e - regionStart[i].load());
-        const auto deviceFrames = static_cast<std::uint64_t> (static_cast<double> (length) / std::max (1.0, owned[i]->info.sampleRate) * rate.load()) + 1;
+        const auto deviceFrames = static_cast<std::uint64_t> (static_cast<double> (std::max<std::int64_t> (0, length)) / std::max (1.0, owned[i]->info.sampleRate) * rate.load()) + 1;
         retired.push_back ({ owned[i], framesRendered.load() + deviceFrames + static_cast<std::uint64_t> (rate.load()) });
     }
     live[i].store (nullptr);
@@ -53,25 +58,30 @@ std::shared_ptr<const io::DecodedAudio> Sampler::sample (int slot) const
     return slot >= 0 && slot < slots ? owned[static_cast<std::size_t> (slot)] : nullptr;
 }
 
-void Sampler::trigger (int slot, float gain)
+void Sampler::push (Command c) noexcept
 {
-    if (slot < 0 || slot >= slots)
-        return;
-    const auto g = std::clamp (static_cast<int> (gain * 255.0f), 0, 255);
     const auto w = queueWrite.load();
     if ((w + 1) % queueSize == queueRead.load())
-        return;  // full: drop the press rather than block
-    queue[static_cast<std::size_t> (w)].store (slot << 8 | g);
+        return;  // full: drop it rather than block
+    queue[static_cast<std::size_t> (w)] = c;
     queueWrite.store ((w + 1) % queueSize);
+}
+
+void Sampler::trigger (int slot, float gain)
+{
+    if (slot >= 0 && slot < slots)
+        push ({ Command::trigger, static_cast<std::int16_t> (slot), std::clamp (gain, 0.0f, 1.0f) });
+}
+
+void Sampler::release (int slot)
+{
+    if (slot >= 0 && slot < slots)
+        push ({ Command::release, static_cast<std::int16_t> (slot), 0 });
 }
 
 void Sampler::stopAll()
 {
-    const auto w = queueWrite.load();
-    if ((w + 1) % queueSize == queueRead.load())
-        return;
-    queue[static_cast<std::size_t> (w)].store (-1);
-    queueWrite.store ((w + 1) % queueSize);
+    push ({ Command::stopAll, 0, 0 });
 }
 
 void Sampler::collectGarbage()
@@ -85,6 +95,13 @@ bool Sampler::isPlaying (int slot) const noexcept
     return slot >= 0 && slot < slots && playing[static_cast<std::size_t> (slot)].load (std::memory_order_relaxed);
 }
 
+std::pair<int, double> Sampler::voicePosition (int v) const noexcept
+{
+    if (v < 0 || v >= maxVoices)
+        return { -1, 0 };
+    return { shownSlot[static_cast<std::size_t> (v)].load (std::memory_order_relaxed), shownPosition[static_cast<std::size_t> (v)].load (std::memory_order_relaxed) };
+}
+
 void Sampler::prepare (double deviceRate)
 {
     rate.store (deviceRate > 0 ? deviceRate : 44100.0);
@@ -92,80 +109,119 @@ void Sampler::prepare (double deviceRate)
         v = {};
 }
 
+void Sampler::fadeOut (Voice& v, double seconds) noexcept
+{
+    if (v.audio == nullptr)
+        return;
+    const auto step = static_cast<float> (1.0 / std::max (1.0, seconds * rate.load()));
+    v.fadeStep = std::max (v.fadeStep, step);  // a faster fade wins
+}
+
 void Sampler::render (float* const* outputs, int numChannels, int numFrames) noexcept
 {
-    // Take pad presses.
     for (auto r = queueRead.load(); r != queueWrite.load(); r = (r + 1) % queueSize)
     {
-        const auto message = queue[static_cast<std::size_t> (r)].load();
+        const auto c = queue[static_cast<std::size_t> (r)];
         queueRead.store ((r + 1) % queueSize);
-        if (message < 0)
+
+        if (c.type == Command::stopAll)
         {
             for (auto& v : voices)
-                v = {};
+                fadeOut (v, cutSeconds);
             continue;
         }
-        const auto slot = message >> 8;
+        if (c.type == Command::release)
+        {
+            for (auto& v : voices)
+                if (v.slot == c.slot && v.fadeStep == 0)
+                    fadeOut (v, releaseSeconds);
+            continue;
+        }
+
+        const auto slot = static_cast<int> (c.slot);
         const auto* audio = live[static_cast<std::size_t> (slot)].load();
         if (audio == nullptr || audio->channels.empty() || audio->channels.front().empty())
             continue;
-        // Restart the pad if it's playing; otherwise take a free voice, or the oldest.
-        Voice* chosen = nullptr;
-        for (auto& v : voices)
-            if (v.slot == slot)
-                chosen = &v;
-        if (chosen == nullptr)
-            for (auto& v : voices)
-                if (v.audio == nullptr)
-                {
-                    chosen = &v;
-                    break;
-                }
-        if (chosen == nullptr)
-            chosen = &*std::max_element (voices.begin(), voices.end(), [] (const Voice& a, const Voice& b) { return a.position < b.position; });
         const auto length = static_cast<double> (audio->channels.front().size());
         const auto from = std::min (static_cast<double> (regionStart[static_cast<std::size_t> (slot)].load()), length);
         const auto e = regionEnd[static_cast<std::size_t> (slot)].load();
         const auto to = e > 0 ? std::clamp (static_cast<double> (e), from, length) : length;
         if (to - from < 2)
             continue;
-        chosen->audio = audio;
-        chosen->slot = slot;
-        chosen->start = from;
-        chosen->end = to;
-        chosen->position = from;
-        chosen->fade = std::max (1.0, std::min (audio->info.sampleRate * 0.003, (to - from) / 4));
-        chosen->step = audio->info.sampleRate / rate.load();
-        chosen->gain = static_cast<float> (message & 255) / 255.0f;
+
+        // Cut what this pad is playing (and, with choke, the rest of its bank) with a short fade.
+        const bool chokeBank = choke.load();
+        bool cut = false;
+        for (auto& v : voices)
+            if (v.audio != nullptr && v.fadeStep == 0 && (v.slot == slot || (chokeBank && v.slot / padsPerBank == slot / padsPerBank)))
+            {
+                fadeOut (v, cutSeconds);
+                cut = true;
+            }
+
+        // A free voice; failing that, the quietest fading one; failing that, the oldest.
+        Voice* chosen = nullptr;
+        for (auto& v : voices)
+            if (v.audio == nullptr)
+            {
+                chosen = &v;
+                break;
+            }
+        if (chosen == nullptr)
+            for (auto& v : voices)
+                if (v.fadeStep > 0 && (chosen == nullptr || v.level < chosen->level))
+                    chosen = &v;
+        if (chosen == nullptr)
+            chosen = &*std::min_element (voices.begin(), voices.end(), [] (const Voice& a, const Voice& b) { return a.age < b.age; });
+
+        auto& v = *chosen;
+        v = {};
+        v.audio = audio;
+        v.slot = slot;
+        v.start = from;
+        v.end = to;
+        v.position = from;
+        v.step = audio->info.sampleRate / rate.load();
+        // When it cuts another pad, it fades in exactly as fast as that one fades out: an equal crossfade, so the
+        // two never add up louder than one.
+        v.edgeFade = std::max (1.0, std::min (audio->info.sampleRate * (cut ? cutSeconds : attackSeconds), (to - from) / 4));
+        v.gain = c.gain;
+        v.age = ++voiceCounter;
     }
 
     std::array<bool, slots> nowPlaying {};
-    for (auto& v : voices)
+    for (std::size_t vi = 0; vi < voices.size(); ++vi)
     {
-        if (v.audio == nullptr)
-            continue;
-        const auto& ch = v.audio->channels;
-        const auto length = ch.front().size();
-        for (int i = 0; i < numFrames; ++i)
-        {
-            const auto p = static_cast<std::size_t> (v.position);
-            if (p + 1 >= length || v.position >= v.end - 1)
-            {
-                v = {};
-                break;
-            }
-            const auto frac = static_cast<float> (v.position - static_cast<double> (p));
-            const auto edge = std::min (v.position - v.start, v.end - 1 - v.position);
-            const auto g = v.gain * static_cast<float> (std::min (1.0, edge / v.fade));
-            for (int c = 0; c < std::min (numChannels, 2); ++c)
-            {
-                const auto& src = ch[std::min (static_cast<std::size_t> (c), ch.size() - 1)];
-                outputs[c][i] += (src[p] + (src[p + 1] - src[p]) * frac) * g;
-            }
-            v.position += v.step;
-        }
+        auto& v = voices[vi];
         if (v.audio != nullptr)
+        {
+            const auto& ch = v.audio->channels;
+            const auto length = ch.front().size();
+            for (int i = 0; i < numFrames; ++i)
+            {
+                const auto p = static_cast<std::size_t> (v.position);
+                if (p + 1 >= length || v.position >= v.end - 1 || v.level <= 0.0f)
+                {
+                    v = {};
+                    break;
+                }
+                const auto frac = static_cast<float> (v.position - static_cast<double> (p));
+                // Fade in at the slice start and out at its end (edge), and out when cut or released (level).
+                const auto edge = std::min (v.position - v.start, v.end - 1 - v.position);
+                const auto g = v.gain * v.level * static_cast<float> (std::min (1.0, edge / v.edgeFade));
+                for (int c = 0; c < std::min (numChannels, 2); ++c)
+                {
+                    const auto& src = ch[std::min (static_cast<std::size_t> (c), ch.size() - 1)];
+                    outputs[c][i] += (src[p] + (src[p + 1] - src[p]) * frac) * g;
+                }
+                v.position += v.step;
+                v.level -= v.fadeStep;
+            }
+        }
+        if (v.audio != nullptr && v.fadeStep == 0)
             nowPlaying[static_cast<std::size_t> (v.slot)] = true;
+        shownSlot[vi].store (v.audio != nullptr && v.fadeStep == 0 ? v.slot : -1, std::memory_order_relaxed);
+        shownPosition[vi].store (v.position, std::memory_order_relaxed);
     }
     for (std::size_t s = 0; s < static_cast<std::size_t> (slots); ++s)
         playing[s].store (nowPlaying[s], std::memory_order_relaxed);

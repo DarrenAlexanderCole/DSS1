@@ -36,7 +36,7 @@ TEST_CASE ("A pad plays its sample once, at the device rate", "[sampler]")
     CHECK (render (s, 512)[0] == 0.0f);             // silent until pressed
     s.trigger (17, 1.0f);
     const auto out = render (s, 6000);
-    CHECK (out[0] == 0.0f);    // fades in over 3 ms …
+    CHECK (out[0] == 0.0f);    // fades in over 2 ms …
     CHECK (out[300] == 0.5f);
     CHECK (out[4600] == 0.5f);
     CHECK (out[4790] < 0.1f);  // … and out
@@ -59,8 +59,9 @@ TEST_CASE ("Pads mix, restart, stop, and empty slots do nothing", "[sampler]")
     CHECK (s.isPlaying (127));
 
     s.stopAll();
-    out = render (s, 200);
-    CHECK (out[150] == 0.0f);
+    out = render (s, 400);
+    CHECK (out[100] > 0.0f);    // fading out over 4 ms, not cut dead …
+    CHECK (out[300] == 0.0f);   // … then silent
 
     // Replacing a sample while it plays is safe; the old one stays alive until it can't be playing.
     s.trigger (0);
@@ -69,6 +70,8 @@ TEST_CASE ("Pads mix, restart, stop, and empty slots do nothing", "[sampler]")
     out = render (s, 100);
     CHECK (out[10] == 0.25f);
     s.collectGarbage();
+    s.stopAll();
+    render (s, 400);
     s.trigger (0);
     out = render (s, 50);
     CHECK (out[40] == 0.1f);
@@ -103,6 +106,67 @@ TEST_CASE ("Slices: pads share one track and play only their part of it", "[samp
     CHECK (out[500] == 3.0f);
     CHECK (out[1500] == 4.0f);
     CHECK (out[2100] == 0.0f);
+}
+
+TEST_CASE ("Like an MPC: a pad is mono, choke cuts the bank, hold releases, and nothing overlaps", "[sampler]")
+{
+    Sampler s;
+    s.prepare (1000.0);  // 1 frame = 1 ms: the cut fade is 4 frames, the release 12
+    s.setSample (0, clip (1000.0, 1000, 0.5f));
+    s.setSample (1, clip (1000.0, 1000, 0.25f));
+    s.setSample (16, clip (1000.0, 1000, 0.125f));  // bank B
+
+    SECTION ("pressing a playing pad restarts it, without stacking")
+    {
+        s.trigger (0);
+        render (s, 100);
+        s.trigger (0);
+        const auto out = render (s, 100);
+        for (const auto v : out)
+            CHECK (v <= 0.5f + 1e-4f);
+        CHECK (out[50] == 0.5f);
+    }
+    SECTION ("choke: a pad cuts the others in its bank, not other banks")
+    {
+        s.trigger (0);
+        s.trigger (16);
+        render (s, 100);
+        s.trigger (1);
+        const auto out = render (s, 100);
+        CHECK (out[50] == 0.25f + 0.125f);
+        CHECK_FALSE (s.isPlaying (0));
+        CHECK (s.isPlaying (1));
+        CHECK (s.isPlaying (16));
+    }
+    SECTION ("with choke off, pads layer")
+    {
+        s.setChoke (false);
+        s.trigger (0);
+        render (s, 100);
+        s.trigger (1);
+        CHECK (render (s, 100)[50] == 0.75f);
+    }
+    SECTION ("release fades the pad out (pads that play while held)")
+    {
+        s.trigger (0);
+        render (s, 100);
+        s.release (0);
+        const auto out = render (s, 100);
+        CHECK (out[2] > 0.0f);
+        CHECK (out[2] < 0.5f);
+        CHECK (out[50] == 0.0f);
+        CHECK_FALSE (s.isPlaying (0));
+    }
+    SECTION ("voice positions show where each slice is playing")
+    {
+        s.trigger (1);
+        render (s, 100);
+        bool found = false;
+        for (int v = 0; v < Sampler::maxVoices; ++v)
+            if (const auto [slot, at] = s.voicePosition (v); slot == 1)
+                found = at > 90 && at < 110;
+        CHECK (found);
+    }
 }
 
 #include "engine/TakePlayer.h"
