@@ -1597,18 +1597,26 @@ void ChopPanel::resized()
     area.removeFromBottom (18);
 
     auto padColumn = area.removeFromLeft (juce::jmin (330, area.getWidth() / 3));
-    auto banks = padColumn.removeFromTop (30);
-    const auto bw = (banks.getWidth() - 7 * 3) / 8;
-    for (auto& k : bankKeys)
     {
-        k.setBounds (banks.removeFromLeft (bw));
-        banks.removeFromLeft (3);
+        // The pads sized to fit the height, and the bank keys exactly as wide as the pads, edges aligned.
+        constexpr int gap = 6;
+        auto banks = padColumn.removeFromTop (30);
+        padColumn.removeFromTop (8);
+        const auto size = juce::jmin ((padColumn.getHeight() - 3 * gap) / 4, (padColumn.getWidth() - 3 * gap) / 4);
+        const auto gridW = size * 4 + 3 * gap;
+        const auto left = padColumn.getX();
+        for (int row = 0; row < 4; ++row)
+            for (int col = 0; col < 4; ++col)
+                pads[static_cast<std::size_t> (padAt (row, col))].setBounds (left + col * (size + gap), padColumn.getY() + row * (size + gap), size, size);
+        // 8 keys across the same width: spread any leftover pixels so both ends line up.
+        constexpr int keyGap = 3;
+        for (int k = 0; k < 8; ++k)
+        {
+            const auto x0 = left + (gridW + keyGap) * k / 8;
+            const auto x1 = left + (gridW + keyGap) * (k + 1) / 8 - keyGap;
+            bankKeys[static_cast<std::size_t> (k)].setBounds (x0, banks.getY(), x1 - x0, banks.getHeight());
+        }
     }
-    padColumn.removeFromTop (8);
-    const auto size = juce::jmin ((padColumn.getHeight() - 3 * 6) / 4, (padColumn.getWidth() - 3 * 6) / 4);
-    for (int row = 0; row < 4; ++row)
-        for (int col = 0; col < 4; ++col)
-            pads[static_cast<std::size_t> (padAt (row, col))].setBounds (padColumn.getX() + col * (size + 6), padColumn.getY() + row * (size + 6), size, size);
     area.removeFromLeft (30);
 
     auto settingsColumn = area.removeFromRight (juce::jmin (420, area.getWidth() * 2 / 5));
