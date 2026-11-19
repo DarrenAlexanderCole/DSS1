@@ -42,6 +42,18 @@ public:
     void setSample (int slot, std::shared_ptr<const io::DecodedAudio> audio, std::int64_t start = 0, std::int64_t end = -1);
     /// Moves the slice a pad plays (takes effect on the next press).
     void setRegion (int slot, std::int64_t start, std::int64_t end);
+
+    /// How a pad plays its slice (like an MPC pad's level, tune, reverse and envelope).
+    struct PadSettings
+    {
+        float gainDb = 0;       ///< -24 … +12
+        float semitones = 0;    ///< -24 … +24 (plays faster / slower, like a sampler)
+        bool reverse = false;
+        float attackMs = 0;     ///< fade-in at the start (at least a couple of ms, so it never clicks)
+        float fadeMs = 0;       ///< fade-out before the end
+        bool operator== (const PadSettings&) const = default;
+    };
+    void setPadSettings (int slot, const PadSettings&);
     std::shared_ptr<const io::DecodedAudio> sample (int slot) const;
     void trigger (int slot, float gain = 1.0f);
     /// Fades the pad out (key up, for pads that play while held).
@@ -69,7 +81,8 @@ private:
     struct Voice
     {
         const io::DecodedAudio* audio = nullptr;
-        double position = 0, step = 1, start = 0, end = 0, edgeFade = 1;
+        double position = 0, step = 1, start = 0, end = 0, origin = 0, attack = 1, fadeEnd = 1;
+        int direction = 1;
         float gain = 1, level = 1, fadeStep = 0;  // fadeStep > 0: fading out
         int slot = -1;
         std::uint64_t age = 0;
@@ -86,6 +99,8 @@ private:
     std::array<std::shared_ptr<const io::DecodedAudio>, slots> owned;  // message thread
     std::array<std::atomic<const io::DecodedAudio*>, slots> live {};    // read by the audio thread
     std::array<std::atomic<std::int64_t>, slots> regionStart {}, regionEnd {};
+    std::array<std::atomic<float>, slots> padGain {}, padRatio {}, padAttack {}, padFade {};
+    std::array<std::atomic<bool>, slots> padReverse {};
     struct Retired
     {
         std::shared_ptr<const io::DecodedAudio> audio;

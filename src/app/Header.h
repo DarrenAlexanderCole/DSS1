@@ -16,7 +16,7 @@ public:
     explicit Header (Session& session);
     ~Header() override;
 
-    /// Called with 0 … 3 when a stage key is pressed.
+    /// Called with 0 … 4 when a stage key is pressed.
     std::function<void (int)> onStage;
     void setStage (int index);
 
@@ -31,7 +31,7 @@ private:
 
     Session& session;
     hw::VuMeter left { "CHANNEL A" }, right { "CHANNEL B" };
-    std::array<juce::TextButton, 4> stageKeys;
+    std::array<juce::TextButton, 5> stageKeys;
     juce::TextButton startKey { "|<" }, backKey { "<<" }, forwardKey { ">>" }, cueKey { "CUE" }, playKey { "PLAY" };
     bool cueWasDown = false;
 

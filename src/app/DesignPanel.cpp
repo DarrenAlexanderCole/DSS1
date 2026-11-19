@@ -146,9 +146,8 @@ DesignPanel::Knob& DesignPanel::addKnob (const juce::String& name, double min, d
     return *knobs.back();
 }
 
-DesignPanel::DesignPanel (Session& s, Crate& c) : session (s), crate (c), fx (s.effects()), pad (s.effects()), sampler (s)
+DesignPanel::DesignPanel (Session& s, Crate& c) : session (s), crate (c), fx (s.effects()), pad (s.effects())
 {
-    addAndMakeVisible (sampler);
     settings = &appSettings();
 
     addKnob ("FREQ", -1.0, 1.0, 0.005, 0.0, "LP||||||0||||||HP", [this] (double v) { fx.filter = static_cast<float> (v); }, filterReadout);
@@ -207,7 +206,18 @@ DesignPanel::DesignPanel (Session& s, Crate& c) : session (s), crate (c), fx (s.
     saveTakeButton.onClick = [this] { saveTake(); };
     discardButton.setTooltip ("Throw the take away");
     discardButton.onClick = [this] { discardTake(); };
-    for (auto* b : { &playTakeButton, &saveTakeButton, &discardButton })
+    hwStyle (toChopButton, KeyStyle::cream);
+    toChopButton.setTooltip ("Slice the take on the CHOP stage (it's saved first)");
+    toChopButton.onClick = [this] {
+        if (pendingTake.existsAsFile())
+            saveTake();
+        if (savedTake.existsAsFile() && onSendToChop)
+        {
+            session.output().takePlayer().stop();
+            onSendToChop (savedTake);
+        }
+    };
+    for (auto* b : { &playTakeButton, &saveTakeButton, &discardButton, &toChopButton })
         addAndMakeVisible (b);
     hwStyle (revealButton, KeyStyle::cream);
     revealButton.onClick = [] {
@@ -247,6 +257,7 @@ void DesignPanel::updateRecorderKeys()
     playTakeButton.setEnabled (hasTake);
     playTakeButton.setButtonText (hasTake && const_cast<AudioEngine&> (audio).takePlayer().isPlaying() ? "STOP" : "PLAY");
     saveTakeButton.setEnabled (! recording && pendingTake.existsAsFile());
+    toChopButton.setEnabled (! recording && (pendingTake.existsAsFile() || savedTake.existsAsFile()));
     discardButton.setEnabled (! recording && pendingTake.existsAsFile());
 }
 
@@ -278,6 +289,7 @@ void DesignPanel::saveTake()
     else
     {
         crate.add ({ target });
+        savedTake = target;
         lastTake = target.getFileName();
         recorderMessage = "SAVED, AND ADDED TO CATALOG";
         pendingTake = juce::File();
@@ -560,14 +572,12 @@ void DesignPanel::resized()
     layBay (reverbArea, reverbOn, { 4, 5 });
     layBay (crushArea, crushOn, { 6, 7, 8 });
 
-    // Lower unit: the XY pad, the sampler, the recorder.
+    // Lower unit: the XY pad, then the recorder (keys and clock, the take's waveform).
     area = lowerUnit.reduced (hw::RackUnit::earWidth, 0).reduced (30, 0);
     area.removeFromTop (36);
     area.removeFromBottom (20);
-    auto padColumn = area.removeFromLeft (juce::jmin (210, area.getWidth() / 6));
-    area.removeFromLeft (30);
-    auto samplerColumn = area.removeFromLeft (juce::jmin (800, area.getWidth() - 30 - 330));
-    area.removeFromLeft (30);
+    auto padColumn = area.removeFromLeft (juce::jmin (300, area.getHeight() - 54, area.getWidth() / 4));
+    area.removeFromLeft (40);
 
     auto padRow = padColumn.removeFromBottom (44);
     padColumn.removeFromBottom (10);
@@ -576,23 +586,21 @@ void DesignPanel::resized()
     holdButton.setBounds (padRow.removeFromLeft (110));
     resetFxButton.setBounds (padRow.removeFromRight (110));
 
-    sampler.setBounds (samplerColumn.withTrimmedTop (-22));
-
     recorderArea = area;
     auto rec = area;
     auto keys = rec.removeFromTop (46);
-    const auto kw = (keys.getWidth() - 3 * 8) / 4;
-    for (auto* b : { &recordButton, &playTakeButton, &saveTakeButton, &discardButton })
+    revealButton.setBounds (keys.removeFromRight (130).reduced (0, 4));
+    keys.removeFromRight (30);
+    const auto kw = juce::jmin (130, (keys.getWidth() - 4 * 8) / 5);
+    for (auto* b : { &recordButton, &playTakeButton, &saveTakeButton, &discardButton, &toChopButton })
     {
         b->setBounds (keys.removeFromLeft (kw));
         keys.removeFromLeft (8);
     }
-    rec.removeFromTop (12);
-    timeArea = rec.removeFromTop (96).reduced (4);
-    auto bottom = rec.removeFromBottom (40);
-    revealButton.setBounds (bottom.removeFromRight (130).withTrimmedTop (6));
-    rec.removeFromTop (28);
-    waveArea = rec.reduced (4);
+    rec.removeFromTop (16);
+    timeArea = rec.removeFromLeft (juce::jmin (380, rec.getWidth() / 3)).reduced (4);
+    rec.removeFromLeft (24);
+    waveArea = rec.withTrimmedTop (24).reduced (4);
 }
 
 } // namespace dss1::ui

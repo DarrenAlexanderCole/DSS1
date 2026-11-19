@@ -31,7 +31,8 @@ target_sources(DSS1 PRIVATE
     Main.cpp
     MainComponent.cpp
     PrepPanel.cpp
-    SamplerSection.cpp
+    ChopPanel.cpp
+    ChopView.cpp
     Session.cpp
     StagePanel.cpp
     TestExportPanel.cpp

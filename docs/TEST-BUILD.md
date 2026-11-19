@@ -86,30 +86,39 @@ Load a track (double-click it in Catalog), press PLAY, then open **Listen / Desi
   **SAVE** keeps it (Music > DSS1 Recordings, and into Catalog); **DISCARD** throws it away; pressing **REC**
   again records another and throws away the one you didn't save. A take left unsaved when you quit is kept in
   DSS1 Recordings > Unsaved Takes.
-- **Sampler (chop):** works like MPC Chop. Each bank (**A-H**) chops one sample, the track on the deck or a
-  sound file (**LOAD...**), into 16 slices, one per pad. Pads are laid out and keyed like a drum machine:
-
-  | | | | |
-  |---|---|---|---|
-  | 13 `1` | 14 `2` | 15 `3` | 16 `4` |
-  | 9 `Q` | 10 `W` | 11 `E` | 12 `R` |
-  | 5 `A` | 6 `S` | 7 `D` | 8 `F` |
-  | 1 `Z` | 2 `X` | 3 `C` | 4 `V` |
-
-  - **Chop:** play the track and tap empty pads on the beats you want (each press marks the playhead), or press
-    **AUTO 16** to cut the playing loop (or 16 x **SLICE** beats from the playhead) into 16 equal slices. A slice
-    runs to the next mark; the last one plays **SLICE** beats. The waveform shows the markers: drag one to move
-    it, click a slice to hear it.
-  - **CHOP / PLAY:** in **CHOP**, a pad press moves that pad's mark to the playhead and a click on the waveform
-    moves the chosen pad's mark there. In **PLAY**, pads play (empty pads still mark).
-  - **CHOKE** (on): a pad cuts whatever else is playing in its bank, so slices play one at a time. Pressing a
-    pad again restarts it. Off: slices layer.
-  - **HOLD** (off): a slice plays only while its key or pad is held. Off: one-shot, it plays to its end.
-  - Nothing clicks: every start and cut is crossfaded in a few ms.
-  - **SAVE BANK** writes the bank's slices as WAVs to the **SAVE TO** folder (Bank A … Bank H); **CHANGE...**
-    picks the folder. **CLEAR** clears the chosen pad, **CLEAR BANK** the whole bank. Your chops are still there
-    next time you open DSS1.
+- **TO CHOP** saves the take and opens it on the **CHOP** screen, ready to slice.
 - **Space** or **P** plays and pauses on every screen (except while typing in a search box).
+
+## Chop (new)
+
+The sampler has its own screen now, built for producers like Prep is for DJs. Each bank (**A-H**) chops one
+sample into 16 slices, one per pad: the track on the deck, a sound file (**LOAD...**), or a take from the
+recorder (**TO CHOP**). Pads are laid out and keyed like a drum machine:
+
+| | | | |
+|---|---|---|---|
+| 13 `1` | 14 `2` | 15 `3` | 16 `4` |
+| 9 `Q` | 10 `W` | 11 `E` | 12 `R` |
+| 5 `A` | 6 `S` | 7 `D` | 8 `F` |
+| 1 `Z` | 2 `X` | 3 `C` | 4 `V` |
+
+- **The waveform** zooms like Prep's: scroll (or pinch) to zoom around the mouse, swipe or drag to move, the
+  strip below shows the whole sample (click it to jump). **SLICE** zooms to the chosen pad's slice, **WHOLE**
+  shows everything; double-click a slice to zoom to it. Zoomed right in you see the wave itself.
+- **Chop it:** press **Space** to play, then tap empty pads on the hits you want. Or **TRANSIENTS** puts a slice
+  at each of the 16 strongest hits (in the loop that's playing, or what's on screen), or **EQUAL 16** cuts the
+  loop (or 16 x **SLICE** beats from the playhead) into 16 equal slices. In **CHOP** mode a pad press moves its
+  mark to the playhead and a click on the waveform puts the chosen pad's mark there.
+- **Fine-tune:** drag a marker, or nudge the chosen one with the **Left / Right** arrows (Shift: further) or
+  **< >**. **SNAP** sets where markers land: **ZERO** (the nearest zero crossing, so slices don't click),
+  **BEAT** (the grid) or **OFF**. **UNDO** (Cmd+Z) takes back marks and pad settings.
+- **Play:** in **PLAY** mode pads play their slices; click a slice on the waveform to hear it. **CHOKE** (on) lets
+  one slice play at a time; **HOLD** plays a slice only while held. Nothing clicks: cuts are crossfaded.
+- **Pad settings** (right): **GAIN**, **TUNE** (semitones), **ATTACK**, **FADE** and **REVERSE** for the chosen
+  pad. Double-click a knob to reset it. Pads with settings show a small light.
+- **Space** plays and pauses the deck, or the sound file you're chopping (from where you last clicked).
+- **SAVE BANK** writes the slices, with their settings, as WAVs to the **SAVE TO** folder (Bank A … Bank H).
+  **CLEAR** clears the chosen pad, **CLEAR BANK** the whole bank. Your chops are still there next time.
 
 ## Deliver (new)
 

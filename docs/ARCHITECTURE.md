@@ -185,12 +185,20 @@ crossfade (the new slice fades in as fast as the old one fades out, 4 ms), so pa
 The UI hands it samples and regions through atomics and presses/releases through a lock-free queue, so the
 audio thread never locks or frees memory; a replaced sample is kept alive until no voice can be playing it.
 
-`SamplerSection` is the chop screen: each bank chops one sample (the deck's track or a loaded file) and keeps up
-to 16 marks; a slice runs from its mark to the next mark, the last one SLICE beats (or to where AUTO 16 ended).
-Its `SliceView` draws the sample with markers and live playheads (`Sampler::voicePosition`) and lets markers be
-dragged. Pads are keyed Z X C V / A S D F / Q W E R / 1 2 3 4 from the bottom row up (MainComponent passes keys
-on while the Listen & Design screen shows; key-ups end HOLD pads). Marks, not audio, are kept in settings
-("sliceKit", one line per bank); SAVE BANK writes the slices as WAVs into `<samples folder>/Bank X/`.
+Pads also have settings (`Sampler::PadSettings`: gain, tune by resampling, reverse, attack, fade), like an MPC or
+Behringer KICK pad. `src/engine/Slicing.h` finds transients (rises in the log energy of the signal's changes,
+strongest first, at least 70 ms apart, each placed just before its hit on a zero crossing) and zero crossings.
+
+The CHOP stage (`ChopPanel`, `ChopView`) is the sampler, kept apart from Listen & Design so keys and playback
+don't fight. Each bank chops one sample (the deck's track, a loaded file, or a take sent from the recorder) and
+keeps up to 16 marks and 16 pad settings; a slice runs from its mark to the next, the last one SLICE beats (or
+to where EQUAL 16 / TRANSIENTS ended). `ChopView` is a zoomable waveform like Prep's (smooth zoom around the
+mouse, follow the playhead, overview strip; min/max peaks per 256 frames when zoomed out, the wave itself when
+zoomed in) with markers that drag and snap (beat grid or zero crossing). Pads are keyed Z X C V / A S D F /
+Q W E R / 1 2 3 4 from the bottom row up; MainComponent passes keys to CHOP first while it shows (pads, arrows
+to nudge, Cmd+Z to undo, Space for a sound file, which plays through `AudioEngine::chopPreview`). Marks and pad
+settings, not audio, are kept in settings ("sliceKit", one line per bank); SAVE BANK renders the slices with
+their settings as WAVs into `<samples folder>/Bank X/`.
 
 `src/engine/TakePlayer.h` plays the last take back, mixed in after the effects. Takes record into the temp
 folder and move to Music/DSS1 Recordings (and into the library) only when saved.

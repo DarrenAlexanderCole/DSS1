@@ -27,6 +27,8 @@ public:
     engine::Sampler& sampler() noexcept { return pads; }
     /// Plays back the last recorded take (after the effects, so they aren't applied twice).
     engine::TakePlayer& takePlayer() noexcept { return take; }
+    /// Plays a sound file being chopped (Space on the CHOP screen), through the effects like the pads.
+    engine::TakePlayer& chopPreview() noexcept { return preview; }
     double sampleRate() const noexcept { return deviceRate; }
 
     /// Peaks of what's being recorded, one per audio block, for drawing the take as it records. Call from the
@@ -58,7 +60,7 @@ private:
     engine::Deck previewDeck;
     engine::Effects fx;
     engine::Sampler pads;
-    engine::TakePlayer take;
+    engine::TakePlayer take, preview;
     static constexpr int peakRingSize = 4096;
     std::array<std::atomic<float>, peakRingSize> peakRing {};
     std::atomic<int> peakWrite { 0 };

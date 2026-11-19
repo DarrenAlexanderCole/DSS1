@@ -1,0 +1,151 @@
+#pragma once
+
+#include "Session.h"
+
+#include <juce_data_structures/juce_data_structures.h>
+#include <juce_gui_basics/juce_gui_basics.h>
+
+#include <optional>
+
+namespace dss1::ui
+{
+
+class ChopView;
+
+/// One bank of the CHOP screen: the sample it chops and up to 16 slices, one per pad.
+struct ChopBank
+{
+    juce::File source;                                   // the chopped track or sound file
+    std::shared_ptr<const io::DecodedAudio> audio;
+    std::array<std::optional<Frame>, 16> marks;          // where each pad's slice starts
+    std::array<engine::Sampler::PadSettings, 16> settings;
+    double framesPerBeat = 0;
+    std::optional<Frame> chopEnd;                        // where the last slice ends after EQUAL 16 / TRANSIENTS
+    bool empty() const noexcept;
+};
+
+/// The CHOP stage: a sampler for producers, built the way an MPC (or a Behringer KICK) chops. Each of the
+/// 8 banks (A–H) chops one sample, the track on the deck or a sound file, into up to 16 slices, one per pad.
+/// Pads are laid out and keyed like a drum machine: 1–4 on Z X C V along the bottom, 5–8 on A S D F, 9–12 on
+/// Q W E R, 13–16 on 1 2 3 4.
+///
+/// The top unit is the sample, zoomable like Prep's waveform, with the slice markers, the beat grid and the
+/// playheads: drag a marker to move it (snapping to the grid or to a zero crossing), nudge it with the arrow
+/// keys, click a slice to hear it. The bottom unit has the pads, the ways to chop (tap pads on the beats,
+/// EQUAL 16, TRANSIENTS, or click the waveform in CHOP mode), UNDO, and the chosen pad's settings (gain, tune,
+/// reverse, attack, fade).
+///
+/// Pads restart themselves and, with CHOKE (on by default), cut the rest of their bank, so slices play one at
+/// a time. HOLD plays a slice only while it's held. Space plays the deck, or the sound file being chopped.
+/// Marks are kept in settings, not as audio; SAVE BANK writes the slices as WAVs into the samples folder.
+class ChopPanel : public juce::Component, private juce::Timer
+{
+public:
+    explicit ChopPanel (Session& session);
+    ~ChopPanel() override;
+
+    void paint (juce::Graphics&) override;
+    void paintOverChildren (juce::Graphics&) override;
+    void resized() override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
+
+    /// Keys while CHOP shows: pads (Z X C V, A S D F, Q W E R, 1 2 3 4), arrows (nudge), Cmd+Z (undo), Space
+    /// (plays a sound file being chopped). True if the key was used.
+    bool handleKey (const juce::KeyPress&);
+    /// Call when keys go up: ends held pads, and stops a held key re-triggering.
+    void keysChanged();
+    /// Chops `file` in the current bank (from the recorder's TO CHOP).
+    void chopFile (const juce::File& file);
+
+    juce::File samplesFolder() const;
+
+    static constexpr const char* padKeys = "zxcvasdfqwer1234";  ///< pad 1 … 16
+
+private:
+    friend class ChopView;
+    enum class Snap { off, beat, zero };
+
+    void timerCallback() override;
+    int slotOf (int pad) const noexcept { return bank * 16 + pad; }
+    ChopBank& current() noexcept { return bankData[static_cast<std::size_t> (bank)]; }
+    const ChopBank& current() const noexcept { return bankData[static_cast<std::size_t> (bank)]; }
+    bool sourceIsOnDeck (const ChopBank&) const;
+    /// What the waveform shows: the bank's sample, or the deck's track before the bank has one.
+    const io::DecodedAudio* shownAudio() const;
+
+    void selectBank (int b);
+    void selectPad (int pad);
+    void padDown (int pad);
+    void padUp (int pad);
+    void showPadMenu (int pad);
+    void markAtPlayhead (int pad);
+    void setMark (int pad, Frame at, bool remember = true);
+    Frame snapped (Frame at) const;
+    void nudge (int direction, bool bigStep);
+    void clearPad (int pad);
+    void clearBank();
+    void chopEqual();
+    void chopTransients();
+    void applyChop (Frame from, Frame to, const std::vector<Frame>& marks, const juce::String& what);
+    void loadFile();
+    void saveBank();
+    void setMode (bool chop);
+    void cycleSnap();
+    std::optional<Frame> sliceEnd (int bankIndex, int pad) const;
+    void updateRegions (int bankIndex);
+    void pushSettings (int bankIndex, int pad);
+    bool startBankFromDeck();
+    void rememberForUndo();
+    void undo();
+    void toggleFilePreview();
+    void showPadSettings();
+    void saveKit();
+    void restoreKit();
+    void chooseFolder();
+    juce::String slotName (int slot) const;
+    juce::String describe (int pad) const;
+    void say (const juce::String& text);
+    void refreshPads();
+    io::DecodedAudio renderSlice (const ChopBank&, int bankIndex, int pad) const;
+
+    Session& session;
+    engine::Sampler& sampler;
+    juce::PropertiesFile* settings = nullptr;
+
+    int bank = 0, selected = 0;
+    bool chopMode = false, hold = false;
+    Snap snap = Snap::zero;
+    std::array<ChopBank, 8> bankData;
+    std::vector<std::pair<int, ChopBank>> undoStack;
+    Frame previewCursor = 0;  // where Space plays a sound file from
+
+    std::unique_ptr<ChopView> view;
+    std::array<juce::TextButton, 8> bankKeys;
+    std::array<juce::TextButton, 16> pads;
+    std::array<bool, 16> held {}, wasPlaying {};
+    int mouseHeldPad = -1;
+
+    juce::TextButton snapKey, zoomOutKey { "-" }, zoomInKey { "+" }, sliceZoomKey { "SLICE" }, wholeKey { "WHOLE" };
+    juce::TextButton chopKey { "CHOP" }, playKey { "PLAY" }, holdKey { "HOLD" }, chokeKey { "CHOKE" };
+    juce::TextButton equalKey { "EQUAL 16" }, transientKey { "TRANSIENTS" }, undoKey { "UNDO" }, nudgeLeft { "<" }, nudgeRight { ">" };
+    juce::TextButton loadKey { "LOAD..." }, saveKey { "SAVE BANK" }, clearKey { "CLEAR" }, clearBankKey { "CLEAR BANK" }, stopKey { "STOP ALL" },
+        folderKey { "CHANGE..." };
+    juce::Slider sliceKnob { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox };
+    juce::Slider gainKnob { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox },
+        tuneKnob { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox },
+        attackKnob { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox },
+        fadeKnob { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox };
+    juce::TextButton reverseKey { "REVERSE" };
+
+    juce::Rectangle<int> waveUnit, controlUnit, messageArea, readoutArea, folderArea, padSettingsArea;
+    juce::String message;
+    juce::uint32 messageTime = 0;
+    std::unique_ptr<juce::FileChooser> chooser;
+    juce::ScopedMessageBox messageBox;
+
+    JUCE_DECLARE_WEAK_REFERENCEABLE (ChopPanel)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ChopPanel)
+};
+
+} // namespace dss1::ui

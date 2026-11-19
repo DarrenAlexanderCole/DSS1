@@ -1,6 +1,7 @@
 #include "engine/Sampler.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace dss1::engine
 {
@@ -15,6 +16,11 @@ Sampler::Sampler()
     {
         regionStart[i].store (0);
         regionEnd[i].store (-1);
+        padGain[i].store (1.0f);
+        padRatio[i].store (1.0f);
+        padAttack[i].store (0.0f);
+        padFade[i].store (0.0f);
+        padReverse[i].store (false);
     }
     for (std::size_t v = 0; v < static_cast<std::size_t> (maxVoices); ++v)
     {
@@ -51,6 +57,18 @@ void Sampler::setSample (int slot, std::shared_ptr<const io::DecodedAudio> audio
     setRegion (slot, start, end);
     owned[i] = std::move (audio);
     live[i].store (owned[i].get());
+}
+
+void Sampler::setPadSettings (int slot, const PadSettings& p)
+{
+    if (slot < 0 || slot >= slots)
+        return;
+    const auto i = static_cast<std::size_t> (slot);
+    padGain[i].store (std::pow (10.0f, std::clamp (p.gainDb, -60.0f, 24.0f) / 20.0f));
+    padRatio[i].store (std::pow (2.0f, std::clamp (p.semitones, -36.0f, 36.0f) / 12.0f));
+    padAttack[i].store (std::max (0.0f, p.attackMs) / 1000.0f);
+    padFade[i].store (std::max (0.0f, p.fadeMs) / 1000.0f);
+    padReverse[i].store (p.reverse);
 }
 
 std::shared_ptr<const io::DecodedAudio> Sampler::sample (int slot) const
@@ -174,18 +192,25 @@ void Sampler::render (float* const* outputs, int numChannels, int numFrames) noe
         if (chosen == nullptr)
             chosen = &*std::min_element (voices.begin(), voices.end(), [] (const Voice& a, const Voice& b) { return a.age < b.age; });
 
+        const auto i = static_cast<std::size_t> (slot);
+        const auto sr = audio->info.sampleRate;
+        const auto ratio = static_cast<double> (padRatio[i].load());
         auto& v = *chosen;
         v = {};
         v.audio = audio;
         v.slot = slot;
         v.start = from;
         v.end = to;
-        v.position = from;
-        v.step = audio->info.sampleRate / rate.load();
+        v.direction = padReverse[i].load() ? -1 : 1;
+        v.position = v.direction > 0 ? from : to - 1.001;
+        v.origin = v.position;
+        v.step = sr / rate.load() * ratio;
         // When it cuts another pad, it fades in exactly as fast as that one fades out: an equal crossfade, so the
-        // two never add up louder than one.
-        v.edgeFade = std::max (1.0, std::min (audio->info.sampleRate * (cut ? cutSeconds : attackSeconds), (to - from) / 4));
-        v.gain = c.gain;
+        // two never add up louder than one. Fades are in source frames, so tuning scales them with the sound.
+        const auto attackSeconds_ = std::max (static_cast<double> (padAttack[i].load()), (cut ? cutSeconds : attackSeconds));
+        v.attack = std::max (1.0, std::min (sr * ratio * attackSeconds_, (to - from) / 4));
+        v.fadeEnd = std::max (1.0, std::min (sr * ratio * std::max (static_cast<double> (padFade[i].load()), attackSeconds), (to - from) / 4));
+        v.gain = c.gain * padGain[i].load();
         v.age = ++voiceCounter;
     }
 
@@ -199,22 +224,28 @@ void Sampler::render (float* const* outputs, int numChannels, int numFrames) noe
             const auto length = ch.front().size();
             for (int i = 0; i < numFrames; ++i)
             {
+                const auto remaining = v.direction > 0 ? v.end - 1 - v.position : v.position - v.start;
+                if (v.position < 0 || remaining <= 0 || v.level <= 0.0f)
+                {
+                    v = {};
+                    break;
+                }
                 const auto p = static_cast<std::size_t> (v.position);
-                if (p + 1 >= length || v.position >= v.end - 1 || v.level <= 0.0f)
+                if (p + 1 >= length)
                 {
                     v = {};
                     break;
                 }
                 const auto frac = static_cast<float> (v.position - static_cast<double> (p));
-                // Fade in at the slice start and out at its end (edge), and out when cut or released (level).
-                const auto edge = std::min (v.position - v.start, v.end - 1 - v.position);
-                const auto g = v.gain * v.level * static_cast<float> (std::min (1.0, edge / v.edgeFade));
+                // Fade in from where it started and out towards where it stops, and out when cut or released.
+                const auto elapsed = std::abs (v.position - v.origin);
+                const auto g = v.gain * v.level * static_cast<float> (std::min (1.0, elapsed / v.attack) * std::min (1.0, remaining / v.fadeEnd));
                 for (int c = 0; c < std::min (numChannels, 2); ++c)
                 {
                     const auto& src = ch[std::min (static_cast<std::size_t> (c), ch.size() - 1)];
                     outputs[c][i] += (src[p] + (src[p + 1] - src[p]) * frac) * g;
                 }
-                v.position += v.step;
+                v.position += v.step * v.direction;
                 v.level -= v.fadeStep;
             }
         }

@@ -1,7 +1,6 @@
 #pragma once
 
 #include "Crate.h"
-#include "SamplerSection.h"
 #include "Session.h"
 
 #include <juce_data_structures/juce_data_structures.h>
@@ -47,14 +46,18 @@ private:
 };
 
 /// The Listen & Design stage: an effects rack (filter, echo, reverb, crusher) that plays over whatever the
-/// deck plays, the XY performance pad, the pad sampler (8 banks x 16 pads), and a recorder that captures what
-/// you hear to a WAV, drawing its waveform as it goes. A take can be played back on its own, then saved (to
-/// Music > DSS1 Recordings, and into Catalog) or thrown away; recording again throws away an unsaved take.
+/// deck plays, the XY performance pad, and a recorder that captures what you hear to a WAV, drawing its
+/// waveform as it goes: listening, and making a sample. A take can be played back on its own, then saved (to
+/// Music > DSS1 Recordings, and into Catalog), sent to CHOP to slice, or thrown away; recording again throws
+/// away an unsaved take. (The pad sampler is its own stage, CHOP.)
 class DesignPanel : public juce::Component, private juce::Timer
 {
 public:
     DesignPanel (Session& session, Crate& crate);
     ~DesignPanel() override;
+
+    /// TO CHOP: called with the (saved) take, to slice it on the CHOP stage.
+    std::function<void (const juce::File&)> onSendToChop;
 
     void paint (juce::Graphics&) override;
     void paintOverChildren (juce::Graphics&) override;
@@ -94,14 +97,9 @@ private:
     XyPad pad;
     juce::ToggleButton holdButton { "HOLD" };
     juce::TextButton resetFxButton { "ALL OFF" };
-
-
-public:
-    SamplerSection sampler;
-
-private:
     juce::TextButton recordButton { "REC" }, playTakeButton { "PLAY" }, saveTakeButton { "SAVE" }, discardButton { "DISCARD" },
-        revealButton { "SHOW TAKES" };
+        toChopButton { "TO CHOP" }, revealButton { "SHOW TAKES" };
+    juce::File savedTake;  // the last take saved
     std::vector<float> takePeaks;
     juce::Rectangle<int> waveArea;
     juce::String lastTake, recorderMessage;

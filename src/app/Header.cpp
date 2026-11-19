@@ -11,8 +11,8 @@ Header::Header (Session& s) : session (s)
     addAndMakeVisible (left);
     addAndMakeVisible (right);
 
-    const char* names[] { "CATALOG", "PREP", "LISTEN / DESIGN", "DELIVER" };
-    for (int i = 0; i < 4; ++i)
+    const char* names[] { "CATALOG", "PREP", "LISTEN / DESIGN", "CHOP", "DELIVER" };
+    for (int i = 0; i < 5; ++i)
     {
         auto& key = stageKeys[static_cast<std::size_t> (i)];
         key.setButtonText (names[i]);
@@ -59,7 +59,7 @@ Header::~Header()
 
 void Header::setStage (int index)
 {
-    for (int i = 0; i < 4; ++i)
+    for (int i = 0; i < 5; ++i)
         stageKeys[static_cast<std::size_t> (i)].setToggleState (i == index, juce::dontSendNotification);
 }
 
@@ -166,16 +166,18 @@ void Header::resized()
 
     area.removeFromTop (30);
     auto row = area.removeFromTop (48);
-    stageArea = row.removeFromLeft (4 * 128);
+    transportArea = row.removeFromRight (4 * 64 + 96 + 30);
+    row.removeFromRight (24);
+    const auto keyWidth = juce::jmin (122, (row.getWidth() - 4 * 6) / 5);
+    stageArea = row.removeFromLeft (5 * (keyWidth + 6));
     {
         auto s = stageArea;
         for (auto& k : stageKeys)
         {
-            k.setBounds (s.removeFromLeft (122));
+            k.setBounds (s.removeFromLeft (keyWidth));
             s.removeFromLeft (6);
         }
     }
-    transportArea = row.removeFromRight (4 * 64 + 96 + 30);
     {
         auto t = transportArea;
         for (auto* k : { &startKey, &backKey, &forwardKey })

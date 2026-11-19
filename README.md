@@ -29,7 +29,7 @@ and each export takes what its software supports.
 | 3 | Audio engine + Catalog | Nearly done: import, tags, watched folders, missing-file relink, analysis (BPM, key, loudness, beats and bars), playback with key lock |
 | 4 | Prep | First version: waveform editor, hot cues A-H, memory cues, saved loops, grid tools, Rekordbox/Serato target |
 | 5 | Deliver | First version: Rekordbox XML of the library, tagged copies for Serato (originals never changed) |
-| 6 | Listen & Design | Effects (filter, echo, reverb, crusher), XY pad, recorder with live waveform and take playback, MPC-style chop sampler (8 banks x 16 pads, choke, hold, AUTO 16) |
+| 6 | Listen & Design | Effects (filter, echo, reverb, crusher), XY pad, recorder with live waveform and take playback, CHOP stage: MPC-style sampler (8 banks x 16 pads, zoomable slice editor, transients, pad settings) |
 | Later | Windows | |
 
 macOS comes first. The app is built on [JUCE](https://juce.com) so a Windows version can follow from the same code.

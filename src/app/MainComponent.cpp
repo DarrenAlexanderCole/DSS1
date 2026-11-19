@@ -2,6 +2,7 @@
 #include "CatalogPanel.h"
 #include "PrepPanel.h"
 #include "DesignPanel.h"
+#include "ChopPanel.h"
 #include "DeliverPanel.h"
 #include "Theme.h"
 
@@ -17,15 +18,22 @@ MainComponent::MainComponent()
     auto catalog = std::make_unique<CatalogPanel> (session);
     auto prep = std::make_unique<PrepPanel> (session);
     auto design = std::make_unique<DesignPanel> (session, crate);
+    auto chop = std::make_unique<ChopPanel> (session);
     auto deliver = std::make_unique<DeliverPanel> (crate);
     catalog->onExportSelected = [this, d = deliver.get()] {
         d->useSelection();
+        showStage (4);
+    };
+    // The recorder's TO CHOP: the take goes into the current CHOP bank.
+    design->onSendToChop = [this, c = chop.get()] (const juce::File& take) {
+        c->chopFile (take);
         showStage (3);
     };
 
     stages.push_back (std::move (catalog));
     stages.push_back (std::move (prep));
     stages.push_back (std::move (design));
+    stages.push_back (std::move (chop));
     stages.push_back (std::move (deliver));
     for (auto& s : stages)
         addChildComponent (*s);
@@ -56,23 +64,24 @@ MainComponent::MainComponent()
 bool MainComponent::keyPressed (const juce::KeyPress& key)
 {
     // Space or P plays and pauses on every screen (unless typing in a text field, which keeps the key).
+    // On CHOP, its keys first: the pads, nudging, undo, and Space for a sound file being chopped.
+    auto* chop = dynamic_cast<ChopPanel*> (stages[static_cast<std::size_t> (currentStage)].get());
+    if (chop != nullptr && chop->handleKey (key))
+        return true;
     const auto c = juce::CharacterFunctions::toLowerCase (key.getTextCharacter());
     if (key == juce::KeyPress::spaceKey || (c == 'p' && ! key.getModifiers().isAnyModifierKeyDown()))
     {
         session.playPressed();
         return true;
     }
-    // On Listen & Design, the pad keys play the sampler.
-    if (auto* design = dynamic_cast<DesignPanel*> (stages[static_cast<std::size_t> (currentStage)].get()))
-        return design->sampler.handleKey (key);
     return false;
 }
 
 bool MainComponent::keyStateChanged (bool isKeyDown)
 {
     if (! isKeyDown)
-        if (auto* design = dynamic_cast<DesignPanel*> (stages[2].get()))
-            design->sampler.keysChanged();
+        if (auto* chop = dynamic_cast<ChopPanel*> (stages[3].get()))
+            chop->keysChanged();
     return false;
 }
 

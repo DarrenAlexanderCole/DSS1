@@ -169,6 +169,53 @@ TEST_CASE ("Like an MPC: a pad is mono, choke cuts the bank, hold releases, and 
     }
 }
 
+TEST_CASE ("Pad settings: gain, tune and reverse", "[sampler]")
+{
+    auto ramp = std::make_shared<io::DecodedAudio>();
+    ramp->info.sampleRate = 1000.0;
+    ramp->channels.assign (2, std::vector<float> (1000));
+    for (std::size_t i = 0; i < 1000; ++i)
+        ramp->channels[0][i] = ramp->channels[1][i] = static_cast<float> (i) / 1000.0f;
+
+    Sampler s;
+    s.prepare (1000.0);
+    s.setSample (0, ramp, 0, 1000);
+
+    SECTION ("gain")
+    {
+        s.setPadSettings (0, { -6.0f, 0, false, 0, 0 });
+        s.trigger (0);
+        const auto out = render (s, 600);
+        CHECK (std::abs (out[500] - 0.5f * 0.501187f) < 1e-3f);
+    }
+    SECTION ("an octave up plays twice as fast")
+    {
+        s.setPadSettings (0, { 0, 12.0f, false, 0, 0 });
+        s.trigger (0);
+        const auto out = render (s, 600);
+        CHECK (std::abs (out[200] - 0.4f) < 1e-3f);
+        CHECK (out[550] == 0.0f);  // done after 500 frames
+    }
+    SECTION ("reverse plays from the end back")
+    {
+        s.setPadSettings (0, { 0, 0, true, 0, 0 });
+        s.trigger (0);
+        const auto out = render (s, 1100);
+        CHECK (std::abs (out[100] - 0.899f) < 2e-3f);
+        CHECK (std::abs (out[800] - 0.199f) < 2e-3f);
+        CHECK (out[1050] == 0.0f);
+    }
+    SECTION ("attack and fade shape it")
+    {
+        s.setPadSettings (0, { 0, 0, false, 100.0f, 100.0f });
+        s.trigger (0);
+        const auto out = render (s, 1000);
+        CHECK (std::abs (out[50] - 0.05f * 0.5f) < 2e-3f);   // halfway up the 100 ms attack
+        CHECK (std::abs (out[500] - 0.5f) < 1e-3f);
+        CHECK (out[949] < 0.95f * 0.6f);                      // fading out
+    }
+}
+
 #include "engine/TakePlayer.h"
 
 TEST_CASE ("The take player plays a take from anywhere and stops at the end", "[sampler]")
