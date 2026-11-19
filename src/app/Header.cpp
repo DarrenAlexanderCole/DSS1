@@ -88,13 +88,13 @@ void Header::paint (juce::Graphics& g)
 
     // Badge, pilot lamp.
     auto badge = brandArea.toFloat();
-    g.setColour (hw::colour::silk);
+    g.setColour (hw::colour::ink);
     g.setFont (hw::brand (32.0f));
     g.drawText ("DSS1", badge.removeFromTop (42), juce::Justification::centredLeft);
-    g.setColour (hw::colour::red);
+    g.setColour (hw::colour::inkRed);
     g.setFont (hw::label (16.0f));
     g.drawText ("Digital Sample Station", badge.removeFromTop (20), juce::Justification::centredLeft);
-    g.setColour (hw::colour::silkDim);
+    g.setColour (hw::colour::ink.withAlpha (0.6f));
     g.setFont (hw::label (11.0f));
     g.drawText ("MODEL V2  /  " + juce::String (DSS1_BUILD_LABEL).toUpperCase(), badge.removeFromTop (16), juce::Justification::centredLeft);
     const auto lamp = juce::Point<float> (badge.getX() + 14, badge.getBottom() - 16);

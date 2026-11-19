@@ -1343,8 +1343,7 @@ void ChopPanel::paint (juce::Graphics& g)
     hw::silk (g, "PAD " + juce::String (selected + 1) + " [" + keyName (selected) + "]", "SETTINGS", padSettingsArea.toFloat().withHeight (16).translated (0, -20));
     const auto knobLabel = [&] (const juce::Slider& k, const juce::String& name, const juce::String& value) {
         hw::silk (g, name, {}, k.getBounds().toFloat().withHeight (14).translated (0, -16), juce::Justification::centred, 11.0f);
-        hw::glowText (g, value, k.getBounds().toFloat().withY (static_cast<float> (k.getBottom()) - 2).withHeight (20), hw::vfd (19.0f), hw::colour::amber,
-                      juce::Justification::centred);
+        hw::readout (g, value, k.getBounds().toFloat().withY (static_cast<float> (k.getBottom()) + 1).withHeight (21), hw::vfd (19.0f));
     };
     const auto& st = b.settings[static_cast<std::size_t> (selected)];
     knobLabel (gainKnob, "GAIN", (st.gainDb > 0 ? "+" : "") + juce::String (st.gainDb, 1) + " DB");
@@ -1359,7 +1358,7 @@ void ChopPanel::paint (juce::Graphics& g)
     if (path.startsWith (home))
         path = "~" + path.substring (home.length());
     auto f = folderArea.toFloat().reduced (10, 0);
-    hw::silk (g, "SAVE TO", {}, f.removeFromLeft (58), juce::Justification::centredLeft, 10.0f);
+    hw::glowText (g, "SAVE TO", f.removeFromLeft (64), hw::vfd (16.0f), hw::colour::amberDim);
     hw::glowText (g, path, f, hw::vfd (19.0f));
     hw::glass (g, folderArea.toFloat());
 }

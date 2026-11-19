@@ -135,6 +135,19 @@ thread, one track at a time, and saves results with the track.
 
 ## Look
 
+Since 2026-11-19: 60s-80s hi-fi, photoreal. The parts are rendered with Blender (Cycles) by
+`tools/render/render_parts.py` under one light rig (knobs without pointers, since they look the same at any
+angle, so the app draws the engraved pointer; keys per style and state, nine-sliced to any size; toggles,
+screws, pads), and `tools/render/make_textures.py` makes the seamless brushed aluminium and walnut. All live in
+`assets/render` and are compiled in. `hw::faceplate` is brushed aluminium with a light sheen, `hw::rackEar` a
+walnut cheek, `hw::recess`/`hw::glass` black glass with a filament mesh and reflections, `hw::readout` a small
+lit window for knob values, `hw::bay` an engraved module outline; labels print in dark ink. `hw::light()` is
+the lamps' level (warm-up with flicker, slow breathing, mains shimmer, a sag fed by the VU meters'
+loudness), applied to every glow; the VU needles are a sprung, damped second-order system at 60 Hz.
+`Haptics` taps a Force Touch trackpad as knobs and faders cross their steps (`HapticsMac.mm`).
+
+(Earlier, 2026-11-18:)
+
 DSS1 looks like worn 90s studio rack gear (decided with the user, 2026-11-18, from a design canvas). Every
 screen is rack units: aluminium ears, a black anodised faceplate with scratches, grime and edge wear, Phillips
 screws, silk-screened labels with worn ink, cream VU meters, fluted knobs, chrome toggles, square keys and an

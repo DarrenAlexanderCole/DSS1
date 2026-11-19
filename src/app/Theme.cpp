@@ -1,7 +1,11 @@
 #include "Theme.h"
+#include "Hardware.h"
 
 namespace dss1::ui
 {
+
+using hw::part;
+using hw::nineSlice;
 
 namespace
 {
@@ -101,7 +105,105 @@ juce::Font Theme::getLabelFont (juce::Label& l)
     return l.getFont();
 }
 
-void Theme::drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce::Colour&, bool over, bool down)
+void Theme::drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce::Colour& base, bool over, bool down)
+{
+    if (drawRenderedKey (g, b, over, down))
+        return;
+    drawCodeKey (g, b, base, over, down);
+}
+
+bool Theme::drawRenderedKey (juce::Graphics& g, juce::Button& b, bool over, bool down)
+{
+    // The rendered keys (tools/render): a key in its cut-out, nine-sliced to the button's size. The render's
+    // cut-out spans about 289 x 112 of its 320 x 128 pixels.
+    const auto style = styleOf (b);
+    const bool enabled = b.isEnabled();
+    auto r = b.getLocalBounds().toFloat();
+    if (style == KeyStyle::pad)
+    {
+        const auto img = part (down ? "pad_down" : "pad_up");
+        if (! img.isValid())
+            return false;
+        const auto colour = juce::Colour (static_cast<juce::uint32> (static_cast<juce::int64> (b.getProperties()[padColourId])));
+        const bool lit = b.getProperties()[padLitId];
+        const auto lightLevel = hw::light();
+        const auto size = juce::jmin (r.getWidth(), r.getHeight());
+        const auto sq = r.withSizeKeepingCentre (size, size);
+        // Lit pads spill their colour onto the panel round them.
+        if (lit)
+        {
+            g.setColour (colour.withAlpha (0.28f * lightLevel));
+            g.fillRoundedRectangle (sq.expanded (size * 0.06f), size * 0.12f);
+        }
+        const auto drawn = sq.expanded (size * 0.1f);  // the render has a margin for its shadow
+        g.setOpacity (1.0f);
+        g.drawImage (img, drawn, juce::RectanglePlacement::stretchToFit);
+        // The silicone lit from below: colour through the rubber, brightest in the middle.
+        const auto face = sq.reduced (size * 0.11f).translated (0, down ? size * 0.02f : 0.0f);
+        const auto tint = lit ? colour.withMultipliedBrightness (0.7f + 0.3f * lightLevel) : colour.withMultipliedSaturation (0.5f);
+        g.setColour (tint.withAlpha (lit ? 0.62f : 0.07f));
+        g.fillRoundedRectangle (face, size * 0.07f);
+        if (lit)
+        {
+            juce::ColourGradient glow (juce::Colours::white.withAlpha (0.35f * lightLevel), face.getCentreX(), face.getCentreY() - face.getHeight() * 0.1f,
+                                       juce::Colours::transparentWhite, face.getX(), face.getBottom(), true);
+            g.setGradientFill (glow);
+            g.fillRoundedRectangle (face, size * 0.07f);
+        }
+        if (! enabled)
+        {
+            g.setColour (juce::Colours::black.withAlpha (0.35f));
+            g.fillRoundedRectangle (sq, size * 0.08f);
+        }
+        return true;
+    }
+
+    const char* name = "key_dark";
+    switch (style)
+    {
+        case KeyStyle::cream: name = "key_cream"; break;
+        case KeyStyle::cue: name = "key_cue"; break;
+        case KeyStyle::rec: name = "key_rec"; break;
+        case KeyStyle::dark:
+        case KeyStyle::play:
+        case KeyStyle::pad:
+        default: break;
+    }
+    const bool lowered = down || (style == KeyStyle::rec && b.getToggleState());
+    const auto img = part (juce::String (name) + (lowered ? "_down" : "_up"));
+    if (! img.isValid())
+        return false;
+    // Scale so the cut-out's height (112 px of the render) fills the button; its margins hang outside.
+    const auto scale = r.getHeight() / 112.0f;
+    const auto dest = r.expanded (15.5f * scale, 8.0f * scale);
+    nineSlice (g, img, dest, 40, 34, scale);
+    if (over && enabled)
+    {
+        g.setColour (juce::Colours::white.withAlpha (0.05f));
+        g.fillRoundedRectangle (r.reduced (3.0f * scale + 1.0f), 3.0f);
+    }
+    // Lit: an orange key glows through; a switched-on key shows its lamp.
+    if (style == KeyStyle::cue && enabled)
+    {
+        g.setColour (juce::Colour (0xffff7828).withAlpha (0.14f * hw::light()));
+        g.drawRoundedRectangle (r.expanded (1.5f), 4.0f, 3.0f);
+    }
+    if (style == KeyStyle::rec && b.getToggleState())
+    {
+        g.setColour (juce::Colour (0xffff3020).withAlpha (0.3f * hw::light()));
+        g.drawRoundedRectangle (r.expanded (2.0f), 4.0f, 4.0f);
+    }
+    if (b.getToggleState() && style != KeyStyle::rec)
+        hw::led (g, { r.getX() + 9.0f, r.getY() + 8.0f + (down ? 1.5f : 0.0f) }, 2.6f, hw::colour::amber, true);
+    if (! enabled)
+    {
+        g.setColour (juce::Colours::black.withAlpha (0.32f));
+        g.fillRoundedRectangle (r.reduced (2.0f), 3.0f);
+    }
+    return true;
+}
+
+void Theme::drawCodeKey (juce::Graphics& g, juce::Button& b, const juce::Colour&, bool over, bool down)
 {
     auto r = b.getLocalBounds().toFloat().reduced (1.0f, 0.5f);
     const bool enabled = b.isEnabled();
@@ -172,7 +274,8 @@ void Theme::drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce
 
 void Theme::drawButtonText (juce::Graphics& g, juce::TextButton& b, bool, bool down)
 {
-    auto area = b.getLocalBounds().toFloat().withTrimmedBottom (3.0f).translated (0, down ? 2.0f : 0.0f).reduced (4.0f, 0);
+    // On the rendered keys the cap sits centred and travels a little when pressed.
+    auto area = b.getLocalBounds().toFloat().translated (0, down ? 1.5f : 0.0f).reduced (6.0f, 0);
     const auto text = b.getButtonText();
     const auto alpha = b.isEnabled() ? 1.0f : 0.45f;
     switch (styleOf (b))
@@ -223,6 +326,18 @@ void Theme::drawToggleButton (juce::Graphics& g, juce::ToggleButton& b, bool, bo
     const auto centreX = stacked ? static_cast<float> (b.getWidth()) / 2 : 13.0f;
     const auto sw = juce::Rectangle<float> (0, 0, 22.0f, juce::jmin (stacked ? h - 30.0f : h, 34.0f)).withCentre ({ centreX, h / 2 });
     const auto c = sw.getCentre();
+    const bool on = b.getToggleState();
+    const auto alpha = b.isEnabled() ? 1.0f : 0.45f;
+    if (const auto img = hw::part (on ? "toggle_up" : "toggle_down"); img.isValid())
+    {
+        // The rendered chrome toggle (its nut is about 0.58 of the render's width).
+        const auto size = juce::jmin (sw.getHeight() * 1.45f, 50.0f);
+        g.setOpacity (alpha);
+        g.drawImage (img, juce::Rectangle<float> (size, size).withCentre (c), juce::RectanglePlacement::centred);
+        g.setOpacity (1.0f);
+    }
+    else
+    {
     g.setColour (juce::Colours::black.withAlpha (0.5f));
     g.fillEllipse (juce::Rectangle<float> (22, 22).withCentre (c.translated (1, 2)));
     juce::ColourGradient nut (juce::Colour (0xffe1e2e4), c.x - 6, c.y - 6, juce::Colour (0xff6c6d70), c.x + 8, c.y + 8, true);
@@ -232,7 +347,6 @@ void Theme::drawToggleButton (juce::Graphics& g, juce::ToggleButton& b, bool, bo
     g.drawEllipse (juce::Rectangle<float> (21, 21).withCentre (c), 1.0f);
     g.setColour (juce::Colour (0xff8d8e90));
     g.fillEllipse (juce::Rectangle<float> (12, 12).withCentre (c));
-    const bool on = b.getToggleState();
     const auto tipY = on ? sw.getY() + 1.0f : sw.getBottom() - 1.0f;
     juce::Path lever;
     lever.startNewSubPath (c.x - 2.0f, c.y);
@@ -247,24 +361,24 @@ void Theme::drawToggleButton (juce::Graphics& g, juce::ToggleButton& b, bool, bo
     g.strokePath (lever, juce::PathStrokeType (0.6f));
     g.setColour (juce::Colour (0xffcfd0d2));
     g.fillEllipse (juce::Rectangle<float> (8.5f, 6.0f).withCentre ({ c.x, tipY }));
+    }
 
-    const auto alpha = b.isEnabled() ? 1.0f : 0.45f;
     if (stacked)
     {
         const auto all = b.getLocalBounds().toFloat();
         g.setFont (hw::label (11.0f));
-        g.setColour (hw::colour::silk.withAlpha (alpha));
+        g.setColour (hw::colour::ink.withAlpha (alpha));
         g.drawText (b.getButtonText().toUpperCase(), all.withHeight (13.0f), juce::Justification::centred);
-        g.setColour ((on ? hw::colour::amber : hw::colour::red).withAlpha (alpha));
+        g.setColour ((on ? juce::Colour (0xff9a4a00) : hw::colour::inkRed).withAlpha (alpha));
         g.setFont (hw::label (10.5f));
         g.drawText (on ? onText : offText, all.withTop (all.getBottom() - 13.0f), juce::Justification::centred);
         return;
     }
     auto text = b.getLocalBounds().toFloat().withTrimmedLeft (32.0f);
     g.setFont (hw::label (12.0f));
-    g.setColour (hw::colour::silk.withAlpha (alpha));
+    g.setColour (hw::colour::ink.withAlpha (alpha));
     g.drawText (b.getButtonText().toUpperCase(), text.withTrimmedBottom (h / 2 - 1), juce::Justification::bottomLeft);
-    g.setColour (hw::colour::red.withAlpha (alpha));
+    g.setColour (hw::colour::inkRed.withAlpha (alpha));
     g.setFont (hw::label (11.0f));
     g.drawText (on ? onText : offText, text.withTrimmedTop (h / 2 + 1), juce::Justification::topLeft);
 }
@@ -274,7 +388,7 @@ void Theme::drawRotarySlider (juce::Graphics& g, int x, int y, int w, int h, flo
     const auto bounds = juce::Rectangle<float> (static_cast<float> (x), static_cast<float> (y), static_cast<float> (w), static_cast<float> (h));
     const auto size = juce::jmin (bounds.getWidth(), bounds.getHeight());
     const auto c = bounds.getCentre();
-    const auto scaleR = size * 0.36f, labelR = size * 0.45f, knobR = size * 0.29f;
+    const auto scaleR = size * 0.375f, labelR = size * 0.455f, knobR = size * 0.29f;
 
     // Printed scale: a dot and a number at each position.
     const auto labels = juce::StringArray::fromTokens (s.getProperties()[scaleId].toString(), "|", "");
@@ -284,37 +398,41 @@ void Theme::drawRotarySlider (juce::Graphics& g, int x, int y, int w, int h, flo
     {
         const auto a = start + (end - start) * static_cast<float> (i) / static_cast<float> (n - 1);
         const auto dot = c.getPointOnCircumference (scaleR, a);
-        g.setColour (hw::colour::silk);
+        g.setColour (hw::colour::ink);
         g.fillEllipse (juce::Rectangle<float> (3.4f, 3.4f).withCentre (dot));
         if (i < labels.size())
             g.drawText (labels[i], juce::Rectangle<float> (26, 12).withCentre (c.getPointOnCircumference (labelR, a)), juce::Justification::centred);
     }
 
-    // Knob: shadow, fluted skirt, cap with a rubbed shine, white pointer.
+    const auto angle = start + pos * (end - start);
+    const bool brass = s.getProperties()["hwKnob"].toString() == "brass";
+    if (const auto img = hw::part (brass ? "knob_brass" : "knob_alu"); img.isValid())
+    {
+        // The rendered knob (its skirt spans 0.71 of the render): lit from the upper left, so it looks the same
+        // at any angle; only the engraved pointer turns.
+        const auto skirtR = size * 0.31f;
+        const auto drawn = skirtR * 2.0f / 0.71f;
+        g.setOpacity (s.isEnabled() ? 1.0f : 0.6f);
+        g.drawImage (img, juce::Rectangle<float> (drawn, drawn).withCentre (c), juce::RectanglePlacement::stretchToFit);
+        g.setOpacity (1.0f);
+        const auto capR = drawn * 0.5f * (0.80f / 1.55f);
+        const auto p1 = c.getPointOnCircumference (capR * 0.30f, angle), p2 = c.getPointOnCircumference (capR * 0.92f, angle);
+        // Engraved: a dark groove with a bright lower lip.
+        g.setColour (juce::Colours::white.withAlpha (0.55f));
+        g.drawLine ({ p1.translated (0.6f, 0.9f), p2.translated (0.6f, 0.9f) }, 1.6f);
+        g.setColour (juce::Colour (0xff141414).withAlpha (s.isEnabled() ? 0.95f : 0.5f));
+        g.drawLine ({ p1, p2 }, 2.2f);
+        return;
+    }
+
+    // (Fallback, drawn) Knob: shadow, fluted skirt, cap with a rubbed shine, white pointer.
     g.setColour (juce::Colours::black.withAlpha (0.55f));
     g.fillEllipse (juce::Rectangle<float> (knobR * 2, knobR * 2).withCentre (c.translated (0, 3)));
     juce::ColourGradient body (juce::Colour (0xff4a4a4c), c.x - knobR * 0.4f, c.y - knobR * 0.6f, juce::Colour (0xff050505), c.x + knobR, c.y + knobR, true);
     g.setGradientFill (body);
     g.fillEllipse (juce::Rectangle<float> (knobR * 2, knobR * 2).withCentre (c));
-    g.setColour (juce::Colours::black);
-    const int flutes = 36;
-    for (int i = 0; i < flutes; ++i)
-    {
-        const auto a = juce::MathConstants<float>::twoPi * static_cast<float> (i) / flutes;
-        g.drawLine ({ c.getPointOnCircumference (knobR * 0.86f, a), c.getPointOnCircumference (knobR, a) }, 1.6f);
-    }
-    const auto capR = knobR * 0.7f;
-    juce::ColourGradient cap (juce::Colour (0xff3d3d40), c.x - capR * 0.5f, c.y - capR * 0.7f, juce::Colour (0xff0b0b0c), c.x + capR, c.y + capR, true);
-    g.setGradientFill (cap);
-    g.fillEllipse (juce::Rectangle<float> (capR * 2, capR * 2).withCentre (c));
-    g.setColour (juce::Colours::white.withAlpha (0.12f));
-    g.drawEllipse (juce::Rectangle<float> (capR * 2, capR * 2).withCentre (c), 1.0f);
-    g.setColour (juce::Colours::white.withAlpha (0.06f));
-    g.fillEllipse (juce::Rectangle<float> (capR * 0.9f, capR * 0.6f).withCentre (c.translated (-capR * 0.25f, -capR * 0.4f)));
-
-    const auto angle = start + pos * (end - start);
     g.setColour (juce::Colour (0xfff4f2ec).withAlpha (s.isEnabled() ? 1.0f : 0.4f));
-    g.drawLine ({ c.getPointOnCircumference (knobR * 0.25f, angle), c.getPointOnCircumference (knobR * 0.92f, angle) }, 3.0f);
+    g.drawLine ({ c.getPointOnCircumference (knobR * 0.2f, angle), c.getPointOnCircumference (knobR * 0.9f, angle) }, 2.4f);
 }
 
 void Theme::drawLinearSlider (juce::Graphics& g, int x, int y, int w, int h, float pos, float, float,
@@ -328,7 +446,7 @@ void Theme::drawLinearSlider (juce::Graphics& g, int x, int y, int w, int h, flo
     // A fader: a black slot with printed ticks, and a chrome cap with a red line.
     const auto b = juce::Rectangle<float> (static_cast<float> (x), static_cast<float> (y), static_cast<float> (w), static_cast<float> (h));
     const auto cy = b.getCentreY();
-    g.setColour (hw::colour::silkDim);
+    g.setColour (hw::colour::ink.withAlpha (0.8f));
     for (int i = 0; i <= 16; ++i)
     {
         const auto tx = b.getX() + b.getWidth() * static_cast<float> (i) / 16.0f;

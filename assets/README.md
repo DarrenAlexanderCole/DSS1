@@ -5,3 +5,10 @@
 - `textures/`: worn-panel textures made for DSS1 (generated, no third-party images): `panel-wear` (grain,
   scratches, scuffs, dust), `grime`, `edge-wear` (paint rubbed off at the edges), `aluminium` (brushed rack
   ears) and `ink-wear` (patchy silk-screen ink). Tileable except `edge-wear`, which is stretched.
+
+
+## render/
+
+Rendered parts and generated textures for the hi-fi look (2026-11-19), all made here, no third-party art:
+knobs, keys, toggles, screws and pads rendered with Blender by `tools/render/render_parts.py`; brushed
+aluminium and walnut made by `tools/render/make_textures.py`. Re-run those scripts to change them.

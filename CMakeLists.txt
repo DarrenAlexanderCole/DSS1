@@ -6,6 +6,9 @@ set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Mac architectures to build")
 
 project(DSS1 VERSION 2.0.0 LANGUAGES C CXX)
+if(APPLE)
+    enable_language(OBJCXX)  # trackpad haptics (src/app/HapticsMac.mm)
+endif()
 
 # Shown in the window title so testers can tell builds apart; the release workflow sets it to test.<n>.
 set(DSS1_BUILD_LABEL "dev" CACHE STRING "Build name shown in the app")

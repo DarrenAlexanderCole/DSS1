@@ -12,7 +12,7 @@ namespace
     struct Assets
     {
         juce::Typeface::Ptr labelBold, labelMedium, brandFace, vfdFace;
-        juce::Image panelWear, grime, edgeWear, aluminium, inkWear;
+        juce::Image panelWear, grime, edgeWear, aluminium, inkWear, brushed, walnut;
 
         Assets()
         {
@@ -26,6 +26,8 @@ namespace
             edgeWear = juce::ImageCache::getFromMemory (edgewear_png, edgewear_pngSize);
             aluminium = juce::ImageCache::getFromMemory (aluminium_png, aluminium_pngSize);
             inkWear = juce::ImageCache::getFromMemory (inkwear_png, inkwear_pngSize);
+            brushed = juce::ImageCache::getFromMemory (brushed_png, brushed_pngSize);
+            walnut = juce::ImageCache::getFromMemory (walnut_png, walnut_pngSize);
         }
 
         static Assets& get()
@@ -59,8 +61,92 @@ juce::Font label (float size, bool bold)
 juce::Font brand (float size) { return fontFrom (Assets::get().brandFace, size); }
 juce::Font vfd (float size) { return fontFrom (Assets::get().vfdFace, size); }
 
+//--- Light ----------------------------------------------------------------------------------------------------
+
+namespace
+{
+    struct Light
+    {
+        double start = juce::Time::getMillisecondCounterHiRes();
+        float sag = 0;  // 0 … 1, how far the supply has dipped
+        double lastFeed = 0;
+    };
+    Light& lightState()
+    {
+        static Light l;
+        return l;
+    }
+}
+
+float light()
+{
+    auto& l = lightState();
+    const auto t = (juce::Time::getMillisecondCounterHiRes() - l.start) / 1000.0;
+    // Warm-up: filaments glow in over about 1.6 s, with a couple of flickers as they catch.
+    auto warm = static_cast<float> (juce::jlimit (0.0, 1.0, (t - 0.15) / 1.6));
+    warm = warm * warm * (3.0f - 2.0f * warm);
+    if (t < 1.2)
+        warm *= 1.0f - 0.35f * static_cast<float> (std::max (0.0, std::sin (t * 37.0)) * std::exp (-t * 2.0));
+    // Breathing: a slow swell, and a faint shimmer like mains hum on the supply.
+    const auto breathe = 1.0f + 0.018f * static_cast<float> (std::sin (t * 2.0 * juce::MathConstants<double>::pi * 0.23))
+                         + 0.006f * static_cast<float> (std::sin (t * 2.0 * juce::MathConstants<double>::pi * 7.1));
+    return juce::jlimit (0.0f, 1.05f, warm * breathe * (1.0f - 0.07f * l.sag));
+}
+
+void feedLight (float rms)
+{
+    // Loud passages pull the supply down quickly; it recovers slowly. Called about 30 times a second.
+    auto& l = lightState();
+    const auto target = juce::jlimit (0.0f, 1.0f, (rms - 0.12f) * 4.0f);
+    l.sag = target > l.sag ? l.sag + (target - l.sag) * 0.6f : l.sag + (target - l.sag) * 0.06f;
+}
+
+juce::Image part (const juce::String& name)
+{
+    // Rendered parts are compiled in as e.g. knob_alu_png.
+    int size = 0;
+    const auto resource = (name + "_png").replaceCharacter ('-', '_');
+    if (const auto* data = dss1_assets::getNamedResource (resource.toRawUTF8(), size))
+        return juce::ImageCache::getFromMemory (data, size);
+    return {};
+}
+
+void nineSlice (juce::Graphics& g, const juce::Image& img, juce::Rectangle<float> dest, int cx, int cy, float scale)
+{
+    if (! img.isValid())
+        return;
+    const auto sw = img.getWidth(), sh = img.getHeight();
+    const auto dx = static_cast<float> (cx) * scale, dy = static_cast<float> (cy) * scale;
+    const float xs[] { dest.getX(), dest.getX() + dx, dest.getRight() - dx, dest.getRight() };
+    const float ys[] { dest.getY(), dest.getY() + dy, dest.getBottom() - dy, dest.getBottom() };
+    const int sxs[] { 0, cx, sw - cx, sw };
+    const int sys[] { 0, cy, sh - cy, sh };
+    g.setOpacity (1.0f);
+    for (int j = 0; j < 3; ++j)
+        for (int i = 0; i < 3; ++i)
+        {
+            const auto w = xs[i + 1] - xs[i], h = ys[j + 1] - ys[j];
+            if (w <= 0 || h <= 0)
+                continue;
+            g.drawImage (img, juce::roundToInt (xs[i]), juce::roundToInt (ys[j]), juce::roundToInt (xs[i + 1]) - juce::roundToInt (xs[i]),
+                         juce::roundToInt (ys[j + 1]) - juce::roundToInt (ys[j]), sxs[i], sys[j], sxs[i + 1] - sxs[i], sys[j + 1] - sys[j]);
+        }
+}
+
 void screw (juce::Graphics& g, juce::Point<float> c, float r)
 {
+    if (const auto img = part ("screw"); img.isValid())
+    {
+        // The rendered screw (its head is about 0.77 of the image width), each turned a little differently.
+        const auto size = r * 2.0f / 0.77f;
+        const auto angle = hash (c.x, c.y) * juce::MathConstants<float>::pi;
+        g.setOpacity (1.0f);
+        g.drawImageTransformed (img, juce::AffineTransform::translation (-img.getWidth() / 2.0f, -img.getHeight() / 2.0f)
+                                         .rotated (angle)
+                                         .scaled (size / static_cast<float> (img.getWidth()))
+                                         .translated (c.x, c.y));
+        return;
+    }
     g.setColour (juce::Colours::black.withAlpha (0.6f));
     g.fillEllipse (c.x - r + 0.8f, c.y - r + 1.4f, 2 * r, 2 * r);
     juce::ColourGradient head (juce::Colour (0xffd9d9d6), c.x - r * 0.4f, c.y - r * 0.5f, juce::Colour (0xff4d4e50), c.x + r, c.y + r, true);
@@ -84,36 +170,48 @@ void faceplate (juce::Graphics& g, juce::Rectangle<float> area, bool screws)
     juce::Graphics::ScopedSaveState state (g);
     g.reduceClipRegion (area.toNearestInt());
 
-    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff25262a), area.getX(), area.getY(),
-                                             juce::Colour (0xff131416), area.getX(), area.getBottom(), false));
+    // Brushed aluminium, tiled from fixed positions so the grain doesn't crawl.
+    if (a.brushed.isValid())
+    {
+        g.setTiledImageFill (a.brushed, 0, 0, 1.0f);
+        g.fillRect (area);
+    }
+    else
+    {
+        g.setColour (juce::Colour (0xff9a9c9f));
+        g.fillRect (area);
+    }
+    // The light: a broad warm sheen from the upper left, falling off to the lower right, and a cool lift at the
+    // far edge, the way brushed metal catches a room.
+    juce::ColourGradient sheen (juce::Colours::white.withAlpha (0.20f), area.getX() + area.getWidth() * 0.18f, area.getY(),
+                                juce::Colours::black.withAlpha (0.16f), area.getX() + area.getWidth() * 0.62f, area.getBottom(), false);
+    sheen.addColour (0.45, juce::Colours::transparentWhite);
+    g.setGradientFill (sheen);
+    g.fillRect (area);
+    juce::ColourGradient lift (juce::Colours::transparentWhite, area.getRight() - area.getWidth() * 0.25f, area.getY(),
+                               juce::Colour (0x1ad8e6ff), area.getRight(), area.getY(), false);
+    g.setGradientFill (lift);
     g.fillRect (area);
 
-    // Grime, then grain, scratches and scuffs, tiled from fixed positions so they don't crawl when scrolling.
-    if (a.grime.isValid())
-    {
-        g.setTiledImageFill (a.grime, 0, 0, 1.0f);
-        g.fillRect (area);
-    }
+    // A little honest wear: fingerprints and scuffs, faint.
     if (a.panelWear.isValid())
     {
-        g.setTiledImageFill (a.panelWear, 0, 0, 1.0f);
+        g.setOpacity (0.22f);
+        g.setTiledImageFill (a.panelWear, 0, 0, 0.22f);
         g.fillRect (area);
     }
-    if (a.edgeWear.isValid())
-    {
-        g.setOpacity (0.8f);
-        g.drawImage (a.edgeWear, area, juce::RectanglePlacement::stretchToFit, false);
-    }
 
-    // Bevel: light along the top edge, shadow along the bottom.
-    g.setColour (juce::Colours::white.withAlpha (0.14f));
+    // Bevel: a bright chamfer along the top edge, shadow along the bottom.
+    g.setColour (juce::Colours::white.withAlpha (0.55f));
     g.fillRect (area.withHeight (1.0f));
-    g.setColour (juce::Colours::black.withAlpha (0.6f));
+    g.setColour (juce::Colours::white.withAlpha (0.18f));
+    g.fillRect (area.withHeight (2.0f).translated (0, 1));
+    g.setColour (juce::Colours::black.withAlpha (0.55f));
     g.fillRect (area.withTop (area.getBottom() - 2.0f));
 
     if (screws && area.getWidth() > 60 && area.getHeight() > 50)
     {
-        const auto r = 7.0f, m = 15.0f;
+        const auto r = 6.5f, m = 14.0f;
         screw (g, { area.getX() + m, area.getY() + m }, r);
         screw (g, { area.getRight() - m, area.getY() + m }, r);
         screw (g, { area.getX() + m, area.getBottom() - m }, r);
@@ -121,55 +219,48 @@ void faceplate (juce::Graphics& g, juce::Rectangle<float> area, bool screws)
     }
 }
 
-void rackEar (juce::Graphics& g, juce::Rectangle<float> area, int slots)
+void rackEar (juce::Graphics& g, juce::Rectangle<float> area, int)
 {
+    // A walnut cheek: oiled grain, rounded at the outer edge, lacquer catching the light.
     auto& a = Assets::get();
     juce::Graphics::ScopedSaveState state (g);
     g.reduceClipRegion (area.toNearestInt());
-    if (a.aluminium.isValid())
+    if (a.walnut.isValid())
     {
-        g.setTiledImageFill (a.aluminium, 0, 0, 1.0f);
+        g.setTiledImageFill (a.walnut, juce::roundToInt (area.getX()), 0, 1.0f);
         g.fillRect (area);
     }
     else
     {
-        g.setColour (juce::Colour (0xff9a9c9e));
+        g.setColour (juce::Colour (0xff4a2412));
         g.fillRect (area);
     }
-    // Curvature: darker at the sides.
-    juce::ColourGradient shade (juce::Colours::black.withAlpha (0.35f), area.getX(), 0, juce::Colours::transparentBlack, area.getCentreX(), 0, false);
-    shade.addColour (1.0, juce::Colours::black.withAlpha (0.3f));
-    shade.point2 = { area.getRight(), 0 };
-    shade.addColour (0.45, juce::Colours::white.withAlpha (0.08f));
-    g.setGradientFill (shade);
+    // Rounded: darker at both sides, a soft highlight a third of the way in.
+    juce::ColourGradient round (juce::Colours::black.withAlpha (0.55f), area.getX(), 0, juce::Colours::black.withAlpha (0.5f), area.getRight(), 0, false);
+    round.addColour (0.18, juce::Colours::transparentBlack);
+    round.addColour (0.36, juce::Colour (0x24fff0dc));
+    round.addColour (0.52, juce::Colours::transparentBlack);
+    round.addColour (0.85, juce::Colours::black.withAlpha (0.12f));
+    g.setGradientFill (round);
     g.fillRect (area);
-    g.setColour (juce::Colours::white.withAlpha (0.35f));
-    g.fillRect (area.withHeight (1.0f));
-    g.setColour (juce::Colours::black.withAlpha (0.45f));
-    g.fillRect (area.withTop (area.getBottom() - 2.0f));
-
-    // Mounting slots.
-    const auto slotW = juce::jmin (28.0f, area.getWidth() - 14.0f), slotH = 14.0f;
-    for (int i = 0; i < slots; ++i)
-    {
-        const auto cy = area.getY() + area.getHeight() * (static_cast<float> (i) + 0.5f) / static_cast<float> (slots);
-        const juce::Rectangle<float> slot (area.getCentreX() - slotW / 2, cy - slotH / 2, slotW, slotH);
-        g.setColour (juce::Colours::white.withAlpha (0.3f));
-        g.fillRoundedRectangle (slot.translated (0, 1), slotH / 2);
-        g.setColour (juce::Colour (0xff141415));
-        g.fillRoundedRectangle (slot, slotH / 2);
-        g.setColour (juce::Colours::black);
-        g.drawRoundedRectangle (slot, slotH / 2, 1.0f);
-    }
+    // The light from above on the lacquer, fading down.
+    juce::ColourGradient top (juce::Colour (0x22fff4e6), 0, area.getY(), juce::Colours::transparentWhite, 0, area.getY() + area.getHeight() * 0.5f, false);
+    g.setGradientFill (top);
+    g.fillRect (area);
+    g.setColour (juce::Colours::black.withAlpha (0.6f));
+    g.fillRect (area.withTop (area.getBottom() - 1.0f));
 }
 
 void recess (juce::Graphics& g, juce::Rectangle<float> area, float corner)
 {
-    // The bezel: a dark ring, then the window with an inner shadow.
-    g.setColour (juce::Colours::black);
-    g.fillRoundedRectangle (area.expanded (4), corner + 3);
-    g.setColour (juce::Colour (0xff2a2a2c));
-    g.fillRoundedRectangle (area.expanded (3), corner + 2);
+    // The window is cut into the aluminium: a bright chamfer below (lit from above), a dark lip above, then
+    // the black glass with an inner shadow.
+    g.setColour (juce::Colours::white.withAlpha (0.55f));
+    g.fillRoundedRectangle (area.expanded (4).translated (0, 1.0f), corner + 3);
+    g.setColour (juce::Colours::black.withAlpha (0.75f));
+    g.fillRoundedRectangle (area.expanded (4).translated (0, -0.5f), corner + 3);
+    g.setColour (juce::Colour (0xff111113));
+    g.fillRoundedRectangle (area.expanded (2.5f), corner + 2);
     g.setColour (colour::glassBlack);
     g.fillRoundedRectangle (area, corner);
     juce::ColourGradient shadow (juce::Colours::black.withAlpha (0.85f), 0, area.getY(), juce::Colours::transparentBlack, 0, area.getY() + 14, false);
@@ -179,10 +270,51 @@ void recess (juce::Graphics& g, juce::Rectangle<float> area, float corner)
 
 void glass (juce::Graphics& g, juce::Rectangle<float> area, float corner)
 {
-    juce::ColourGradient sheen (juce::Colours::white.withAlpha (0.09f), area.getX(), area.getY(), juce::Colours::transparentWhite,
-                                area.getX() + area.getWidth() * 0.25f, area.getY() + area.getHeight() * 0.6f, false);
+    // Layers over the lit display: a fine filament mesh (like a VFD's grid), a diagonal reflection of the room,
+    // and a bright edge where the glass meets the bezel.
+    juce::Graphics::ScopedSaveState state (g);
+    g.reduceClipRegion (area.toNearestInt());
+    g.setColour (juce::Colours::black.withAlpha (0.10f));
+    for (auto y = area.getY() + 1.0f; y < area.getBottom(); y += 3.0f)
+        g.fillRect (area.getX(), y, area.getWidth(), 1.0f);
+    juce::ColourGradient sheen (juce::Colours::white.withAlpha (0.10f), area.getX(), area.getY(), juce::Colours::transparentWhite,
+                                area.getX() + area.getWidth() * 0.3f, area.getY() + area.getHeight() * 0.7f, false);
+    sheen.addColour (0.55, juce::Colours::white.withAlpha (0.025f));
     g.setGradientFill (sheen);
     g.fillRoundedRectangle (area, corner);
+    // A soft band of reflection crossing the glass.
+    juce::Path band;
+    const auto w = area.getWidth(), h = area.getHeight();
+    band.startNewSubPath (area.getX() + w * 0.55f, area.getY());
+    band.lineTo (area.getX() + w * 0.62f, area.getY());
+    band.lineTo (area.getX() + w * 0.62f - h * 0.6f, area.getBottom());
+    band.lineTo (area.getX() + w * 0.55f - h * 0.6f, area.getBottom());
+    band.closeSubPath();
+    g.setColour (juce::Colours::white.withAlpha (0.025f));
+    g.fillPath (band);
+    g.setColour (juce::Colours::white.withAlpha (0.16f));
+    g.drawLine (area.getX() + corner, area.getY() + 0.5f, area.getRight() - corner, area.getY() + 0.5f, 1.0f);
+}
+
+void readout (juce::Graphics& g, const juce::String& text, juce::Rectangle<float> area, const juce::Font& font, juce::Colour c)
+{
+    // As wide as the text needs (a little more), centred where it was asked for.
+    const auto textW = juce::GlyphArrangement::getStringWidth (font, text) + 16.0f;
+    const auto win = area.withSizeKeepingCentre (juce::jmax (textW, area.getHeight() * 1.6f), area.getHeight());
+    recess (g, win, 3.0f);
+    glowText (g, text, win, font, c, juce::Justification::centred);
+    glass (g, win, 3.0f);
+}
+
+void bay (juce::Graphics& g, juce::Rectangle<float> area, float corner)
+{
+    // Engraved: a dark line, with a bright line just below and right of it where the light catches the cut.
+    g.setColour (juce::Colours::black.withAlpha (0.045f));
+    g.fillRoundedRectangle (area, corner);
+    g.setColour (juce::Colours::white.withAlpha (0.55f));
+    g.drawRoundedRectangle (area.translated (0.8f, 1.0f), corner, 1.0f);
+    g.setColour (juce::Colours::black.withAlpha (0.42f));
+    g.drawRoundedRectangle (area, corner, 1.0f);
 }
 
 void silk (juce::Graphics& g, const juce::String& text, const juce::String& sub, juce::Rectangle<float> area,
@@ -218,9 +350,9 @@ void silk (juce::Graphics& g, const juce::String& text, const juce::String& sub,
             const auto bounds = juce::Rectangle<float> (0, 0, area.getWidth(), area.getHeight());
             juce::AttributedString s;
             s.setJustification (justification);
-            s.append (text, label (size), colour::silk);
+            s.append (text, label (size), colour::ink);
             if (sub.isNotEmpty())
-                s.append ("  " + juce::String::fromUTF8 ("\xe2\x80\x94") + " " + sub, label (size), colour::red);
+                s.append ("  " + juce::String::fromUTF8 ("\xe2\x80\x94") + " " + sub, label (size), colour::inkRed);
             s.draw (ig, bounds);
         }
         // Worn ink: multiply alpha by the wear mask.
@@ -251,8 +383,14 @@ void glowText (juce::Graphics& g, const juce::String& text, juce::Rectangle<floa
                juce::Colour c, juce::Justification justification)
 {
     g.setFont (font);
-    // A soft halo, then the bright text.
-    g.setColour (c.withAlpha (0.09f));
+    // The display's light: dims while warming up, breathes, dips with the music.
+    const auto lit = light();
+    c = c.withMultipliedAlpha (juce::jlimit (0.0f, 1.0f, 0.15f + 0.85f * lit)).withMultipliedBrightness (0.9f + 0.1f * lit);
+    // Bloom: a wide faint glow, a soft halo, then the bright text.
+    g.setColour (c.withAlpha (0.035f * lit));
+    for (const auto& d : { juce::Point<float> (-3.0f, 0.0f), { 3.0f, 0.0f }, { 0.0f, -3.0f }, { 0.0f, 3.0f } })
+        g.drawText (text, area.translated (d.x, d.y), justification, true);
+    g.setColour (c.withAlpha (0.09f * lit));
     for (const auto& d : { juce::Point<float> (-1.0f, 0.0f), { 1.0f, 0.0f }, { 0.0f, -1.0f }, { 0.0f, 1.0f } })
         g.drawText (text, area.translated (d.x, d.y), justification, true);
     g.setColour (c.withAlpha (0.05f));
@@ -266,7 +404,8 @@ void led (juce::Graphics& g, juce::Point<float> c, float r, juce::Colour colour,
 {
     if (on)
     {
-        g.setColour (colour.withAlpha (0.25f));
+        colour = colour.withMultipliedBrightness (0.55f + 0.45f * light());
+        g.setColour (colour.withAlpha (0.25f * light()));
         g.fillEllipse (c.x - r * 2.2f, c.y - r * 2.2f, r * 4.4f, r * 4.4f);
         juce::ColourGradient lens (colour.brighter (0.8f), c.x - r * 0.3f, c.y - r * 0.4f, colour.darker (0.4f), c.x + r, c.y + r, true);
         g.setGradientFill (lens);
@@ -292,9 +431,12 @@ void vuMeter (juce::Graphics& g, juce::Rectangle<float> area, float level, const
     // Aged cream face: lighter at the bottom centre, tea-stained at the corners.
     juce::Graphics::ScopedSaveState state (g);
     g.reduceClipRegion (face.toNearestInt());
-    juce::ColourGradient cream (juce::Colour (0xfffff4d6), face.getCentreX(), face.getBottom() + face.getHeight() * 0.1f,
-                                juce::Colour (0xffc7b283), face.getX(), face.getY(), true);
-    cream.addColour (0.6, juce::Colour (0xffeedfb1));
+    // Backlit: two lamps behind the face, warm, following the light level.
+    const auto lit = light();
+    const auto lamp = juce::Colour (0xfff7c98a).interpolatedWith (juce::Colour (0xffffe9c4), lit);
+    juce::ColourGradient cream (lamp.withMultipliedBrightness (0.55f + 0.45f * lit), face.getCentreX(), face.getBottom() + face.getHeight() * 0.1f,
+                                juce::Colour (0xff8a6a3a).withMultipliedBrightness (0.6f + 0.4f * lit), face.getX(), face.getY(), true);
+    cream.addColour (0.55, juce::Colour (0xffeccf98).withMultipliedBrightness (0.6f + 0.4f * lit));
     g.setGradientFill (cream);
     g.fillRect (face);
     g.setColour (juce::Colour (0x18603f10));
@@ -342,9 +484,15 @@ void vuMeter (juce::Graphics& g, juce::Rectangle<float> area, float level, const
     g.fillRect (juce::Rectangle<float> (face.getWidth() * 0.3f, face.getHeight() * 0.16f)
                     .withCentre ({ face.getCentreX(), face.getBottom() - face.getHeight() * 0.06f }));
 
-    // Glass.
-    g.setColour (juce::Colours::white.withAlpha (0.10f));
-    g.fillRect (face.withHeight (face.getHeight() * 0.32f));
+    // Glass: a curved reflection across the top, and the bezel's shadow on the face.
+    juce::ColourGradient refl (juce::Colours::white.withAlpha (0.18f), face.getX(), face.getY(), juce::Colours::transparentWhite, face.getX(),
+                               face.getY() + face.getHeight() * 0.38f, false);
+    g.setGradientFill (refl);
+    g.fillRect (face.withHeight (face.getHeight() * 0.38f));
+    juce::ColourGradient lip (juce::Colours::black.withAlpha (0.45f), face.getX(), face.getY(), juce::Colours::transparentBlack, face.getX(),
+                              face.getY() + 10.0f, false);
+    g.setGradientFill (lip);
+    g.fillRect (face);
 }
 
 juce::Rectangle<int> RackUnit::content() const
@@ -366,16 +514,29 @@ void RackUnit::paint (juce::Graphics& g)
 VuMeter::VuMeter (juce::String c) : caption (std::move (c))
 {
     setOpaque (false);
-    startTimerHz (30);
+    startTimerHz (60);
 }
 
 void VuMeter::timerCallback()
 {
     // VU ballistics: ~300 ms to rise to a level. 0 VU sits at -18 dBFS RMS.
     const auto rms = source ? source() : 0.0f;
+    feedLight (rms);
     const auto db = (rms > 0.001f ? 20.0f * std::log10 (rms) : -60.0f) + 18.0f;  // in VU
-    const auto target = juce::jlimit (0.0f, 1.05f, juce::jmap (db, -20.0f, 3.0f, 0.0f, 1.0f));
-    needle += (target - needle) * 0.22f;
+    auto target = juce::jlimit (0.0f, 1.05f, juce::jmap (db, -20.0f, 3.0f, 0.0f, 1.0f));
+    // On power-up the needles kick across and fall back, like real meters.
+    const auto now = juce::Time::getMillisecondCounterHiRes();
+    static const auto powerOn = now;
+    const auto since = (now - powerOn) / 1000.0;
+    if (since > 0.3 && since < 0.75)
+        target = juce::jmax (target, 0.85f);
+    // A sprung, damped needle (about 300 ms to reach a level, a little overshoot).
+    const auto dt = static_cast<float> (juce::jlimit (0.001, 0.05, lastTick > 0 ? (now - lastTick) / 1000.0 : 1.0 / 60.0));
+    lastTick = now;
+    constexpr float w = 2.0f * 3.14159265f * 2.1f, zeta = 0.62f;
+    const auto accel = w * w * (target - needle) - 2.0f * zeta * w * velocity;
+    velocity += accel * dt;
+    needle = juce::jlimit (-0.02f, 1.1f, needle + velocity * dt);
     repaint();
 }
 

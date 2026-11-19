@@ -495,10 +495,7 @@ void DesignPanel::paint (juce::Graphics& g)
     // Module bays.
     for (const auto& r : { filterArea, echoArea, reverbArea, compArea })
     {
-        g.setColour (juce::Colours::black.withAlpha (0.3f));
-        g.fillRoundedRectangle (r.toFloat(), 4.0f);
-        g.setColour (juce::Colours::white.withAlpha (0.05f));
-        g.drawRoundedRectangle (r.toFloat().reduced (0.5f), 4.0f, 1.0f);
+        hw::bay (g, r.toFloat());
     }
 
     // Knob names above, readouts below.
@@ -506,8 +503,7 @@ void DesignPanel::paint (juce::Graphics& g)
     {
         const auto b = k->slider.getBounds().toFloat();
         hw::silk (g, k->name, {}, b.withHeight (16).translated (0, -18), juce::Justification::centred);
-        hw::glowText (g, k->readout (k->slider.getValue()), b.withY (b.getBottom() - 2).withHeight (22), hw::vfd (21.0f), hw::colour::amber,
-                      juce::Justification::centred);
+        hw::readout (g, k->readout (k->slider.getValue()), b.withY (b.getBottom() + 1).withHeight (22), hw::vfd (20.0f));
     }
 
     hw::silk (g, "XY PAD", "X FILTER   Y ECHO", padArea.toFloat().withHeight (16).translated (0, -22));

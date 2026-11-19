@@ -360,15 +360,12 @@ void DeliverPanel::paint (juce::Graphics& g)
     // Two modules, each in its own sunken bay.
     const auto module = [&] (juce::Rectangle<int> r, const juce::String& title, const juce::String& sub, const char* how) {
         const auto rf = r.toFloat();
-        g.setColour (juce::Colours::black.withAlpha (0.35f));
-        g.fillRoundedRectangle (rf, 4.0f);
-        g.setColour (juce::Colours::white.withAlpha (0.06f));
-        g.drawRoundedRectangle (rf.reduced (0.5f), 4.0f, 1.0f);
+        hw::bay (g, rf);
         auto inner = rf.reduced (22, 18);
         hw::silk (g, title, sub, inner.removeFromTop (20), juce::Justification::centredLeft, 15.0f);
         inner.removeFromTop (62);  // keys
         inner.removeFromTop (78);  // destination
-        g.setColour (hw::colour::silk.withAlpha (0.7f));
+        g.setColour (hw::colour::ink.withAlpha (0.85f));
         g.setFont (hw::label (15.0f, false));
         g.drawFittedText (how, inner.removeFromTop (110).toNearestInt(), juce::Justification::topLeft, 6, 1.0f);
     };

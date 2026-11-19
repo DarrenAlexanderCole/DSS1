@@ -3,6 +3,7 @@
 #include "PrepPanel.h"
 #include "DesignPanel.h"
 #include "ChopPanel.h"
+#include "Haptics.h"
 #include "DeliverPanel.h"
 #include "Theme.h"
 
@@ -57,6 +58,8 @@ MainComponent::MainComponent()
     };
     noFocus (*this);
     setWantsKeyboardFocus (true);
+    // Knobs and faders click into their steps under your finger (Force Touch trackpads).
+    haptics::addDetents (*this);
 
     setSize (1440, 980);
 }

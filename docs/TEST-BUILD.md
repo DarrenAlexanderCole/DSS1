@@ -12,9 +12,17 @@ with macOS 13 or later.
 
 ## New look
 
-DSS1 now looks like a rack of worn 90s studio gear. Where things moved:
+DSS1 now looks like 60s-80s hi-fi: brushed aluminium faces, walnut cheeks, machined aluminium and brass
+knobs, black and ivory keys, chrome toggles, silicone pads, black-glass windows lit amber from behind and
+backlit VU meters. The parts are rendered in 3D. Things to notice:
 
-- **Top unit (every screen):** the stage keys (Catalog, Prep, Listen / Design, Deliver), the track display
+- **Power-up:** the displays and meters warm up when DSS1 opens, with a flicker, and the needles kick across.
+- **Living light:** the displays breathe slightly, and dip with loud music like a real amplifier's supply.
+- **Haptics:** on a MacBook (Force Touch) trackpad, knobs and faders click into their steps under your finger.
+
+Where things are:
+
+- **Top unit (every screen):** the stage keys (Catalog, Prep, Listen / Design, Chop, Deliver), the track display
   (title, artist, BPM at the current pitch, key, time, bar), VU meters, and the transport: **|<**, **<<**,
   **>>**, **CUE** and **PLAY**.
 - **Bottom unit (every screen):** the whole-track overview (click to jump), the **pitch fader** with its BPM

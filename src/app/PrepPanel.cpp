@@ -666,9 +666,8 @@ void PrepPanel::paint (juce::Graphics& g)
 
     // Knob readouts.
     for (const auto& [knob, value] : { std::pair<juce::Slider*, int> { &loopKnob, loopLength() }, { &jumpKnob, session.jumpSize } })
-        hw::glowText (g, juce::String (value) + (value == 1 ? " BEAT" : " BEATS"),
-                      knob->getBounds().toFloat().withY (static_cast<float> (knob->getBottom()) - 4.0f).withHeight (22), hw::vfd (22.0f),
-                      hw::colour::amber, juce::Justification::centred);
+        hw::readout (g, juce::String (value) + (value == 1 ? " BEAT" : " BEATS"),
+                     knob->getBounds().toFloat().withY (static_cast<float> (knob->getBottom())).withHeight (22), hw::vfd (21.0f));
 }
 
 void PrepPanel::paintOverChildren (juce::Graphics& g)

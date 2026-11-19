@@ -10,7 +10,26 @@ juce_add_binary_data(dss1_assets
         ${PROJECT_SOURCE_DIR}/assets/textures/grime.png
         ${PROJECT_SOURCE_DIR}/assets/textures/edge-wear.png
         ${PROJECT_SOURCE_DIR}/assets/textures/aluminium.png
-        ${PROJECT_SOURCE_DIR}/assets/textures/ink-wear.png)
+        ${PROJECT_SOURCE_DIR}/assets/textures/ink-wear.png
+        ${PROJECT_SOURCE_DIR}/assets/render/brushed.png
+        ${PROJECT_SOURCE_DIR}/assets/render/walnut.png
+        ${PROJECT_SOURCE_DIR}/assets/render/knob_alu.png
+        ${PROJECT_SOURCE_DIR}/assets/render/knob_brass.png
+        ${PROJECT_SOURCE_DIR}/assets/render/key_dark_up.png
+        ${PROJECT_SOURCE_DIR}/assets/render/key_dark_down.png
+        ${PROJECT_SOURCE_DIR}/assets/render/key_cream_up.png
+        ${PROJECT_SOURCE_DIR}/assets/render/key_cream_down.png
+        ${PROJECT_SOURCE_DIR}/assets/render/key_cue_up.png
+        ${PROJECT_SOURCE_DIR}/assets/render/key_cue_down.png
+        ${PROJECT_SOURCE_DIR}/assets/render/key_rec_up.png
+        ${PROJECT_SOURCE_DIR}/assets/render/key_rec_down.png
+        ${PROJECT_SOURCE_DIR}/assets/render/key_alu_up.png
+        ${PROJECT_SOURCE_DIR}/assets/render/key_alu_down.png
+        ${PROJECT_SOURCE_DIR}/assets/render/toggle_up.png
+        ${PROJECT_SOURCE_DIR}/assets/render/toggle_down.png
+        ${PROJECT_SOURCE_DIR}/assets/render/screw.png
+        ${PROJECT_SOURCE_DIR}/assets/render/pad_up.png
+        ${PROJECT_SOURCE_DIR}/assets/render/pad_down.png)
 
 juce_add_gui_app(DSS1
     PRODUCT_NAME          "DSS1"
@@ -21,6 +40,11 @@ juce_add_gui_app(DSS1
     NEEDS_CURL            FALSE
     MICROPHONE_PERMISSION_ENABLED FALSE)
 # (The recorder records DSS1's own output, not the microphone, so no permission is needed.)
+
+# Trackpad haptics (Force Touch) on the Mac.
+if(APPLE)
+    target_sources(DSS1 PRIVATE HapticsMac.mm)
+endif()
 
 target_sources(DSS1 PRIVATE
     AudioEngine.cpp
@@ -33,6 +57,7 @@ target_sources(DSS1 PRIVATE
     PrepPanel.cpp
     ChopPanel.cpp
     MidiPads.cpp
+    Haptics.cpp
     ChopView.cpp
     Session.cpp
     StagePanel.cpp
