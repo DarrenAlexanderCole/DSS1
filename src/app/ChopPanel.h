@@ -159,6 +159,11 @@ private:
         fadeKnob { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox };
     juce::TextButton reverseKey { "REVERSE" };
 
+    std::array<juce::Rectangle<int>, 4> monitorAreas;  // GAIN, TUNE, ATTACK, FADE curve monitors
+    void paintMonitor (juce::Graphics&, int which);
+    const std::vector<float>& slicePeaks();
+    std::vector<float> peakCache;
+    std::tuple<int, int, Frame, Frame, const void*> peakCacheKey { -1, -1, 0, 0, nullptr };
     juce::Rectangle<int> waveUnit, controlUnit, messageArea, readoutArea, folderArea, padSettingsArea;
     juce::String message;
     juce::uint32 messageTime = 0;

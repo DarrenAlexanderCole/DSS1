@@ -16,6 +16,9 @@ DSS1 now looks like 60s-80s hi-fi: brushed aluminium faces, walnut cheeks, machi
 knobs, black and ivory keys, chrome toggles, silicone pads, black-glass windows lit amber from behind and
 backlit VU meters. The parts are rendered in 3D. Things to notice:
 
+- **The frame:** one walnut board down each side holds all the racks.
+- **Wear:** the keys are brushed gunmetal, each worn in its own way (rubbed edges, a fingertip polish, fine
+  scratches), and the faces carry hairline scratches along the grain: used, but looked after.
 - **Power-up:** the displays and meters warm up when DSS1 opens, with a flicker, and the needles kick across.
 - **Living light:** the displays breathe slightly, and dip with loud music like a real amplifier's supply.
 - **Haptics:** on a MacBook (Force Touch) trackpad, knobs and faders click into their steps under your finger.
@@ -127,7 +130,9 @@ recorder (**TO CHOP**). Pads are laid out and keyed like a drum machine:
 - **Play:** in **PLAY** mode pads play their slices; click a slice on the waveform to hear it. **CHOKE** (on) lets
   one slice play at a time; **HOLD** plays a slice only while held. Nothing clicks: cuts are crossfaded.
 - **Pad settings** (right): **GAIN**, **TUNE** (semitones), **ATTACK**, **FADE** and **REVERSE** for the chosen
-  pad. Double-click a knob to reset it. Pads with settings show a small light.
+  pad. Above each knob a backlit monitor shows what it does: GAIN the slice's waveform at its level (dashes
+  mark clipping), TUNE a wave that tightens as you tune up, ATTACK and FADE the envelope over the slice's real
+  length. A cursor runs through them while the pad plays. Double-click a knob to reset it. Pads with settings show a small light.
 - **Space** plays and pauses the deck, or the sound file you're chopping (from where you last clicked).
 - **SLICE** sets how long the last slice plays, in beats, and the slice size for EQUAL 16. At **MM** (6 o'clock,
   manual) nothing is automatic: drag the **END** marker to where the last slice should stop, and EQUAL 16 chops

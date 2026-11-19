@@ -4,6 +4,7 @@
 #include "DesignPanel.h"
 #include "ChopPanel.h"
 #include "Haptics.h"
+#include "Hardware.h"
 #include "DeliverPanel.h"
 #include "Theme.h"
 
@@ -111,6 +112,23 @@ void MainComponent::showStage (int index)
 void MainComponent::paint (juce::Graphics& g)
 {
     g.fillAll (juce::Colours::black);
+}
+
+void MainComponent::paintOverChildren (juce::Graphics& g)
+{
+    // The frame: one walnut board down each side, the racks fitted between them, each rack's edge shaded where
+    // it meets the wood.
+    const auto w = static_cast<float> (hw::RackUnit::earWidth);
+    const auto b = getLocalBounds().toFloat();
+    for (const bool left : { true, false })
+    {
+        const auto board = left ? b.withWidth (w) : b.withLeft (b.getRight() - w);
+        const auto edge = left ? board.getRight() : board.getX();
+        juce::ColourGradient shade (juce::Colours::black.withAlpha (0.38f), edge, 0, juce::Colours::transparentBlack, edge + (left ? 12.0f : -12.0f), 0, false);
+        g.setGradientFill (shade);
+        g.fillRect (left ? juce::Rectangle<float> (edge, b.getY(), 12.0f, b.getHeight()) : juce::Rectangle<float> (edge - 12.0f, b.getY(), 12.0f, b.getHeight()));
+        hw::sideBoard (g, board, left);
+    }
 }
 
 void MainComponent::resized()

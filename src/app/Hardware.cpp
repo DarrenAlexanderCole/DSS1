@@ -12,7 +12,7 @@ namespace
     struct Assets
     {
         juce::Typeface::Ptr labelBold, labelMedium, brandFace, vfdFace;
-        juce::Image panelWear, grime, edgeWear, aluminium, inkWear, brushed, walnut;
+        juce::Image panelWear, grime, edgeWear, aluminium, inkWear, brushed, walnut, scratches, keyWear;
 
         Assets()
         {
@@ -28,6 +28,8 @@ namespace
             inkWear = juce::ImageCache::getFromMemory (inkwear_png, inkwear_pngSize);
             brushed = juce::ImageCache::getFromMemory (brushed_png, brushed_pngSize);
             walnut = juce::ImageCache::getFromMemory (walnut_png, walnut_pngSize);
+            scratches = juce::ImageCache::getFromMemory (scratches_png, scratches_pngSize);
+            keyWear = juce::ImageCache::getFromMemory (keywear_png, keywear_pngSize);
         }
 
         static Assets& get()
@@ -99,6 +101,29 @@ void feedLight (float rms)
     auto& l = lightState();
     const auto target = juce::jlimit (0.0f, 1.0f, (rms - 0.12f) * 4.0f);
     l.sag = target > l.sag ? l.sag + (target - l.sag) * 0.6f : l.sag + (target - l.sag) * 0.06f;
+}
+
+void wear (juce::Graphics& g, juce::Rectangle<float> cap, juce::Point<float> seedPoint, bool darkSurface)
+{
+    // A different patch of the wear texture for every control, so no two keys are worn alike.
+    auto& a = Assets::get();
+    if (! a.keyWear.isValid() || cap.isEmpty())
+        return;
+    juce::Graphics::ScopedSaveState state (g);
+    g.reduceClipRegion (cap.toNearestInt());
+    const auto ox = hash (seedPoint.x, seedPoint.y) * static_cast<float> (a.keyWear.getWidth());
+    const auto oy = hash (seedPoint.y, seedPoint.x) * static_cast<float> (a.keyWear.getHeight());
+    if (darkSurface)
+    {
+        g.setTiledImageFill (a.keyWear, juce::roundToInt (cap.getX() - ox), juce::roundToInt (cap.getY() - oy), 0.85f);
+        g.fillRect (cap);
+    }
+    else
+    {
+        // On ivory and colour, wear shows as a faint grey of handling rather than bright scratches.
+        g.setColour (juce::Colours::black.withAlpha (0.35f));
+        g.drawImageAt (a.keyWear, juce::roundToInt (cap.getX() - ox), juce::roundToInt (cap.getY() - oy), true);
+    }
 }
 
 juce::Image part (const juce::String& name)
@@ -201,6 +226,13 @@ void faceplate (juce::Graphics& g, juce::Rectangle<float> area, bool screws)
         g.fillRect (area);
     }
 
+    // Hairline scratches along the grain: years of use, looked after.
+    if (a.scratches.isValid())
+    {
+        g.setTiledImageFill (a.scratches, juce::roundToInt (area.getX() * 0.37f), juce::roundToInt (area.getY() * 0.61f), 0.55f);
+        g.fillRect (area);
+    }
+
     // Bevel: a bright chamfer along the top edge, shadow along the bottom.
     g.setColour (juce::Colours::white.withAlpha (0.55f));
     g.fillRect (area.withHeight (1.0f));
@@ -219,36 +251,59 @@ void faceplate (juce::Graphics& g, juce::Rectangle<float> area, bool screws)
     }
 }
 
-void rackEar (juce::Graphics& g, juce::Rectangle<float> area, int)
+void rackEar (juce::Graphics&, juce::Rectangle<float>, int) {}
+
+void sideBoard (juce::Graphics& g, juce::Rectangle<float> area, bool left)
 {
-    // A walnut cheek: oiled grain, rounded at the outer edge, lacquer catching the light.
+    // One piece of oiled walnut from top to bottom, rounded on its outer edge, with the slot the racks sit in
+    // along its inner edge.
     auto& a = Assets::get();
     juce::Graphics::ScopedSaveState state (g);
     g.reduceClipRegion (area.toNearestInt());
     if (a.walnut.isValid())
     {
-        g.setTiledImageFill (a.walnut, juce::roundToInt (area.getX()), 0, 1.0f);
-        g.fillRect (area);
+        // Each side from a different part of the plank (the right one mirrored), so they aren't twins.
+        const auto half = a.walnut.getWidth() / 2;
+        const auto h = juce::jmin (a.walnut.getHeight() - (left ? 0 : a.walnut.getHeight() / 3), juce::roundToInt (area.getHeight()));
+        const auto srcY = left ? 0 : a.walnut.getHeight() / 3;
+        g.setOpacity (1.0f);
+        if (! left)
+            g.addTransform (juce::AffineTransform::scale (-1.0f, 1.0f, area.getCentreX(), 0));
+        g.drawImage (a.walnut, juce::roundToInt (area.getX()), juce::roundToInt (area.getY()), juce::roundToInt (area.getWidth()), juce::roundToInt (area.getHeight()),
+                     left ? 0 : half, srcY, half, h);
+        if (! left)
+            g.addTransform (juce::AffineTransform::scale (-1.0f, 1.0f, area.getCentreX(), 0));
     }
     else
     {
         g.setColour (juce::Colour (0xff4a2412));
         g.fillRect (area);
     }
-    // Rounded: darker at both sides, a soft highlight a third of the way in.
-    juce::ColourGradient round (juce::Colours::black.withAlpha (0.55f), area.getX(), 0, juce::Colours::black.withAlpha (0.5f), area.getRight(), 0, false);
-    round.addColour (0.18, juce::Colours::transparentBlack);
-    round.addColour (0.36, juce::Colour (0x24fff0dc));
-    round.addColour (0.52, juce::Colours::transparentBlack);
-    round.addColour (0.85, juce::Colours::black.withAlpha (0.12f));
+    const auto outer = left ? area.getX() : area.getRight();
+    const auto inner = left ? area.getRight() : area.getX();
+    // Rounded outer edge, a soft highlight where it turns towards the light, flat towards the racks.
+    juce::ColourGradient round (juce::Colours::black.withAlpha (0.62f), outer, 0, juce::Colours::black.withAlpha (0.25f), inner, 0, false);
+    round.addColour (0.12, juce::Colours::black.withAlpha (0.12f));
+    round.addColour (0.30, juce::Colour (0x2effefd8));
+    round.addColour (0.50, juce::Colours::transparentBlack);
     g.setGradientFill (round);
     g.fillRect (area);
-    // The light from above on the lacquer, fading down.
-    juce::ColourGradient top (juce::Colour (0x22fff4e6), 0, area.getY(), juce::Colours::transparentWhite, 0, area.getY() + area.getHeight() * 0.5f, false);
+    // Light from above on the oil finish, fading down the board; the ends a little darker (end grain).
+    juce::ColourGradient top (juce::Colour (0x26fff2e2), 0, area.getY(), juce::Colours::transparentWhite, 0, area.getY() + area.getHeight() * 0.45f, false);
     g.setGradientFill (top);
     g.fillRect (area);
-    g.setColour (juce::Colours::black.withAlpha (0.6f));
-    g.fillRect (area.withTop (area.getBottom() - 1.0f));
+    juce::ColourGradient ends (juce::Colours::black.withAlpha (0.45f), 0, area.getY(), juce::Colours::transparentBlack, 0, area.getY() + 10, false);
+    g.setGradientFill (ends);
+    g.fillRect (area);
+    juce::ColourGradient endsBottom (juce::Colours::transparentBlack, 0, area.getBottom() - 10, juce::Colours::black.withAlpha (0.5f), 0, area.getBottom(), false);
+    g.setGradientFill (endsBottom);
+    g.fillRect (area);
+    // The routed slot on the inner edge: a dark groove with a bright lip.
+    const auto dir = left ? -1.0f : 1.0f;
+    g.setColour (juce::Colours::black.withAlpha (0.75f));
+    g.fillRect (juce::Rectangle<float> (inner + (left ? -3.0f : 0.0f), area.getY(), 3.0f, area.getHeight()));
+    g.setColour (juce::Colour (0x40ffe8cc));
+    g.fillRect (juce::Rectangle<float> (inner + dir * 4.0f - (left ? 1.0f : 0.0f), area.getY(), 1.0f, area.getHeight()));
 }
 
 void recess (juce::Graphics& g, juce::Rectangle<float> area, float corner)

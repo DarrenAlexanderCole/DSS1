@@ -22,8 +22,9 @@ v = 0.62 + 0.035 * strokes + 0.018 * cloud
 rgb = np.stack([v * 0.985, v * 0.99, v * 1.0], axis=-1)
 Image.fromarray((np.clip(rgb, 0, 1) * 255).astype(np.uint8)).save(f'{out}/brushed.png', optimize=True)
 
-# Walnut, straight-grained down the cheek: bands across, warped by slow noise, with pores and figure.
-H, W = 1024, 192
+# Walnut, straight-grained down the side boards: bands across, warped by slow noise, with pores and figure.
+# Tall enough that one board down the side of the window doesn't repeat.
+H, W = 2400, 240
 y = np.arange(H)[:, None]; x = np.arange(W)[None, :]
 warp = 4.0 * filtered_noise(H, W, 160, 30) + 1.2 * filtered_noise(H, W, 40, 8)
 bands = np.sin((x + warp) * 2 * np.pi / 23.0) * 0.5 + 0.5
@@ -36,4 +37,38 @@ col = dark[None, None, :] * (1 - t[..., None]) + light[None, None, :] * t[..., N
 col *= (1 - 0.5 * pores[..., None])
 col *= 1.0 + 0.08 * filtered_noise(H, W, 200, 40)[..., None]
 Image.fromarray((np.clip(col, 0, 1) * 255).astype(np.uint8)).save(f'{out}/walnut.png', optimize=True)
+# Hairline scratches for the faces: mostly along the brushing, a few across; light, with a dark edge. Tiles.
+from PIL import ImageDraw
+W = H = 1024
+img = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+d = ImageDraw.Draw(img)
+for i in range(260):
+    x, y = rng.uniform(0, W), rng.uniform(0, H)
+    along = rng.random() < 0.8
+    ang = rng.normal(0, 0.06) if along else rng.uniform(0, np.pi)
+    length = rng.uniform(8, 90) if along else rng.uniform(4, 30)
+    a = int(rng.uniform(25, 85))
+    for ox, oy in ((0, 0), (-W, 0), (0, -H), (-W, -H), (W, 0), (0, H)):   # wrap, so it tiles
+        x2, y2 = x + ox + np.cos(ang) * length, y + oy + np.sin(ang) * length
+        d.line([(x + ox, y + oy + 1), (x2, y2 + 1)], fill=(0, 0, 0, a // 2), width=1)
+        d.line([(x + ox, y + oy), (x2, y2)], fill=(255, 255, 255, a), width=1)
+img.save(f'{out}/scratches.png', optimize=True)
+
+# Wear for keys: a fingertip polish, scuffs and short scratches, placed differently on every key by the app.
+W, H = 512, 256
+img = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+px = np.zeros((H, W, 4), dtype=np.float32)
+yy, xx = np.mgrid[0:H, 0:W]
+for i in range(10):
+    cx, cy, r = rng.uniform(0, W), rng.uniform(0, H), rng.uniform(14, 34)
+    blob = np.exp(-(((xx - cx) / r) ** 2 + ((yy - cy) / (r * 0.7)) ** 2))
+    px[..., :3] = 255
+    px[..., 3] = np.maximum(px[..., 3], blob * rng.uniform(14, 26))
+img = Image.fromarray(px.clip(0, 255).astype(np.uint8))
+d = ImageDraw.Draw(img)
+for i in range(70):
+    x, y = rng.uniform(0, W), rng.uniform(0, H)
+    ang = rng.uniform(0, np.pi); length = rng.uniform(3, 18)
+    d.line([(x, y), (x + np.cos(ang) * length, y + np.sin(ang) * length)], fill=(255, 255, 255, int(rng.uniform(30, 80))), width=1)
+img.save(f'{out}/keywear.png', optimize=True)
 print('ok')

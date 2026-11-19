@@ -36,6 +36,10 @@ float light();
 /// Tells the light how loud the music is (linear RMS), for the dips. The VU meters call it.
 void feedLight (float rms);
 
+/// Signs of use on a control's surface (scuffs, fine scratches, a fingertip polish), different for each control
+/// (seeded by `seedPoint`, e.g. its position). Light wear on dark metal, a faint grey on ivory and colours.
+void wear (juce::Graphics&, juce::Rectangle<float> cap, juce::Point<float> seedPoint, bool darkSurface);
+
 /// A rendered part (from assets/render), e.g. "knob_alu", "key_dark_up", "toggle_down", "pad_up".
 juce::Image part (const juce::String& name);
 /// Draws `image` stretched over `dest` keeping its corners (`cornerX`, `cornerY` source pixels) unscaled
@@ -50,8 +54,13 @@ juce::Font vfd (float size);                       ///< VT323: display readouts
 /// and a screw in each corner.
 void faceplate (juce::Graphics&, juce::Rectangle<float> area, bool screws = true);
 
-/// A walnut cheek (where rack gear has its ears). `slots` is ignored now (kept for callers).
+/// Where rack gear has its ears. Draws nothing now: the racks sit inside one walnut board down each side of the
+/// window (`sideBoard`, drawn by the main window over everything). Kept so the units keep their layout.
 void rackEar (juce::Graphics&, juce::Rectangle<float> area, int slots);
+
+/// One solid walnut board, the full height of the machine: the frame the racks are fitted into. `left` says
+/// which side (the routed slot the racks sit in faces inwards).
+void sideBoard (juce::Graphics&, juce::Rectangle<float> area, bool left);
 
 void screw (juce::Graphics&, juce::Point<float> centre, float radius = 8.0f);
 

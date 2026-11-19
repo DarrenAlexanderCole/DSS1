@@ -410,6 +410,9 @@ void ChopPanel::timerCallback()
         view->tick();
     if (juce::Time::getMillisecondCounter() - midiSeenAt < 400)
         repaint (midiArea);
+    if (isShowing())
+        for (const auto& m : monitorAreas)
+            repaint (m.expanded (4));  // backlight breathing, playback cursor
     if (message.isNotEmpty() && juce::Time::getMillisecondCounter() - messageTime > 3000)
     {
         message.clear();
@@ -1290,6 +1293,180 @@ void ChopPanel::saveMidiMap()
     settings->setValue ("midiPlayNote", playNote);
 }
 
+//--- Curve monitors --------------------------------------------------------------------------------------------
+
+const std::vector<float>& ChopPanel::slicePeaks()
+{
+    // The chosen slice's loudness in 48 columns (cached: it only changes when the slice does).
+    const auto& b = current();
+    const auto& m = b.marks[static_cast<std::size_t> (selected)];
+    const auto end = sliceEnd (bank, selected);
+    const auto key = std::tuple<int, int, Frame, Frame, const void*> { bank, selected, m.value_or (-1), end.value_or (-1), b.audio.get() };
+    if (key == peakCacheKey)
+        return peakCache;
+    peakCacheKey = key;
+    peakCache.clear();
+    if (! m || ! end || b.audio == nullptr || *end <= *m)
+        return peakCache;
+    constexpr int columns = 48;
+    peakCache.assign (columns, 0.0f);
+    const auto& ch = b.audio->channels;
+    const auto span = static_cast<double> (*end - *m) / columns;
+    const auto stride = juce::jmax<std::int64_t> (1, static_cast<std::int64_t> (span / 200));
+    for (int c = 0; c < columns; ++c)
+    {
+        float peak = 0;
+        const auto from = *m + static_cast<Frame> (c * span), to = *m + static_cast<Frame> ((c + 1) * span);
+        for (auto i = from; i < to; i += stride)
+            for (const auto& chan : ch)
+                peak = juce::jmax (peak, std::abs (chan[static_cast<std::size_t> (i)]));
+        peakCache[static_cast<std::size_t> (c)] = peak;
+    }
+    return peakCache;
+}
+
+void ChopPanel::paintMonitor (juce::Graphics& g, int which)
+{
+    // A little backlit screen, lit like the VU meters, with a dot-matrix curve of what the knob does.
+    const auto area = monitorAreas[static_cast<std::size_t> (which)].toFloat();
+    if (area.isEmpty())
+        return;
+    const auto lit = hw::light();
+    // Bezel and face.
+    g.setColour (juce::Colours::black);
+    g.fillRoundedRectangle (area, 4.0f);
+    const auto face = area.reduced (4.0f);
+    juce::ColourGradient back (juce::Colour (0xffffd28a).withMultipliedBrightness (0.55f + 0.45f * lit), face.getCentreX(), face.getBottom(),
+                               juce::Colour (0xff9a6a2a).withMultipliedBrightness (0.55f + 0.45f * lit), face.getX(), face.getY(), true);
+    back.addColour (0.5, juce::Colour (0xfff0b968).withMultipliedBrightness (0.55f + 0.45f * lit));
+    g.setGradientFill (back);
+    g.fillRoundedRectangle (face, 2.0f);
+
+    const auto& b = current();
+    const auto& st = b.settings[static_cast<std::size_t> (selected)];
+    const bool marked = b.marks[static_cast<std::size_t> (selected)].has_value() && b.audio != nullptr;
+    const auto plot = face.reduced (6.0f, 6.0f);
+    const auto ink = juce::Colour (0xff2a1606);
+    constexpr float dot = 2.0f, pitch = 3.0f;
+
+    // Faint grid of unlit pixels, like an LCD.
+    g.setColour (ink.withAlpha (0.07f));
+    for (auto y = plot.getY(); y <= plot.getBottom(); y += pitch)
+        for (auto x = plot.getX(); x <= plot.getRight(); x += pitch)
+            g.fillRect (x, y, dot, dot);
+    const auto pixel = [&] (float x, float y, float alpha = 0.9f) {
+        const auto qx = plot.getX() + std::round ((x - plot.getX()) / pitch) * pitch;
+        const auto qy = plot.getY() + std::round ((y - plot.getY()) / pitch) * pitch;
+        if (qy < plot.getY() - 0.5f || qy > plot.getBottom() + 0.5f)
+            return;
+        g.setColour (ink.withAlpha (alpha));
+        g.fillRect (qx, qy, dot, dot);
+    };
+    const auto curve = [&] (auto fn, float alpha = 0.9f) {
+        // fn: 0 … 1 across → 0 … 1 up. Joined pixel by pixel so steep parts don't break.
+        std::optional<float> prevY;
+        for (auto x = plot.getX(); x <= plot.getRight(); x += pitch)
+        {
+            const auto t = (x - plot.getX()) / plot.getWidth();
+            const auto y = plot.getBottom() - juce::jlimit (0.0f, 1.0f, fn (t)) * plot.getHeight();
+            if (prevY)
+                for (auto yy = juce::jmin (*prevY, y); yy <= juce::jmax (*prevY, y); yy += pitch)
+                    pixel (x, yy, alpha);
+            pixel (x, y, alpha);
+            prevY = y;
+        }
+    };
+    const auto& peaks = slicePeaks();
+    const auto peakAt = [&] (float t) {
+        if (peaks.empty())
+            return 0.0f;
+        const auto tt = st.reverse ? 1.0f - t : t;
+        return peaks[static_cast<std::size_t> (juce::jlimit (0, static_cast<int> (peaks.size()) - 1, static_cast<int> (tt * static_cast<float> (peaks.size()))))];
+    };
+    // The slice's length as it plays (tune changes it), for the envelope time axis.
+    const auto rate = marked ? b.audio->info.sampleRate : 44100.0;
+    const auto ratio = std::pow (2.0, static_cast<double> (st.semitones) / 12.0);
+    const auto playedMs = marked ? static_cast<double> (sliceEnd (bank, selected).value_or (0) - *b.marks[static_cast<std::size_t> (selected)]) / rate * 1000.0 / ratio : 500.0;
+    const auto attackT = static_cast<float> (juce::jmax (2.0, static_cast<double> (st.attackMs)) / juce::jmax (1.0, playedMs));
+    const auto fadeT = static_cast<float> (juce::jmax (2.0, static_cast<double> (st.fadeMs)) / juce::jmax (1.0, playedMs));
+    const auto envelope = [&] (float t) { return juce::jmin (1.0f, t / juce::jmax (0.001f, attackT)) * juce::jmin (1.0f, (1.0f - t) / juce::jmax (0.001f, fadeT)); };
+    const auto gain = std::pow (10.0f, st.gainDb / 20.0f);
+
+    switch (which)
+    {
+        case 0:  // GAIN: the slice itself, as loud as it'll play; dashes where it would clip
+        {
+            const auto mid = plot.getCentreY();
+            for (auto x = plot.getX(); x <= plot.getRight(); x += pitch)
+            {
+                const auto t = (x - plot.getX()) / plot.getWidth();
+                const auto h = juce::jmin (1.0f, (marked ? peakAt (t) : 0.5f) * gain * envelope (t)) * plot.getHeight() * 0.5f;
+                for (auto y = mid - h; y <= mid + h; y += pitch)
+                    pixel (x, y, 0.85f);
+            }
+            for (auto x = plot.getX(); x <= plot.getRight(); x += pitch * 3)
+            {
+                pixel (x, plot.getY(), 0.35f);
+                pixel (x, plot.getBottom(), 0.35f);
+            }
+            break;
+        }
+        case 1:  // TUNE: a wave, more cycles as it's tuned up
+        {
+            const auto cycles = 2.0 * ratio;
+            curve ([&] (float t) { return 0.5f + 0.42f * static_cast<float> (std::sin (t * cycles * juce::MathConstants<double>::twoPi)); });
+            pixel (plot.getCentreX(), plot.getY(), 0.4f);
+            pixel (plot.getCentreX(), plot.getBottom(), 0.4f);
+            break;
+        }
+        case 2:  // ATTACK
+        case 3:  // FADE: the envelope over the slice's length, the slice faint behind it
+        {
+            if (marked)
+                for (auto x = plot.getX(); x <= plot.getRight(); x += pitch)
+                {
+                    const auto t = (x - plot.getX()) / plot.getWidth();
+                    const auto h = juce::jmin (1.0f, peakAt (t)) * plot.getHeight();
+                    for (auto y = plot.getBottom() - h; y <= plot.getBottom(); y += pitch)
+                        pixel (x, y, 0.16f);
+                }
+            curve ([&] (float t) { return which == 2 ? juce::jmin (1.0f, t / juce::jmax (0.001f, attackT)) : juce::jmin (1.0f, (1.0f - t) / juce::jmax (0.001f, fadeT)); });
+            // A tick where the attack ends / the fade starts.
+            const auto tx = which == 2 ? juce::jmin (1.0f, attackT) : juce::jmax (0.0f, 1.0f - fadeT);
+            for (auto y = plot.getY(); y <= plot.getBottom(); y += pitch * 2)
+                pixel (plot.getX() + tx * plot.getWidth(), y, 0.45f);
+            break;
+        }
+        default: break;
+    }
+
+    // Where the slice is playing right now.
+    if (marked && which != 1)
+        for (int v = 0; v < engine::Sampler::maxVoices; ++v)
+        {
+            const auto [slot, at] = sampler.voicePosition (v);
+            if (slot != slotOf (selected))
+                continue;
+            const auto from = static_cast<double> (*b.marks[static_cast<std::size_t> (selected)]);
+            const auto to = static_cast<double> (sliceEnd (bank, selected).value_or (0));
+            auto t = static_cast<float> ((at - from) / juce::jmax (1.0, to - from));
+            if (st.reverse)
+                t = 1.0f - t;
+            const auto x = plot.getX() + juce::jlimit (0.0f, 1.0f, t) * plot.getWidth();
+            g.setColour (juce::Colour (0xffb83a10).withAlpha (0.8f));
+            g.fillRect (x - 1.0f, plot.getY(), 2.0f, plot.getHeight());
+        }
+
+    // Glass.
+    juce::ColourGradient refl (juce::Colours::white.withAlpha (0.22f), face.getX(), face.getY(), juce::Colours::transparentWhite, face.getX(),
+                               face.getY() + face.getHeight() * 0.45f, false);
+    g.setGradientFill (refl);
+    g.fillRoundedRectangle (face.withHeight (face.getHeight() * 0.45f), 2.0f);
+    juce::ColourGradient lip (juce::Colours::black.withAlpha (0.5f), face.getX(), face.getY(), juce::Colours::transparentBlack, face.getX(), face.getY() + 6.0f, false);
+    g.setGradientFill (lip);
+    g.fillRoundedRectangle (face, 2.0f);
+}
+
 //--- Drawing ---------------------------------------------------------------------------------------------------
 
 void ChopPanel::paint (juce::Graphics& g)
@@ -1341,6 +1518,8 @@ void ChopPanel::paint (juce::Graphics& g)
 
     // The chosen pad's settings.
     hw::silk (g, "PAD " + juce::String (selected + 1) + " [" + keyName (selected) + "]", "SETTINGS", padSettingsArea.toFloat().withHeight (16).translated (0, -20));
+    for (int i = 0; i < 4; ++i)
+        paintMonitor (g, i);
     const auto knobLabel = [&] (const juce::Slider& k, const juce::String& name, const juce::String& value) {
         hw::silk (g, name, {}, k.getBounds().toFloat().withHeight (14).translated (0, -16), juce::Justification::centred, 11.0f);
         hw::readout (g, value, k.getBounds().toFloat().withY (static_cast<float> (k.getBottom()) + 1).withHeight (21), hw::vfd (19.0f));
@@ -1487,13 +1666,22 @@ void ChopPanel::resized()
 
     // Right: the chosen pad's knobs and REVERSE.
     padSettingsArea = settingsColumn;
-    auto knobs = settingsColumn.withTrimmedTop (22);
-    auto rev = knobs.removeFromBottom (34);
-    reverseKey.setBounds (rev.withSizeKeepingCentre (juce::jmin (160, rev.getWidth()), 34));
-    knobs.removeFromBottom (24);
+    auto knobs = settingsColumn;
+    auto rev = knobs.removeFromBottom (32);
+    reverseKey.setBounds (rev.withSizeKeepingCentre (juce::jmin (160, rev.getWidth()), 32));
+    knobs.removeFromBottom (26);
+    // A backlit curve monitor above each knob.
+    auto monitorRow = knobs.removeFromTop (juce::jmin (78, knobs.getHeight() / 3));
+    knobs.removeFromTop (22);
     const auto kwid = knobs.getWidth() / 4;
+    for (int i = 0; i < 4; ++i)
+        monitorAreas[static_cast<std::size_t> (i)] = monitorRow.removeFromLeft (kwid).reduced (5, 0);
     for (auto* k : { &gainKnob, &tuneKnob, &attackKnob, &fadeKnob })
-        k->setBounds (knobs.removeFromLeft (kwid).withSizeKeepingCentre (juce::jmin (kwid - 10, 84), juce::jmin (kwid - 10, 84)));
+    {
+        const auto cell = knobs.removeFromLeft (kwid);
+        const auto ks = juce::jmin (kwid - 10, cell.getHeight(), 80);
+        k->setBounds (cell.withSizeKeepingCentre (ks, ks));
+    }
 }
 
 } // namespace dss1::ui

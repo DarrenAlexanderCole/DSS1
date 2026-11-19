@@ -13,6 +13,8 @@ juce_add_binary_data(dss1_assets
         ${PROJECT_SOURCE_DIR}/assets/textures/ink-wear.png
         ${PROJECT_SOURCE_DIR}/assets/render/brushed.png
         ${PROJECT_SOURCE_DIR}/assets/render/walnut.png
+        ${PROJECT_SOURCE_DIR}/assets/render/scratches.png
+        ${PROJECT_SOURCE_DIR}/assets/render/keywear.png
         ${PROJECT_SOURCE_DIR}/assets/render/knob_alu.png
         ${PROJECT_SOURCE_DIR}/assets/render/knob_brass.png
         ${PROJECT_SOURCE_DIR}/assets/render/key_dark_up.png

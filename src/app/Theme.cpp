@@ -177,6 +177,14 @@ bool Theme::drawRenderedKey (juce::Graphics& g, juce::Button& b, bool over, bool
     const auto scale = r.getHeight() / 112.0f;
     const auto dest = r.expanded (15.5f * scale, 8.0f * scale);
     nineSlice (g, img, dest, 40, 34, scale);
+    {
+        // Each key worn in its own way.
+        const auto cap = r.reduced (6.0f * scale + 1.0f, 6.0f * scale + 1.0f).translated (0, lowered ? 1.0f : 0.0f);
+        const auto* top = b.getTopLevelComponent();
+        const auto seed = (top != nullptr ? top->getLocalPoint (&b, b.getLocalBounds().getCentre()) : b.getPosition()).toFloat()
+                          + juce::Point<float> (static_cast<float> (b.getButtonText().hashCode() % 97), 0.0f);
+        hw::wear (g, cap, seed, style == KeyStyle::dark);
+    }
     if (over && enabled)
     {
         g.setColour (juce::Colours::white.withAlpha (0.05f));

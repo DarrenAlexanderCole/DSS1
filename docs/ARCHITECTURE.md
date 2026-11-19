@@ -139,11 +139,13 @@ Since 2026-11-19: 60s-80s hi-fi, photoreal. The parts are rendered with Blender 
 `tools/render/render_parts.py` under one light rig (knobs without pointers, since they look the same at any
 angle, so the app draws the engraved pointer; keys per style and state, nine-sliced to any size; toggles,
 screws, pads), and `tools/render/make_textures.py` makes the seamless brushed aluminium and walnut. All live in
-`assets/render` and are compiled in. `hw::faceplate` is brushed aluminium with a light sheen, `hw::rackEar` a
-walnut cheek, `hw::recess`/`hw::glass` black glass with a filament mesh and reflections, `hw::readout` a small
+`assets/render` and are compiled in. `hw::faceplate` is brushed aluminium with a light sheen and hairline scratches, the racks sit
+between two full-height walnut boards (`hw::sideBoard`, drawn by MainComponent over its children;
+`hw::rackEar` draws nothing now), `hw::wear` gives each key its own patch of scuffs and polish, `hw::recess`/`hw::glass` black glass with a filament mesh and reflections, `hw::readout` a small
 lit window for knob values, `hw::bay` an engraved module outline; labels print in dark ink. `hw::light()` is
 the lamps' level (warm-up with flicker, slow breathing, mains shimmer, a sag fed by the VU meters'
 loudness), applied to every glow; the VU needles are a sprung, damped second-order system at 60 Hz.
+The CHOP pad settings have backlit dot-matrix curve monitors (`ChopPanel::paintMonitor`).
 `Haptics` taps a Force Touch trackpad as knobs and faders cross their steps (`HapticsMac.mm`).
 
 (Earlier, 2026-11-18:)

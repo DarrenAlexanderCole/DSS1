@@ -184,17 +184,59 @@ def knob(name, cap_color, cap_metal, skirt=True):
     camera(sc, 3.1, 320, 320)
     render(sc, name)
 
-def key(name, color, metal, rough, coat=0.0, emit=None, down=False):
+def worn_metal(name, base, rough):
+    # Brushed, anodised metal that's been used and looked after: bare aluminium showing through where the edges
+    # are rubbed, a satin polish in the middle where fingers land, faint scratches along the brushing.
+    m = principled(name, base, 0.9, rough)
+    n = m.node_tree.nodes; l = m.node_tree.links; b = n['Principled BSDF']
+    spun(m, 'X', 0.8)
+    geo = n.new('ShaderNodeNewGeometry'); bev = n.new('ShaderNodeBevel'); bev.inputs['Radius'].default_value = 0.05
+    dot = n.new('ShaderNodeVectorMath'); dot.operation = 'DOT_PRODUCT'
+    l.new(bev.outputs['Normal'], dot.inputs[0]); l.new(geo.outputs['Normal'], dot.inputs[1])
+    edge = n.new('ShaderNodeMapRange'); edge.inputs['From Min'].default_value = 0.999; edge.inputs['From Max'].default_value = 0.93
+    l.new(dot.outputs['Value'], edge.inputs['Value'])
+    patch = n.new('ShaderNodeTexNoise'); patch.inputs['Scale'].default_value = 9; patch.inputs['Detail'].default_value = 6
+    mul = n.new('ShaderNodeMath'); mul.operation = 'MULTIPLY'
+    pr = n.new('ShaderNodeMapRange'); pr.inputs['From Min'].default_value = 0.35; pr.inputs['From Max'].default_value = 0.65
+    l.new(patch.outputs['Fac'], pr.inputs['Value'])
+    l.new(edge.outputs['Result'], mul.inputs[0]); l.new(pr.outputs['Result'], mul.inputs[1])
+    mix = n.new('ShaderNodeMix'); mix.data_type = 'RGBA'
+    mix.inputs['A'].default_value = (*base, 1); mix.inputs['B'].default_value = (0.78, 0.78, 0.78, 1)
+    l.new(mul.outputs['Value'], mix.inputs['Factor']); l.new(mix.outputs['Result'], b.inputs['Base Color'])
+    # Polish: smoother towards the middle of the top, uneven.
+    tc = n.new('ShaderNodeTexCoord'); grad = n.new('ShaderNodeTexGradient'); grad.gradient_type = 'SPHERICAL'
+    mp = n.new('ShaderNodeMapping'); mp.inputs['Scale'].default_value = (0.75, 1.8, 1)
+    l.new(tc.outputs['Object'], mp.inputs['Vector']); l.new(mp.outputs['Vector'], grad.inputs['Vector'])
+    smudge = n.new('ShaderNodeTexNoise'); smudge.inputs['Scale'].default_value = 4
+    sm = n.new('ShaderNodeMath'); sm.operation = 'MULTIPLY'
+    l.new(grad.outputs['Fac'], sm.inputs[0]); l.new(smudge.outputs['Fac'], sm.inputs[1])
+    rr = n.new('ShaderNodeMapRange'); rr.inputs['To Min'].default_value = rough; rr.inputs['To Max'].default_value = rough * 0.45
+    l.new(sm.outputs['Value'], rr.inputs['Value'])
+    # Scratches: fine streaks along the brushing.
+    sc = n.new('ShaderNodeTexNoise'); sc.inputs['Scale'].default_value = 30; sc.inputs['Detail'].default_value = 2
+    sm2 = n.new('ShaderNodeMapping'); sm2.inputs['Scale'].default_value = (0.08, 6, 1)
+    l.new(tc.outputs['Object'], sm2.inputs['Vector']); l.new(sm2.outputs['Vector'], sc.inputs['Vector'])
+    st = n.new('ShaderNodeMapRange'); st.inputs['From Min'].default_value = 0.68; st.inputs['From Max'].default_value = 0.74
+    st.inputs['To Min'].default_value = 0.0; st.inputs['To Max'].default_value = -0.12
+    l.new(sc.outputs['Fac'], st.inputs['Value'])
+    add = n.new('ShaderNodeMath'); add.operation = 'ADD'; add.use_clamp = True
+    l.new(rr.outputs['Result'], add.inputs[0]); l.new(st.outputs['Result'], add.inputs[1])
+    l.new(add.outputs['Value'], b.inputs['Roughness'])
+    return m
+
+def key(name, color, metal, rough, coat=0.0, emit=None, down=False, worn=False):
     # A square-cornered hardware key (radius small) on its panel cut-out. 1 unit = key height.
     sc = reset()
-    if emit:
+    if worn:
+        top = worn_metal('Cap', color, rough)
+    elif emit:
         top = principled('Cap', color, metal, rough, coat)
         b = top.node_tree.nodes['Principled BSDF']
         b.inputs['Emission Color'].default_value = (*emit[0], 1)
         b.inputs['Emission Strength'].default_value = emit[1]
     else:
         top = principled('Cap', color, metal, rough, coat)
-    if metal > 0.5:
+    if metal > 0.5 and not worn:
         spun(top, 'X', 0.8)                                                  # brushed across
     add_bump(top, grain(180), 0.03)
     well = principled('Well', (0.01, 0.01, 0.01), 0.3, 0.5)
@@ -255,8 +297,8 @@ def pad(name, down=False):
 PARTS = {
     'knob_alu': lambda: knob('knob_alu', (0.84, 0.84, 0.85), 1.0),
     'knob_brass': lambda: knob('knob_brass', (0.88, 0.62, 0.30), 1.0),
-    'key_dark_up': lambda: key('key_dark_up', (0.05, 0.05, 0.055), 0.7, 0.32),
-    'key_dark_down': lambda: key('key_dark_down', (0.05, 0.05, 0.055), 0.7, 0.32, down=True),
+    'key_dark_up': lambda: key('key_dark_up', (0.16, 0.165, 0.175), 0.9, 0.34, worn=True),
+    'key_dark_down': lambda: key('key_dark_down', (0.16, 0.165, 0.175), 0.9, 0.34, down=True, worn=True),
     'key_cream_up': lambda: key('key_cream_up', (0.80, 0.74, 0.58), 0.0, 0.38, coat=0.4),
     'key_cream_down': lambda: key('key_cream_down', (0.80, 0.74, 0.58), 0.0, 0.38, coat=0.4, down=True),
     'key_cue_up': lambda: key('key_cue_up', (0.85, 0.17, 0.01), 0.0, 0.3, coat=0.6, emit=((1.0, 0.25, 0.02), 0.12)),
