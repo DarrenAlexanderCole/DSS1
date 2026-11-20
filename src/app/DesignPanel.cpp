@@ -843,17 +843,22 @@ void DesignPanel::resized()
     layBay (reverbArea, reverbOn, { 4, 5 });
     layBay (compArea, compOn, { 10, 11, 12, 6, 8, 9, 7 });  // EQ, then AMOUNT, ATTACK, RELEASE, MIX
     {
-        // Monitors along the top of the COMP bay, right of its switch: EQ over the EQ knobs, then the transfer
-        // curve, the envelope and the mix, each as wide as the knobs it shows.
+        // Monitors along the top of the COMP bay, centred as a group in the space right of its switch, with even
+        // gaps: EQ, the transfer curve, the envelope and the mix (widths 3 : 1.4 : 2 : 1.2).
         const auto inner = compArea.reduced (10, 10);
-        const auto cellW = inner.getWidth() / 7;
-        const auto y = inner.getY(), h = 62;
-        const auto x0 = inner.getX() + 138;
-        const auto at = [&] (int fromCell, int toCell) { return juce::Rectangle<int> (inner.getX() + fromCell * cellW + 4, y, (toCell - fromCell) * cellW - 8, h); };
-        compMonitors[0] = at (0, 3).withLeft (x0);   // EQ, starting right of the switch
-        compMonitors[1] = at (3, 4);                  // AMOUNT: transfer curve
-        compMonitors[2] = at (4, 6);                  // ATTACK / RELEASE: envelope
-        compMonitors[3] = at (6, 7);                  // MIX
+        const auto free = juce::Rectangle<int> (inner.getX() + 140, inner.getY(), inner.getWidth() - 140, 66);
+        constexpr int monitorGap = 14, h = 58;
+        const float weights[] { 3.0f, 1.4f, 2.0f, 1.2f };
+        const auto margin = juce::jmax (12, free.getWidth() / 28);
+        const auto usable = static_cast<float> (free.getWidth() - 2 * margin - 3 * monitorGap);
+        auto x = static_cast<float> (free.getX() + margin);
+        const auto y = free.getCentreY() - h / 2 + 2;
+        for (int i = 0; i < 4; ++i)
+        {
+            const auto w = usable * weights[i] / 7.6f;
+            compMonitors[static_cast<std::size_t> (i)] = juce::Rectangle<float> (x, static_cast<float> (y), w, static_cast<float> (h)).toNearestInt();
+            x += w + static_cast<float> (monitorGap);
+        }
     }
 
     // Lower unit: the XY pad, then the recorder (keys and clock, the take's waveform).
