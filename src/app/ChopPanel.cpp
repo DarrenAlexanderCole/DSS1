@@ -140,7 +140,7 @@ ChopPanel::ChopPanel (Session& s) : session (s), sampler (s.output().sampler())
     sliceKnob.setRotaryParameters (juce::MathConstants<float>::pi, juce::MathConstants<float>::pi * 2.75f, true);
     sliceKnob.setValue (settings->getIntValue ("sliceLength", settings->getIntValue ("sliceBeats", 2) + 1), juce::dontSendNotification);
     previousSliceSetting = sliceKnob.getValue();
-    sliceKnob.setTooltip ("Beats per slice for EQUAL 16, and how long the last slice plays. MM (manual): tap any pad along with the music and the marks go in order, A1 to H16; each slice ends at the next mark (the END marker for the last), "
+    sliceKnob.setTooltip ("Beats per slice for EQUAL 16, and how long the last slice plays. MM (manual): tap an empty pad to mark it at the playhead, tap a marked pad to cue the music from it (option-tap re-marks); each slice ends where the next starts (the END marker for the last), "
                           "and EQUAL 16 chops what's on screen.");
     hwScale (sliceKnob, "MM|1/4|1/2|1|2|4|8|16");
     sliceKnob.onValueChange = [this] {
@@ -163,8 +163,7 @@ ChopPanel::ChopPanel (Session& s) : session (s), sampler (s.output().sampler())
                 }
             saveKit();
         }
-        if (manualLength() && previousSliceSetting >= 0.5)
-            setMode (true);  // MM is for tapping marks along with the music
+        updateModeKeys();
         previousSliceSetting = sliceKnob.getValue();
         settings->setValue ("sliceLength", static_cast<int> (sliceKnob.getValue()));
         for (int b = 0; b < 8; ++b)
@@ -270,7 +269,8 @@ ChopPanel::ChopPanel (Session& s) : session (s), sampler (s.output().sampler())
     cycleSnap();
     cycleSnap();
     cycleSnap();  // (sets the label for the stored choice)
-    setMode (manualLength());  // MM opens ready to tap marks in order; otherwise pads play
+    setMode (false);
+    updateModeKeys();
     selectBank (0);
     restoreKit();
     message = "PRESS A PAD (OR ITS KEY) TO MARK A SLICE";
@@ -328,14 +328,23 @@ void ChopPanel::say (const juce::String& text)
     repaint (readoutArea);
 }
 
+void ChopPanel::updateModeKeys()
+{
+    // In MM the pads decide for themselves (empty pads mark, marked pads cue), so CHOP / PLAY step aside.
+    const bool mm = manualLength();
+    chopKey.setEnabled (! mm);
+    playKey.setEnabled (! mm);
+    if (mm)
+        say ("MM: TAP AN EMPTY PAD TO MARK IT AT THE PLAYHEAD, TAP A MARKED PAD TO CUE FROM IT. OPTION-TAP TO RE-MARK");
+    repaint();
+}
+
 void ChopPanel::setMode (bool chop)
 {
     chopMode = chop;
     chopKey.setToggleState (chop, juce::dontSendNotification);
     playKey.setToggleState (! chop, juce::dontSendNotification);
-    say (chop ? (manualLength() ? juce::String ("MM CHOP: TAP ANY PAD ALONG WITH THE MUSIC, MARKS GO A1-A16, THEN B1 ... H16")
-                                : juce::String ("CHOP: PADS MOVE TO THE PLAYHEAD, CLICK THE WAVEFORM TO PLACE"))
-               : juce::String ("PLAY: PADS PLAY THEIR SLICES, CLICK A SLICE TO HEAR IT"));
+    say (chop ? "CHOP: PADS MOVE TO THE PLAYHEAD, CLICK THE WAVEFORM TO PLACE" : "PLAY: PADS PLAY THEIR SLICES, CLICK A SLICE TO HEAR IT");
 }
 
 void ChopPanel::cycleSnap()
@@ -529,11 +538,19 @@ void ChopPanel::padDown (int pad, float velocity)
     }
     const auto& b = current();
     const bool marked = b.marks[static_cast<std::size_t> (pad)].has_value() && b.audio != nullptr;
-    if (manualLength() && (chopMode || ! marked))
+    if (manualLength())
     {
-        // MM: whichever pad you hit, the next mark goes to the next pad in order (A1 … A16, B1 … H16), and each
-        // slice runs until the next mark. The music keeps playing.
-        markNextInOrder();
+        // MM, like DSS1 v1: an empty pad takes its start from the playhead; a pad that's already marked cues the
+        // music from its start and keeps it rolling, so you can tap the next empty pad. No modes to switch.
+        // Each slice ends where the next one starts. Option-tap a marked pad to move its start to the playhead.
+        selected = pad;
+        showPadSettings();
+        if (! marked || juce::ModifierKeys::currentModifiers.isAltDown())
+            markAtPlayhead (pad);
+        else
+            cueFrom (pad);
+        refreshPads();
+        repaint();
         return;
     }
     selected = pad;
@@ -622,49 +639,29 @@ bool ChopPanel::startBankFromDeck()
     return true;
 }
 
-void ChopPanel::markNextInOrder()
+void ChopPanel::cueFrom (int pad)
 {
-    const auto highest = [this] (int bi) {
-        int h = -1;
-        for (int p = 0; p < 16; ++p)
-            if (bankData[static_cast<std::size_t> (bi)].marks[static_cast<std::size_t> (p)])
-                h = p;
-        return h;
-    };
-    auto target = bank;
-    if (highest (target) >= 15)
+    const auto& b = current();
+    const auto& m = b.marks[static_cast<std::size_t> (pad)];
+    if (! m || b.audio == nullptr)
+        return;
+    sampler.stopAll();
+    if (sourceIsOnDeck (b))
     {
-        // This bank is full: carry on in the next bank that's empty (or chops the same sound and has room).
-        const auto& from = current();
-        target = -1;
-        for (int bi = bank + 1; bi < 8 && target < 0; ++bi)
-        {
-            const auto& nb = bankData[static_cast<std::size_t> (bi)];
-            if (nb.empty() || (nb.audio == from.audio && highest (bi) < 15))
-                target = bi;
-        }
-        if (target < 0)
-        {
-            say ("MM: EVERY PAD UP TO H16 IS MARKED. CLEAR A BANK TO KEEP CHOPPING");
-            return;
-        }
-        auto& nb = bankData[static_cast<std::size_t> (target)];
-        if (nb.empty() && from.audio != nullptr)
-        {
-            // The next bank carries on chopping the same sound.
-            const auto keepSettings = nb.settings;
-            nb = {};
-            nb.settings = keepSettings;
-            nb.source = from.source;
-            nb.audio = from.audio;
-            nb.framesPerBeat = from.framesPerBeat;
-        }
-        // Switch banks without stopping anything or moving the view: the music just runs.
-        bank = target;
-        for (int i = 0; i < 8; ++i)
-            bankKeys[static_cast<std::size_t> (i)].setToggleState (i == bank, juce::dontSendNotification);
+        session.deck().seek (*m);
+        if (! session.deck().isPlaying())
+            session.deck().play();
     }
-    markAtPlayhead (highest (target) + 1);
+    else
+    {
+        auto& preview = session.output().chopPreview();
+        preview.setTake (b.audio);
+        if (session.deck().isPlaying())
+            session.deck().pause();
+        previewCursor = *m;
+        preview.play (static_cast<double> (*m) / juce::jmax (1.0, static_cast<double> (b.audio->channels.front().size())));
+    }
+    say (describe (pad));
 }
 
 void ChopPanel::markAtPlayhead (int pad)
@@ -746,13 +743,19 @@ std::optional<Frame> ChopPanel::sliceEnd (int bankIndex, int pad) const
             next = juce::jmin (next.value_or (*other), *other);
     if (next)
         return *next;
-    // MM chops run on across banks: A16 ends where B1 starts.
-    if (manualLength() && bankIndex < 7)
-    {
-        const auto& nb = bankData[static_cast<std::size_t> (bankIndex + 1)];
-        if (nb.audio == b.audio && nb.marks[0] && *nb.marks[0] > *m)
-            return *nb.marks[0];
-    }
+    // MM chops of the same sound run on across banks: a bank's last slice ends where the next bank's first starts.
+    if (manualLength())
+        for (int bi = bankIndex + 1; bi < 8; ++bi)
+        {
+            const auto& nb = bankData[static_cast<std::size_t> (bi)];
+            if (nb.audio != b.audio)
+                break;
+            for (const auto& other : nb.marks)
+                if (other && *other > *m)
+                    next = juce::jmin (next.value_or (*other), *other);
+            if (next)
+                return *next;
+        }
     if (b.chopEnd && *b.chopEnd > *m)
         return juce::jmin (total, *b.chopEnd);
     // MM with no END yet: a beat, until you drag the END marker.

@@ -156,10 +156,11 @@ recorder (**TO CHOP**). Pads are laid out and keyed like a drum machine:
   length. A cursor runs through them while the pad plays. Double-click a knob to reset it. Pads with settings show a small light.
 - **Space** plays and pauses the deck, or the sound file you're chopping (from where you last clicked).
 - **SLICE** sets how long the last slice plays, in beats, and the slice size for EQUAL 16. At **MM** (6 o'clock,
-  manual) you chop by tapping along with the music: MODE switches to **CHOP**, and whichever pad you hit, the
-  marks go in order, A1 to A16, then on into B1 and through to H16, without stopping the music. Each slice ends
-  where the next one starts (A16 ends at B1); drag the **END** marker for the very last. Switch MODE to **PLAY**
-  to play the pads. EQUAL 16 in MM chops what's on screen.
+  manual) it works like DSS1 v1, with no modes to switch: tap an **empty pad** and it's marked at the playhead;
+  tap a **marked pad** and the music cues from its start and keeps rolling, so you can tap the next empty pad.
+  Each slice ends where the next one starts (a bank's last slice ends at the next bank's first, the END marker
+  for the very last). To move a start, drag its flag, nudge it, **option-tap** the pad to re-mark it at the
+  playhead, or clear it and tap again. CHOP / PLAY grey out in MM. EQUAL 16 in MM chops what's on screen.
 - **MIDI:** plug in a pad controller (an Akai MPD, MPK, MPC, or anything that sends notes): its 16 pads play
   DSS1's pads (Akai pads work out of the box, harder hits play louder), and MIDI Start/Stop or MMC plays and
   pauses. **MIDI LEARN** to map your own: hit a controller pad for each DSS1 pad in turn (click a DSS1 pad to

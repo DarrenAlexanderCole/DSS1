@@ -94,8 +94,10 @@ private:
     void setMode (bool chop);
     void cycleSnap();
     std::optional<Frame> sliceEnd (int bankIndex, int pad) const;
-    /// MM: marks the next pad in order (A1 … A16, then B1 … H16) at the playhead, whichever pad was hit.
-    void markNextInOrder();
+    /// MM: plays the music (the deck, or the sound file being chopped) on from a pad's start.
+    void cueFrom (int pad);
+    /// MM greys out CHOP / PLAY: there the pads mark or cue by themselves.
+    void updateModeKeys();
     /// SLICE at MM (manual): the last slice ends at the END marker you place, not after so many beats.
     bool manualLength() const { return sliceKnob.getValue() < 0.5; }
     std::optional<double> sliceBeats() const;

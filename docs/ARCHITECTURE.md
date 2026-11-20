@@ -234,8 +234,9 @@ digits respaced to one width (`assets/fonts/RajdhaniTab-SemiBold.ttf`).
 `TempoSteps` is the step-sequencer tempo light (beat position from the grid, else the BPM; 60 Hz), used in the
 header (4 beats) and Prep's grid window (16 steps). The compressor's monitors (`DesignPanel::paintCompMonitors`)
 and CHOP's pad monitors share the backlit-monitor helpers in `Scope` (`monitorBegin`/`monitorEnd`, `inked`).
-In CHOP's MM, `ChopPanel::markNextInOrder` puts each tap on the next pad in order (A1 … H16, moving banks
-without stopping playback), and `sliceEnd` lets a bank's last slice end at the next bank's first mark.
+In CHOP's MM (as in v1's `ChopSession.hitPad`), an empty pad is marked at the playhead and a marked pad cues the
+source (deck or file preview) from its start and keeps playing (`ChopPanel::cueFrom`); option-tap re-marks.
+`sliceEnd` lets a bank's last slice end at the next bank's first mark when they chop the same sound.
 
 Track notes live in `TrackInfo::notes` (JSON "notes", omitted when empty). Only `Crate::setNotes` changes them:
 `Crate::save` keeps the stored notes, since a deck's copy of a record can be older than an edit in Catalog.
