@@ -157,9 +157,11 @@ private:
     juce::TextButton holdKey { "HOLD" }, chokeKey { "CHOKE" };
     /// Lights beside the pads: how loud each pad of this bank plays.
     std::unique_ptr<PadMeters> meters;
-    /// Once a pad has been played from the keyboard, the big key letters on the pads aren't needed (until
-    /// the app opens again).
-    bool keysLearned = false;
+    /// Each pad's big key letter shows until that pad is first played (then it's gone until the app opens
+    /// again).
+    std::array<bool, 16> legendShown = [] { std::array<bool, 16> a {}; a.fill (true); return a; }();
+    /// Stops the pads, the sound file being chopped and the track (STOP ALL, key 0).
+    void stopAllPlayback();
     juce::TextButton equalKey { "EQUAL 16" }, transientKey { "TRANSIENTS" }, undoKey { "UNDO" }, nudgeLeft { "<" }, nudgeRight { ">" };
     juce::TextButton loadKey { "LOAD..." }, saveKey { "SAVE BANK" }, clearKey { "CLEAR" }, clearBankKey { "CLEAR BANK" }, stopKey { "STOP ALL" },
         folderKey { "CHANGE..." };

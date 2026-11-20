@@ -150,8 +150,9 @@ recorder (**TO CHOP**). Pads are laid out and keyed like a drum machine:
 | 5 `A` | 6 `S` | 7 `D` | 8 `F` |
 | 1 `Z` | 2 `X` | 3 `C` | 4 `V` |
 
-- **The pads** show their number small in the corner and their keyboard key big in the middle. Once you've
-  played a pad from the keyboard the letters fade away (they come back next time DSS1 opens).
+- **The pads** show their number small in the corner and their keyboard key big in the middle. Each letter goes once
+  you've played that pad (it comes back next time DSS1 opens). Press **0** to stop everything that's playing
+  (the pads, a sound file being chopped and the track), like **STOP ALL**.
 - **LEVEL** (left of the pads): a light matrix, one column per pad of the bank you're on (1-16), lighting up as
   loud as each pad plays (after its GAIN), with a peak light that hangs for a moment.
 - **The waveform** zooms like Prep's: scroll (or pinch) to zoom around the mouse, swipe or drag to move, the

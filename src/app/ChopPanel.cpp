@@ -175,10 +175,8 @@ ChopPanel::ChopPanel (Session& s) : session (s), sampler (s.output().sampler())
     clearKey.onClick = [this] { clearPad (selected); };
     clearBankKey.setTooltip ("Clear every mark in this bank, to chop something else");
     clearBankKey.onClick = [this] { clearBank(); };
-    stopKey.onClick = [this] {
-        sampler.stopAll();
-        session.output().chopPreview().stop();
-    };
+    stopKey.setTooltip ("STOP ALL (key 0): stops the pads, the sound file being chopped and the track");
+    stopKey.onClick = [this] { stopAllPlayback(); };
     showSavedKey.setTooltip ("Open the samples folder in Finder, to see what SAVE BANK has written");
     showSavedKey.onClick = [this] {
         const auto folder = samplesFolder();
@@ -453,6 +451,12 @@ bool ChopPanel::handleKey (const juce::KeyPress& key)
         return false;
     // The key itself, not the character it types (option changes that on a Mac).
     const auto c = juce::CharacterFunctions::toLowerCase (static_cast<juce::juce_wchar> (key.getKeyCode()));
+    // 0 stops everything that's playing: the pads, the sound file being chopped, and the track.
+    if (c == '0')
+    {
+        stopAllPlayback();
+        return true;
+    }
     for (int p = 0; p < 16; ++p)
         if (c == static_cast<juce::juce_wchar> (padKeys[p]))
         {
@@ -460,11 +464,6 @@ bool ChopPanel::handleKey (const juce::KeyPress& key)
             if (! held[static_cast<std::size_t> (p)])
             {
                 held[static_cast<std::size_t> (p)] = true;
-                if (! keysLearned)
-                {
-                    keysLearned = true;  // they know the keys now: the letters can go
-                    repaint();
-                }
                 padDown (p);
             }
             return true;
@@ -509,6 +508,14 @@ void ChopPanel::mouseUp (const juce::MouseEvent&)
 
 void ChopPanel::padDown (int pad, float velocity)
 {
+    // Once a pad has been played (clicked, keyed or from a controller), its key letter goes, until DSS1 opens
+    // again.
+    if (pad >= 0 && pad < 16 && legendShown[static_cast<std::size_t> (pad)])
+    {
+        legendShown[static_cast<std::size_t> (pad)] = false;
+        repaint (pads[static_cast<std::size_t> (pad)].getBounds());
+    }
+
     if (learning)
     {
         // Choosing which pad the next controller pad is learned for.
@@ -535,6 +542,15 @@ void ChopPanel::padDown (int pad, float velocity)
     }
     refreshPads();
     repaint();
+}
+
+void ChopPanel::stopAllPlayback()
+{
+    sampler.stopAll();
+    session.output().chopPreview().stop();
+    if (session.deck().isPlaying())
+        session.deck().pause();
+    say ("STOPPED");
 }
 
 void ChopPanel::padUp (int pad)
@@ -1677,7 +1693,7 @@ void ChopPanel::paintOverChildren (juce::Graphics& g)
         g.setFont (hw::brand (juce::jlimit (8.0f, 11.0f, padArea.getHeight() * 0.13f)));
         g.setColour (hw::colour::silk.withAlpha (marked ? 0.75f : 0.45f));
         g.drawText (juce::String (p + 1), area.reduced (3.0f, 2.0f), juce::Justification::topLeft, false);
-        if (! keysLearned)
+        if (legendShown[static_cast<std::size_t> (p)])
         {
             g.setFont (hw::brand (juce::jlimit (14.0f, 28.0f, padArea.getHeight() * 0.32f)));
             g.setColour (juce::Colours::black.withAlpha (0.45f));
