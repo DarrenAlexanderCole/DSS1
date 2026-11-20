@@ -20,6 +20,10 @@ backlit VU meters. The parts are rendered in 3D. Things to notice:
 - **Keys:** black phenolic with white legends, worn in their own ways (rubbed edges, a fingertip polish), and
   the faces carry hairline scratches along the grain: used, but looked after.
 - **Pads:** treated rawhide with worn grooves, each with a ring that lights up when the pad plays or is marked.
+- **Displays:** everything behind the glass is drawn smooth now, lit warm like the VU meters: waveforms are
+  mirrored glowing shapes with a brighter core, the spectrum and pad monitors are smooth curves, and readouts use
+  a clean modern face (Rajdhani). The only old things are the materials.
+- **Icon:** a speaker driver in walnut and brushed aluminium, with DSS1 printed on the cone.
 - **Power:** a red jewel lamp in a knurled chrome bezel. The **PAD** switch beside it takes 20 dB off both VU
   meters so loud masters don't pin the needles (on by default).
 - **Power-up:** the displays and meters warm up when DSS1 opens, with a flicker, and the needles kick across.
@@ -55,7 +59,10 @@ DSS1 opens on **Catalog**.
 6. **Analysis:** BPM, key (Camelot and name) and loudness fill in, a couple of seconds per track. DSS1 also
    finds where the beats and bars fall, and that becomes the track's first grid. Tracks analysed by an
    earlier build: right-click → **Analyse Again (New Grid)** to get the improved grid.
-7. **Play:** double-click a track (or select it and press Return). The player along the bottom stays on every
+7. **Notes:** the **NOTES** column is yours. Double-click a track's note to type (Return saves, Escape
+   cancels). Notes stay with the track, sort like any column, and go to Rekordbox as the track's Comments when
+   you export.
+8. **Play:** double-click a track (or select it and press Return). The player along the bottom stays on every
    tab. Space plays and pauses. The slider changes tempo by up to ±8% (**Reset**, or double-click the slider, goes back to 0), and the BPM next to it shows the new tempo; **Key lock**
    keeps the pitch.
 
@@ -102,8 +109,8 @@ Load a track (double-click it in Catalog), press PLAY, then open **Listen / Desi
   springs back. With **HOLD** on, it stays where you leave it.
 - **Input pad:** the **-10**, **-20** and **-50** switches after TO CHOP lower what the recorder takes in
   (one at a time; recording only, you still hear the full level).
-- **Spectrum:** the dot matrix under the recorder display dances to whatever you hear: bars jump with the beat,
-  trails fade, peak dots fall, and the whole matrix flares on every kick.
+- **Spectrum:** under the recorder display, a glowing curve of everything you hear (30 Hz to 16 kHz): ghosts
+  of the last moments fade behind it, a thin peak line drifts down, and the window blooms on every kick.
 - **Recorder:** **REC** records what you hear, effects included, and draws the waveform as it goes. Press
   **STOP**, then **PLAY** to hear the take on its own (the deck pauses; click the waveform to play from there).
   **SAVE** keeps it (Music > DSS1 Recordings, and into Catalog); **DISCARD** throws it away; pressing **REC**

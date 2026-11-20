@@ -1,4 +1,5 @@
 #include "WaveformView.h"
+#include "Scope.h"
 #include "Theme.h"
 #include "Hardware.h"
 
@@ -164,10 +165,8 @@ void WaveformView::paint (juce::Graphics& g)
     auto bounds = getLocalBounds().toFloat();
     g.setColour (hw::colour::glassBlack);
     g.fillRoundedRectangle (bounds, 4.0f);
-    // Faint scan lines, like an old display.
-    g.setColour (hw::colour::amber.withAlpha (0.025f));
-    for (float y = bounds.getY(); y < bounds.getBottom(); y += 3.0f)
-        g.fillRect (bounds.getX(), y, bounds.getWidth(), 1.0f);
+    // A faint graticule behind the glass.
+    scope::graticule (g, bounds.reduced (2), 16, 4, hw::colour::amber);
 
     const auto* record = session.record();
     if (record == nullptr || session.state() != Session::State::loaded)
@@ -195,11 +194,12 @@ void WaveformView::paintWaveform (juce::Graphics& g, juce::Rectangle<float> area
     const auto& peaks = session.peaks();
     if (peaks.empty())
         return;
-    const auto mid = area.getCentreY();
     const auto scale = area.getHeight() * 0.48f;
     const auto blocks = static_cast<double> (peaks.high.size());
     const auto played = session.deck().position();
 
+    std::vector<scope::Span> cols (static_cast<std::size_t> (juce::jmax (0, getWidth())));
+    int first = -1, last = -1;
     for (int x = 0; x < getWidth(); ++x)
     {
         const auto from = frameAtX (static_cast<float> (x)) / peaks.blockSize;
@@ -214,10 +214,17 @@ void WaveformView::paintWaveform (juce::Graphics& g, juce::Rectangle<float> area
             lo = std::min (lo, peaks.low[b]);
             hi = std::max (hi, peaks.high[b]);
         }
-        const bool before = frameAtX (static_cast<float> (x)) < played;
-        g.setColour (before ? hw::colour::amberDim : hw::colour::amber);
-        g.fillRect (static_cast<float> (x), mid - hi * scale, 1.0f, std::max (1.0f, (hi - lo) * scale));
+        cols[static_cast<std::size_t> (x)] = { lo, hi };
+        if (first < 0)
+            first = x;
+        last = x;
     }
+    if (first < 0)
+        return;
+    // Only the part of the window that has audio, so the shape starts and ends where the track does.
+    std::vector<scope::Span> shown (cols.begin() + first, cols.begin() + last + 1);
+    scope::wave (g, juce::Rectangle<float> (static_cast<float> (first), area.getY(), static_cast<float> (last - first + 1), area.getHeight()),
+                 shown, 1.0f, hw::colour::amber, xForFrame (played), scale / area.getHeight());
 }
 
 void WaveformView::paintGrid (juce::Graphics& g, juce::Rectangle<float> area, const TrackRecord& r) const

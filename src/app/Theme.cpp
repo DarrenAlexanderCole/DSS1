@@ -552,7 +552,9 @@ void Theme::drawTableHeaderColumn (juce::Graphics& g, juce::TableHeaderComponent
         text << " ^";
     else if ((flags & juce::TableHeaderComponent::sortedBackwards) != 0)
         text << " v";
-    g.drawText (text, area, juce::Justification::centredLeft, true);
+    // Number columns are right-aligned, so their headings sit over the numbers.
+    const bool numeric = name == "Time" || name == "BPM" || name == "Loudness";
+    g.drawText (text, area, numeric ? juce::Justification::centredRight : juce::Justification::centredLeft, true);
 }
 
 void Theme::drawScrollbar (juce::Graphics& g, juce::ScrollBar&, int x, int y, int w, int h, bool vertical, int thumbStart, int thumbSize,

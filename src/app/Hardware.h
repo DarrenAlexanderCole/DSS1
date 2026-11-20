@@ -9,7 +9,7 @@ namespace dss1::ui::hw
 // machined aluminium and brass knobs, black and ivory keys, chrome toggles, black-glass windows lit amber from
 // behind, and backlit VU meters. The parts (knobs, keys, toggles, screws, pads) are rendered in 3D with Blender
 // (tools/render) and drawn here with live light on top: displays and lamps warm up when DSS1 starts and
-// breathe slightly, and dip with the music like a real power supply. Fonts (Archivo Narrow, Michroma, VT323;
+// breathe slightly, and dip with the music like a real power supply. Fonts (Archivo Narrow, Michroma, Rajdhani;
 // SIL OFL), textures and renders are compiled into the app.
 
 namespace colour
@@ -48,7 +48,7 @@ void nineSlice (juce::Graphics&, const juce::Image&, juce::Rectangle<float> dest
 
 juce::Font label (float size, bool bold = true);   ///< Archivo Narrow: silk-screen labels and body text
 juce::Font brand (float size);                     ///< Michroma: the DSS1 name, pad letters
-juce::Font vfd (float size);                       ///< VT323: display readouts
+juce::Font vfd (float size);                       ///< Rajdhani (tabular digits): display readouts
 
 /// A brushed aluminium face filling `area`: the grain, a broad sheen from the light, a little wear, a bevel,
 /// and a screw in each corner.

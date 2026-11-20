@@ -3,6 +3,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -100,4 +101,18 @@ TEST_CASE ("Copy names stay unique when two sources share a name", "[deliver]")
 {
     const auto names = deliver::copyNames ({ "/A/Intro.mp3", "/B/intro.mp3", "/C/Intro.mp3", "/D/Outro.wav", "/E/noext" });
     CHECK (names == std::vector<std::string> { "Intro.mp3", "intro (2).mp3", "Intro (3).mp3", "Outro.wav", "noext" });
+}
+
+TEST_CASE ("Notes go to Rekordbox as the track's comments", "[deliver]")
+{
+    auto withNotes = stored (3, "/Music/Three.wav");
+    withNotes.record.info.notes = "peak time";
+    const std::vector tracks { withNotes, stored (4, "/Music/Four.wav") };
+    const auto xml = rekordbox::write (deliver::rekordboxCollection (tracks, "DSS1"));
+    CHECK (xml.find ("Comments=\"peak time\"") != std::string::npos);
+    const auto back = rekordbox::parse (xml);
+    REQUIRE (back.tracks.size() == 2);
+    const auto& other = back.tracks[0].otherAttributes;
+    CHECK (std::find (other.begin(), other.end(), std::pair<std::string, std::string> ("Comments", "peak time")) != other.end());
+    CHECK (back.tracks[1].otherAttributes.empty());
 }

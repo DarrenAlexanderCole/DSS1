@@ -1,13 +1,12 @@
 #include "BeatScope.h"
 #include "Hardware.h"
+#include "Scope.h"
 
 namespace dss1::ui
 {
 
 namespace
 {
-    constexpr float pitch = 4.0f, dotSize = 3.0f;
-
     void fft (std::vector<std::complex<float>>& a)
     {
         // In place, iterative radix-2.
@@ -47,14 +46,10 @@ BeatScope::BeatScope (AudioEngine& e) : engine (e)
     for (int i = 0; i < fftSize; ++i)
         window[static_cast<std::size_t> (i)] = 0.5f - 0.5f * std::cos (2.0f * juce::MathConstants<float>::pi * static_cast<float> (i) / (fftSize - 1));
     spectrum.resize (fftSize);
-    startTimerHz (40);
+    startTimerHz (50);
 }
 
-void BeatScope::resized()
-{
-    rows = juce::jmax (1, static_cast<int> (static_cast<float> (getHeight()) / pitch));
-    cells.assign (static_cast<std::size_t> (bands * rows), 0.0f);
-}
+void BeatScope::resized() {}
 
 void BeatScope::analyse()
 {
@@ -66,22 +61,30 @@ void BeatScope::analyse()
     float bass = 0;
     for (int b = 0; b < bands; ++b)
     {
-        // Log-spaced bands, 40 Hz … 16 kHz, tilted up 3 dB an octave so music reads level across.
-        const auto f0 = 40.0 * std::pow (400.0, static_cast<double> (b) / bands), f1 = 40.0 * std::pow (400.0, static_cast<double> (b + 1) / bands);
+        // Log-spaced bands, 30 Hz … 16 kHz, tilted up 3 dB an octave so music reads level across.
+        const auto f0 = 30.0 * std::pow (533.0, static_cast<double> (b) / bands), f1 = 30.0 * std::pow (533.0, static_cast<double> (b + 1) / bands);
         const auto k0 = juce::jlimit (1, fftSize / 2 - 1, static_cast<int> (f0 / rate * fftSize));
         const auto k1 = juce::jlimit (k0 + 1, fftSize / 2, static_cast<int> (f1 / rate * fftSize));
         float energy = 0;
         for (int k = k0; k < k1; ++k)
             energy = juce::jmax (energy, std::abs (spectrum[static_cast<std::size_t> (k)]));
+        // Low bands narrower than one bin share it; interpolate between bins so the curve stays smooth.
+        if (f1 / rate * fftSize - f0 / rate * fftSize < 1.0)
+        {
+            const auto kf = (f0 + f1) * 0.5 / rate * fftSize;
+            const auto ka = juce::jlimit (1, fftSize / 2 - 2, static_cast<int> (kf));
+            const auto t = static_cast<float> (kf - ka);
+            energy = std::abs (spectrum[static_cast<std::size_t> (ka)]) * (1.0f - t) + std::abs (spectrum[static_cast<std::size_t> (ka + 1)]) * t;
+        }
         const auto db = 20.0f * std::log10 (energy / (fftSize * 0.25f) + 1e-9f) + 3.0f * static_cast<float> (std::log2 (f0 / 40.0)) + 6.0f;
         const auto target = juce::jlimit (0.0f, 1.0f, (db + 54.0f) / 54.0f);
         auto& l = level[static_cast<std::size_t> (b)];
         l = target > l ? target : l + (target - l) * 0.18f;   // jump up, fall gently
-        if (b < 4)
+        if (b < 10)
             bass += target;
     }
     // A kick: the low bands jumping above where they've been.
-    bass /= 4.0f;
+    bass /= 10.0f;
     if (bass > bassAverage + 0.12f && bass > 0.35f)
         pulse = 1.0f;
     bassAverage += (bass - bassAverage) * 0.08f;
@@ -93,14 +96,16 @@ void BeatScope::timerCallback()
     if (! isShowing())
         return;
     analyse();
-    for (auto& c : cells)
-        c *= 0.82f;  // trails
+    // Keep a ghost every other frame, so the trail reaches back about a quarter of a second.
+    if (++frame % 2 == 0)
+    {
+        for (int i = ghosts - 1; i > 0; --i)
+            history[static_cast<std::size_t> (i)] = history[static_cast<std::size_t> (i - 1)];
+        history[0] = level;
+    }
     for (int b = 0; b < bands; ++b)
     {
-        const auto lit = static_cast<int> (std::round (level[static_cast<std::size_t> (b)] * static_cast<float> (rows)));
-        for (int r = 0; r < lit && r < rows; ++r)
-            cells[static_cast<std::size_t> (b * rows + r)] = 1.0f;
-        // Peak dots: pushed up by the bar, fall with gravity.
+        // Peak hold: pushed up by the curve, falls with gravity.
         auto& p = peak[static_cast<std::size_t> (b)];
         auto& v = peakVelocity[static_cast<std::size_t> (b)];
         if (level[static_cast<std::size_t> (b)] >= p)
@@ -110,7 +115,7 @@ void BeatScope::timerCallback()
         }
         else
         {
-            v += 0.0025f;
+            v += 0.0016f;
             p = juce::jmax (0.0f, p - v);
         }
     }
@@ -119,45 +124,69 @@ void BeatScope::timerCallback()
 
 void BeatScope::paint (juce::Graphics& g)
 {
-    const auto lit = hw::light();
-    const auto glow = 1.0f + 0.45f * pulse;  // the beat
-    const auto colW = static_cast<float> (getWidth()) / bands;
+    const auto area = getLocalBounds().toFloat().reduced (2.0f, 4.0f);
+    if (area.isEmpty())
+        return;
     const auto amber = hw::colour::amber;
-    const auto bottom = static_cast<float> (getHeight());
-    for (int b = 0; b < bands; ++b)
+    const auto beat = 1.0f + 0.6f * pulse;
+    const auto floorY = area.getBottom();
+    const auto toPoints = [&] (const std::array<float, bands>& v) {
+        std::vector<juce::Point<float>> pts;
+        pts.reserve (bands);
+        for (int b = 0; b < bands; ++b)
+            pts.push_back ({ area.getX() + area.getWidth() * static_cast<float> (b) / static_cast<float> (bands - 1),
+                             floorY - juce::jlimit (0.0f, 1.0f, v[static_cast<std::size_t> (b)]) * area.getHeight() });
+        return pts;
+    };
+
+    // Graticule: octaves across (100 Hz, 1 kHz, 10 kHz brighter, with small labels), levels up.
+    const auto lit = hw::light();
+    const auto xForHz = [&] (double hz) { return area.getX() + area.getWidth() * static_cast<float> (std::log (hz / 30.0) / std::log (533.0)); };
+    g.setFont (hw::label (9.0f, false));
+    for (const int hz : { 50, 100, 200, 500, 1000, 2000, 5000, 10000 })
     {
-        const auto x0 = static_cast<float> (b) * colW;
-        const auto dotsAcross = juce::jmax (1, static_cast<int> ((colW - 2.0f) / pitch));
-        for (int r = 0; r < rows; ++r)
+        const bool decade = hz == 100 || hz == 1000 || hz == 10000;
+        const auto x = xForHz (hz);
+        g.setColour (amber.withAlpha ((decade ? 0.12f : 0.05f) * lit));
+        g.fillRect (x, area.getY(), 1.0f, area.getHeight());
+        if (decade)
         {
-            const auto value = cells[static_cast<std::size_t> (b * rows + r)];
-            const auto y = bottom - static_cast<float> (r + 1) * pitch;
-            for (int d = 0; d < dotsAcross; ++d)
-            {
-                const auto x = x0 + 1.0f + static_cast<float> (d) * pitch;
-                if (value < 0.03f)
-                {
-                    g.setColour (amber.withAlpha (0.05f));  // unlit pixels
-                    g.fillRect (x, y, dotSize, dotSize);
-                    continue;
-                }
-                const auto a = juce::jlimit (0.0f, 1.0f, value * lit * glow);
-                // Halo, then the dot: brighter towards the top of a bar.
-                g.setColour (amber.withAlpha (0.12f * a));
-                g.fillRect (x - 1.0f, y - 1.0f, dotSize + 2.0f, dotSize + 2.0f);
-                g.setColour (amber.interpolatedWith (juce::Colour (0xffffe2b0), 0.35f * static_cast<float> (r) / static_cast<float> (rows)).withAlpha (0.25f + 0.75f * a));
-                g.fillRect (x, y, dotSize, dotSize);
-            }
-        }
-        // The peak dot row.
-        const auto pr = static_cast<int> (peak[static_cast<std::size_t> (b)] * static_cast<float> (rows));
-        if (pr > 0 && pr <= rows)
-        {
-            g.setColour (juce::Colour (0xffffd9a0).withAlpha (0.9f * lit));
-            for (int d = 0; d < dotsAcross; ++d)
-                g.fillRect (x0 + 1.0f + static_cast<float> (d) * pitch, bottom - static_cast<float> (pr) * pitch - pitch, dotSize, dotSize);
+            g.setColour (amber.withAlpha (0.35f * lit));
+            g.drawText (hz >= 1000 ? juce::String (hz / 1000) + "K" : juce::String (hz),
+                        juce::Rectangle<float> (x + 3, floorY - 12, 30, 11), juce::Justification::centredLeft, false);
         }
     }
+    for (int i = 1; i < 4; ++i)
+    {
+        g.setColour (amber.withAlpha (0.05f * lit));
+        g.fillRect (area.getX(), area.getY() + area.getHeight() * static_cast<float> (i) / 4.0f, area.getWidth(), 1.0f);
+    }
+
+    // Ghosts of the last moments, oldest faintest, so each beat leaves a fading wake.
+    for (int i = ghosts - 1; i >= 0; --i)
+    {
+        const auto fade = 1.0f - static_cast<float> (i + 1) / static_cast<float> (ghosts + 1);
+        const auto curve = scope::smooth (toPoints (history[static_cast<std::size_t> (i)]));
+        g.setColour (amber.withAlpha (0.16f * fade * fade * lit));
+        g.strokePath (curve, juce::PathStrokeType (1.2f));
+    }
+
+    // Now: a filled glowing curve that blooms on each kick.
+    const auto now = scope::smooth (toPoints (level));
+    scope::fillUnder (g, now, area.getY(), floorY, amber, juce::jlimit (0.0f, 1.0f, 0.42f * beat));
+    if (pulse > 0.05f)
+    {
+        juce::ColourGradient bloom (amber.withAlpha (0.16f * pulse * lit), area.getCentreX(), floorY, juce::Colours::transparentBlack,
+                                    area.getCentreX(), area.getY(), false);
+        g.setGradientFill (bloom);
+        g.fillRect (area);
+    }
+    scope::trace (g, now, amber, 1.6f, beat);
+
+    // Peak hold: a thin warm-white line drifting down.
+    const auto peaks = scope::smooth (toPoints (peak));
+    g.setColour (juce::Colour (0xffffe2b8).withAlpha (0.55f * lit));
+    g.strokePath (peaks, juce::PathStrokeType (1.0f));
 }
 
 } // namespace dss1::ui

@@ -1,4 +1,5 @@
 #include "ChopView.h"
+#include "Scope.h"
 #include "ChopPanel.h"
 #include "Hardware.h"
 
@@ -211,12 +212,15 @@ void ChopView::paintWave (juce::Graphics& g, juce::Rectangle<float> area, const 
                 p.lineTo (x, y);
             started = true;
         }
-        g.strokePath (p, juce::PathStrokeType (1.5f));
+        scope::trace (g, p, waveColour, 1.5f);
+        g.setColour (waveColour.interpolatedWith (juce::Colours::white, 0.3f));
         if (framesPerPixel < 0.8)
             for (auto i = juce::jmax<std::int64_t> (0, first); i < juce::jmin<std::int64_t> (static_cast<std::int64_t> (n), last); ++i)
                 g.fillEllipse (xForFrame (static_cast<double> (i)) - 1.5f, mid - sampleAt (static_cast<std::size_t> (i)) * scale - 1.5f, 3.0f, 3.0f);
         return;
     }
+    std::vector<scope::Span> cols;
+    float firstX = -1;
     for (int x = 0; x < static_cast<int> (area.getWidth()); ++x)
     {
         const auto f0 = frameAtX (area.getX() + static_cast<float> (x)), f1 = f0 + framesPerPixel;
@@ -240,8 +244,13 @@ void ChopView::paintWave (juce::Graphics& g, juce::Rectangle<float> area, const 
                 hi = juce::jmax (hi, v);
             }
         }
-        g.fillRect (area.getX() + static_cast<float> (x), mid - hi * scale, 1.0f, juce::jmax (1.0f, (hi - lo) * scale));
+        if (firstX < 0)
+            firstX = static_cast<float> (x);
+        cols.push_back ({ lo, hi });
     }
+    if (! cols.empty())
+        scope::wave (g, juce::Rectangle<float> (area.getX() + firstX, area.getY(), static_cast<float> (cols.size()), area.getHeight()), cols, 1.0f,
+                     waveColour, -1.0e9f, 0.46f);
 }
 
 void ChopView::paintOverview (juce::Graphics& g, juce::Rectangle<float> area, const io::DecodedAudio& a) const
@@ -250,17 +259,19 @@ void ChopView::paintOverview (juce::Graphics& g, juce::Rectangle<float> area, co
     const auto inner = area.reduced (4, 3);
     const auto n = static_cast<double> (a.channels.front().size());
     const auto w = juce::jmax (1, static_cast<int> (inner.getWidth()));
-    const auto mid = inner.getCentreY();
-    g.setColour (hw::colour::amberMid);
+    std::vector<scope::Span> cols;
     for (int x = 0; x < w && ! peakMax.empty(); ++x)
     {
         const auto b0 = static_cast<std::size_t> (n * x / w / peakBlock), b1 = static_cast<std::size_t> (n * (x + 1) / w / peakBlock);
-        float hi = 0;
+        float lo = 0, hi = 0;
         for (auto b = b0; b <= b1 && b < peakMax.size(); ++b)
-            hi = juce::jmax (hi, juce::jmax (peakMax[b], -peakMin[b]));
-        const auto h = hi * inner.getHeight() * 0.48f;
-        g.fillRect (inner.getX() + static_cast<float> (x), mid - h, 1.0f, juce::jmax (1.0f, h * 2));
+        {
+            lo = juce::jmin (lo, peakMin[b]);
+            hi = juce::jmax (hi, peakMax[b]);
+        }
+        cols.push_back ({ lo, hi });
     }
+    scope::wave (g, inner, cols, 1.0f, hw::colour::amberMid, -1.0e9f, 0.48f);
     const auto toX = [&] (double f) { return inner.getX() + static_cast<float> (f / juce::jmax (1.0, n)) * inner.getWidth(); };
     const auto& b = owner.current();
     g.setColour (bankColour (owner.bank));
@@ -325,7 +336,9 @@ void ChopView::paint (juce::Graphics& g)
             g.fillRect (x1 - 0.5f, y, 1.0f, 4.0f);
     }
 
-    g.setColour (chopped || b.audio != nullptr ? hw::colour::amber : hw::colour::amberMid);
+    waveColour = chopped || b.audio != nullptr ? hw::colour::amber : hw::colour::amberMid;
+    g.setColour (waveColour);
+    scope::graticule (g, area, 16, 4, hw::colour::amber);
     paintWave (g, area, *audio);
 
     // Markers: a line and a numbered tag.

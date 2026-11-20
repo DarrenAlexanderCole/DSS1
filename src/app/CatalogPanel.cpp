@@ -9,7 +9,7 @@ namespace dss1::ui
 
 namespace
 {
-    enum Column { title = 1, artist, time, bpm, key, loudness, album, genre };
+    enum Column { title = 1, artist, time, bpm, key, loudness, album, genre, notes };
 
     double seconds (const StoredTrack& t)
     {
@@ -36,14 +36,16 @@ CatalogPanel::CatalogPanel (Session& s) : session (s), crate (s.library())
 {
     auto& header = table.getHeader();
     const auto columnFlags = juce::TableHeaderComponent::defaultFlags;
-    header.addColumn ("Title", title, 300, 120, -1, columnFlags);
-    header.addColumn ("Artist", artist, 200, 80, -1, columnFlags);
-    header.addColumn ("Album", album, 160, 60, -1, columnFlags);
+    // Tight columns for the facts; NOTES takes whatever room is left (see resized).
+    header.addColumn ("Title", title, 280, 120, -1, columnFlags);
+    header.addColumn ("Artist", artist, 160, 80, -1, columnFlags);
+    header.addColumn ("Album", album, 140, 60, -1, columnFlags);
     header.addColumn ("Genre", genre, 110, 50, -1, columnFlags);
-    header.addColumn ("Time", time, 70, 50, 120, columnFlags);
-    header.addColumn ("BPM", bpm, 80, 50, 120, columnFlags);
-    header.addColumn ("Key", key, 120, 60, 200, columnFlags);
+    header.addColumn ("Time", time, 58, 50, 120, columnFlags);
+    header.addColumn ("BPM", bpm, 70, 50, 120, columnFlags);
+    header.addColumn ("Key", key, 118, 60, 200, columnFlags);
     header.addColumn ("Loudness", loudness, 100, 60, 160, columnFlags);
+    header.addColumn ("Notes", notes, 220, 100, -1, columnFlags);
     header.setSortColumnId (title, true);
     header.setColour (juce::TableHeaderComponent::outlineColourId, juce::Colours::transparentBlack);
     header.setColour (juce::TableHeaderComponent::textColourId, hw::colour::amberMid);
@@ -83,6 +85,15 @@ CatalogPanel::CatalogPanel (Session& s) : session (s), crate (s.library())
     statusLabel.setBorderSize ({ 0, 12, 0, 8 });
     statusLabel.setJustificationType (juce::Justification::centredLeft);
     addAndMakeVisible (statusLabel);
+
+    onNotesEdited = [this] (int row, const juce::String& text) {
+        if (row >= 0 && row < static_cast<int> (rows.size()))
+        {
+            auto& t = rows[static_cast<std::size_t> (row)];
+            t.record.info.notes = text.trim().toStdString();
+            crate.setNotes (t.id, t.record.info.notes);
+        }
+    };
 
     crate.addChangeListener (this);
     setWantsKeyboardFocus (true);
@@ -141,6 +152,7 @@ void CatalogPanel::sortRows()
             case bpm:      return x.bpm.value_or (0) < y.bpm.value_or (0);
             case key:      return camelotOrder (x.camelot) < camelotOrder (y.camelot);
             case loudness: return x.loudnessLufs.value_or (-100) < y.loudnessLufs.value_or (-100);
+            case notes:    return text (x.notes) < text (y.notes);
             default:       return text (x.title) < text (y.title);
         }
     };
@@ -181,14 +193,15 @@ juce::String CatalogPanel::cellText (const StoredTrack& t, int column) const
             return juce::String (info.camelot) + "  " + juce::String (info.key);
         case loudness:
             return info.loudnessLufs ? juce::String (*info.loudnessLufs, 1) + " LUFS" : (info.analysed ? "-" : "...");
+        case notes:  return juce::String::fromUTF8 (info.notes.c_str());
         default: return {};
     }
 }
 
 void CatalogPanel::paintCell (juce::Graphics& g, int row, int column, int width, int height, bool)
 {
-    if (row < 0 || row >= static_cast<int> (rows.size()))
-        return;
+    if (row < 0 || row >= static_cast<int> (rows.size()) || column == notes)
+        return;  // notes are an editable cell component
     const auto& t = rows[static_cast<std::size_t> (row)];
     const bool numeric = column == time || column == bpm || column == loudness;
     const bool gone = missing.count (t.id) != 0;
@@ -209,6 +222,98 @@ void CatalogPanel::paintCell (juce::Graphics& g, int row, int column, int width,
     g.setColour (gone ? Colours::dimText.withAlpha (0.7f) : column == title ? hw::colour::silk : hw::colour::silk.withAlpha (0.72f));
     g.setFont (hw::label (column == title ? 16.0f : 15.0f, column == title && ! gone));
     g.drawText (text, area, just, true);
+}
+
+namespace
+{
+    /// The NOTES cell: the DJ's own words, in handwriting-ish silk. Double-click (or Return when selected) to
+    /// type; Return or clicking away saves, Escape cancels.
+    class NotesCell : public juce::Label
+    {
+    public:
+        explicit NotesCell (CatalogPanel& p) : owner (p)
+        {
+            setEditable (false, true, false);
+            setFont (hw::label (15.0f, false));
+            setColour (juce::Label::textColourId, hw::colour::silk.withAlpha (0.82f));
+            setColour (juce::Label::textWhenEditingColourId, hw::colour::silk);
+            setColour (juce::Label::backgroundWhenEditingColourId, juce::Colour (0xff1a120a));
+            setColour (juce::Label::outlineWhenEditingColourId, hw::colour::amber.withAlpha (0.7f));
+            setColour (juce::TextEditor::highlightColourId, hw::colour::amber.withAlpha (0.35f));
+            setColour (juce::CaretComponent::caretColourId, hw::colour::amber);
+            setBorderSize ({ 0, 8, 0, 8 });
+            setJustificationType (juce::Justification::centredLeft);
+            setMinimumHorizontalScale (1.0f);
+            onTextChange = [this] {
+                if (owner.onNotesEdited)
+                    owner.onNotesEdited (row, getText());
+            };
+        }
+
+        void show (int r, const juce::String& text, bool selected)
+        {
+            row = r;
+            isSelected = selected;
+            setText (text, juce::dontSendNotification);
+            repaint();
+        }
+
+        void paint (juce::Graphics& g) override
+        {
+            if (isBeingEdited())
+                return;
+            if (getText().isEmpty())
+            {
+                if (isSelected || isMouseOver())
+                {
+                    g.setColour (hw::colour::amberMid.withAlpha (0.6f));
+                    g.setFont (hw::label (14.0f, false));
+                    g.drawText ("+ double-click for a note", getLocalBounds().reduced (8, 0), juce::Justification::centredLeft, true);
+                }
+                return;
+            }
+            juce::Label::paint (g);
+        }
+
+        void mouseDown (const juce::MouseEvent& e) override
+        {
+            // A click on a note still picks the row, like anywhere else in the list.
+            owner.selectRowFromNotes (row, e.mods);
+            juce::Label::mouseDown (e);
+        }
+        void mouseEnter (const juce::MouseEvent&) override { repaint(); }
+        void mouseExit (const juce::MouseEvent&) override { repaint(); }
+
+    private:
+        CatalogPanel& owner;
+        int row = -1;
+        bool isSelected = false;
+    };
+}
+
+juce::Component* CatalogPanel::refreshComponentForCell (int row, int column, bool selected, juce::Component* existing)
+{
+    if (column != notes)
+    {
+        jassert (existing == nullptr);
+        return nullptr;
+    }
+    auto* cell = dynamic_cast<NotesCell*> (existing);
+    if (cell == nullptr)
+    {
+        delete existing;
+        cell = new NotesCell (*this);
+    }
+    const auto text = row >= 0 && row < static_cast<int> (rows.size()) ? cellText (rows[static_cast<std::size_t> (row)], notes) : juce::String();
+    if (! cell->isBeingEdited())
+        cell->show (row, text, selected);
+    return cell;
+}
+
+void CatalogPanel::selectRowFromNotes (int row, juce::ModifierKeys mods)
+{
+    if (row >= 0)
+        table.selectRowsBasedOnModifierKeys (row, mods, false);
 }
 
 void CatalogPanel::sortOrderChanged (int column, bool ascending)
@@ -417,6 +522,14 @@ void CatalogPanel::resized()
 
     area.removeFromTop (18);
     table.setBounds (area.reduced (4));
+    // NOTES fills what the other columns leave.
+    auto& header = table.getHeader();
+    int used = 0;
+    for (int i = 0; i < header.getNumColumns (true); ++i)
+        if (const auto id = header.getColumnIdOfIndex (i, true); id != notes)
+            used += header.getColumnWidth (id);
+    const auto spare = table.getWidth() - used - table.getVerticalScrollBar().getWidth() - 4;
+    header.setColumnWidth (notes, juce::jmax (160, spare));
 }
 
 void CatalogPanel::fileDragEnter (const juce::StringArray&, int, int)

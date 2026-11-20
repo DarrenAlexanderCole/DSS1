@@ -145,7 +145,7 @@ between two full-height walnut boards (`hw::sideBoard`, drawn by MainComponent o
 lit window for knob values, `hw::bay` an engraved module outline; labels print in dark ink. `hw::light()` is
 the lamps' level (warm-up with flicker, slow breathing, mains shimmer, a sag fed by the VU meters'
 loudness), applied to every glow; the VU needles are a sprung, damped second-order system at 60 Hz.
-The CHOP pad settings have backlit dot-matrix curve monitors (`ChopPanel::paintMonitor`).
+The CHOP pad settings have backlit curve monitors drawn as smooth ink (`ChopPanel::paintMonitor`).
 `Haptics` taps a Force Touch trackpad as knobs and faders cross their steps (`HapticsMac.mm`).
 
 (Earlier, 2026-11-18:)
@@ -223,8 +223,18 @@ The effects' compressor runs as an OPTO in the UI (`Effects::CompType` still hol
 program-dependent release and a soft knee, with attack and release set by `compAttackMs` / `compReleaseMs`. A
 3-band EQ (RBJ biquads: 120 Hz low shelf, 1 kHz bell, 6 kHz high shelf) sits in the wet path before detection,
 so it shapes both what is heard and what drives the squeeze; gain reduction is published for the readout.
-`BeatScope` reads the engine's output ring (`AudioEngine::recentOutput`), runs a 2048-point FFT into 28 log
-bands and draws them as a fading amber dot matrix under the recorder display.
+`BeatScope` reads the engine's output ring (`AudioEngine::recentOutput`), runs a 4096-point FFT into 72 log
+bands (30 Hz-16 kHz) and draws a smooth glowing curve with fading ghosts, a falling peak line and a kick bloom.
+
+Everything drawn behind glass goes through `Scope` (`scope::wave` for mirrored luminous waveforms with a
+smoothed core, `scope::trace` for glowing lines, `scope::fillUnder`, `scope::graticule`): the Prep waveform,
+the overview, the CHOP editor and its overview, and the recorder's take. Readouts use Rajdhani SemiBold with
+digits respaced to one width (`assets/fonts/RajdhaniTab-SemiBold.ttf`).
+
+Track notes live in `TrackInfo::notes` (JSON "notes", omitted when empty). Only `Crate::setNotes` changes them:
+`Crate::save` keeps the stored notes, since a deck's copy of a record can be older than an edit in Catalog.
+Rekordbox export writes them as the TRACK's Comments attribute. The app icon is rendered by
+`tools/render/render_icon.py` (print from `make_icon_print.py`) into `assets/icon/dss1_icon.png`.
 
 `src/engine/TakePlayer.h` plays the last take back, mixed in after the effects. Takes record into the temp
 folder and move to Music/DSS1 Recordings (and into the library) only when saved.

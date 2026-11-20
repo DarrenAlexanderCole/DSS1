@@ -1376,7 +1376,7 @@ const std::vector<float>& ChopPanel::slicePeaks()
 
 void ChopPanel::paintMonitor (juce::Graphics& g, int which)
 {
-    // A little backlit screen, lit like the VU meters, with a dot-matrix curve of what the knob does.
+    // A little backlit screen, lit like the VU meters, with a smooth inked curve of what the knob does.
     const auto area = monitorAreas[static_cast<std::size_t> (which)].toFloat();
     if (area.isEmpty())
         return;
@@ -1396,34 +1396,43 @@ void ChopPanel::paintMonitor (juce::Graphics& g, int which)
     const bool marked = b.marks[static_cast<std::size_t> (selected)].has_value() && b.audio != nullptr;
     const auto plot = face.reduced (6.0f, 6.0f);
     const auto ink = juce::Colour (0xff2a1606);
-    constexpr float dot = 2.0f, pitch = 3.0f;
-
-    // Faint grid of unlit pixels, like an LCD.
-    g.setColour (ink.withAlpha (0.07f));
-    for (auto y = plot.getY(); y <= plot.getBottom(); y += pitch)
-        for (auto x = plot.getX(); x <= plot.getRight(); x += pitch)
-            g.fillRect (x, y, dot, dot);
-    const auto pixel = [&] (float x, float y, float alpha = 0.9f) {
-        const auto qx = plot.getX() + std::round ((x - plot.getX()) / pitch) * pitch;
-        const auto qy = plot.getY() + std::round ((y - plot.getY()) / pitch) * pitch;
-        if (qy < plot.getY() - 0.5f || qy > plot.getBottom() + 0.5f)
-            return;
+    // A fine printed graticule, then curves drawn as smooth ink with a soft shadow, like a lit LCD instrument.
+    g.setColour (ink.withAlpha (0.09f));
+    for (int i = 1; i < 4; ++i)
+    {
+        g.fillRect (plot.getX() + plot.getWidth() * static_cast<float> (i) / 4.0f, plot.getY(), 1.0f, plot.getHeight());
+        g.fillRect (plot.getX(), plot.getY() + plot.getHeight() * static_cast<float> (i) / 4.0f, plot.getWidth(), 1.0f);
+    }
+    const auto inked = [&] (const juce::Path& p, float width = 1.7f, float alpha = 0.9f) {
+        g.setColour (ink.withAlpha (0.12f * alpha));
+        g.strokePath (p, juce::PathStrokeType (width * 3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         g.setColour (ink.withAlpha (alpha));
-        g.fillRect (qx, qy, dot, dot);
+        g.strokePath (p, juce::PathStrokeType (width, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     };
     const auto curve = [&] (auto fn, float alpha = 0.9f) {
-        // fn: 0 … 1 across → 0 … 1 up. Joined pixel by pixel so steep parts don't break.
-        std::optional<float> prevY;
-        for (auto x = plot.getX(); x <= plot.getRight(); x += pitch)
+        // fn: 0 … 1 across → 0 … 1 up.
+        std::vector<juce::Point<float>> pts;
+        for (auto x = plot.getX(); x <= plot.getRight() + 0.01f; x += 1.0f)
         {
             const auto t = (x - plot.getX()) / plot.getWidth();
-            const auto y = plot.getBottom() - juce::jlimit (0.0f, 1.0f, fn (t)) * plot.getHeight();
-            if (prevY)
-                for (auto yy = juce::jmin (*prevY, y); yy <= juce::jmax (*prevY, y); yy += pitch)
-                    pixel (x, yy, alpha);
-            pixel (x, y, alpha);
-            prevY = y;
+            pts.push_back ({ x, plot.getBottom() - juce::jlimit (0.0f, 1.0f, fn (t)) * plot.getHeight() });
         }
+        juce::Path p;
+        p.startNewSubPath (pts.front());
+        for (std::size_t i = 1; i < pts.size(); ++i)
+            p.lineTo (pts[i]);
+        inked (p, 1.7f, alpha);
+        return p;
+    };
+    const auto dashedV = [&] (float x, float alpha) {
+        juce::Path p;
+        p.startNewSubPath (x, plot.getY());
+        p.lineTo (x, plot.getBottom());
+        juce::Path d;
+        const float dashes[] = { 3.0f, 3.0f };
+        juce::PathStrokeType (1.0f).createDashedStroke (d, p, dashes, 2);
+        g.setColour (ink.withAlpha (alpha));
+        g.fillPath (d);
     };
     const auto& peaks = slicePeaks();
     const auto peakAt = [&] (float t) {
@@ -1446,17 +1455,34 @@ void ChopPanel::paintMonitor (juce::Graphics& g, int which)
         case 0:  // GAIN: the slice itself, as loud as it'll play; dashes where it would clip
         {
             const auto mid = plot.getCentreY();
-            for (auto x = plot.getX(); x <= plot.getRight(); x += pitch)
+            juce::Path shape;
+            const auto rawH = [&] (float x) {
+                const auto t = juce::jlimit (0.0f, 1.0f, (x - plot.getX()) / plot.getWidth());
+                return juce::jmin (1.0f, (marked ? peakAt (t) : 0.5f) * gain * envelope (t)) * plot.getHeight() * 0.5f;
+            };
+            // Averaged over a few pixels so the outline flows instead of jittering.
+            const auto h = [&] (float x) { return (rawH (x - 2) + 2.0f * rawH (x - 1) + 3.0f * rawH (x) + 2.0f * rawH (x + 1) + rawH (x + 2)) / 9.0f; };
+            shape.startNewSubPath (plot.getX(), mid - h (plot.getX()));
+            for (auto x = plot.getX() + 1.0f; x <= plot.getRight(); x += 1.0f)
+                shape.lineTo (x, mid - h (x));
+            for (auto x = plot.getRight(); x >= plot.getX(); x -= 1.0f)
+                shape.lineTo (x, mid + h (x));
+            shape.closeSubPath();
+            juce::ColourGradient body (ink.withAlpha (0.75f), 0, plot.getY(), ink.withAlpha (0.75f), 0, plot.getBottom(), false);
+            body.addColour (0.5, ink.withAlpha (0.35f));
+            g.setGradientFill (body);
+            g.fillPath (shape);
+            inked (shape, 0.9f, 0.8f);
+            // The clip line, top and bottom.
+            for (const auto y : { plot.getY(), plot.getBottom() })
             {
-                const auto t = (x - plot.getX()) / plot.getWidth();
-                const auto h = juce::jmin (1.0f, (marked ? peakAt (t) : 0.5f) * gain * envelope (t)) * plot.getHeight() * 0.5f;
-                for (auto y = mid - h; y <= mid + h; y += pitch)
-                    pixel (x, y, 0.85f);
-            }
-            for (auto x = plot.getX(); x <= plot.getRight(); x += pitch * 3)
-            {
-                pixel (x, plot.getY(), 0.35f);
-                pixel (x, plot.getBottom(), 0.35f);
+                juce::Path p, d;
+                p.startNewSubPath (plot.getX(), y);
+                p.lineTo (plot.getRight(), y);
+                const float dashes[] = { 4.0f, 3.0f };
+                juce::PathStrokeType (1.0f).createDashedStroke (d, p, dashes, 2);
+                g.setColour (ink.withAlpha (0.4f));
+                g.fillPath (d);
             }
             break;
         }
@@ -1464,26 +1490,33 @@ void ChopPanel::paintMonitor (juce::Graphics& g, int which)
         {
             const auto cycles = 2.0 * ratio;
             curve ([&] (float t) { return 0.5f + 0.42f * static_cast<float> (std::sin (t * cycles * juce::MathConstants<double>::twoPi)); });
-            pixel (plot.getCentreX(), plot.getY(), 0.4f);
-            pixel (plot.getCentreX(), plot.getBottom(), 0.4f);
             break;
         }
         case 2:  // ATTACK
         case 3:  // FADE: the envelope over the slice's length, the slice faint behind it
         {
             if (marked)
-                for (auto x = plot.getX(); x <= plot.getRight(); x += pitch)
-                {
-                    const auto t = (x - plot.getX()) / plot.getWidth();
-                    const auto h = juce::jmin (1.0f, peakAt (t)) * plot.getHeight();
-                    for (auto y = plot.getBottom() - h; y <= plot.getBottom(); y += pitch)
-                        pixel (x, y, 0.16f);
-                }
-            curve ([&] (float t) { return which == 2 ? juce::jmin (1.0f, t / juce::jmax (0.001f, attackT)) : juce::jmin (1.0f, (1.0f - t) / juce::jmax (0.001f, fadeT)); });
-            // A tick where the attack ends / the fade starts.
+            {
+                juce::Path body;
+                body.startNewSubPath (plot.getX(), plot.getBottom());
+                for (auto x = plot.getX(); x <= plot.getRight(); x += 1.0f)
+                    body.lineTo (x, plot.getBottom() - juce::jmin (1.0f, peakAt ((x - plot.getX()) / plot.getWidth())) * plot.getHeight());
+                body.lineTo (plot.getRight(), plot.getBottom());
+                body.closeSubPath();
+                g.setColour (ink.withAlpha (0.14f));
+                g.fillPath (body);
+            }
+            const auto env = curve ([&] (float t) { return which == 2 ? juce::jmin (1.0f, t / juce::jmax (0.001f, attackT)) : juce::jmin (1.0f, (1.0f - t) / juce::jmax (0.001f, fadeT)); });
+            auto under = env;
+            under.lineTo (plot.getRight(), plot.getBottom());
+            under.lineTo (plot.getX(), plot.getBottom());
+            under.closeSubPath();
+            juce::ColourGradient shade (ink.withAlpha (0.22f), 0, plot.getY(), ink.withAlpha (0.02f), 0, plot.getBottom(), false);
+            g.setGradientFill (shade);
+            g.fillPath (under);
+            // Where the attack ends / the fade starts.
             const auto tx = which == 2 ? juce::jmin (1.0f, attackT) : juce::jmax (0.0f, 1.0f - fadeT);
-            for (auto y = plot.getY(); y <= plot.getBottom(); y += pitch * 2)
-                pixel (plot.getX() + tx * plot.getWidth(), y, 0.45f);
+            dashedV (plot.getX() + tx * plot.getWidth(), 0.5f);
             break;
         }
         default: break;

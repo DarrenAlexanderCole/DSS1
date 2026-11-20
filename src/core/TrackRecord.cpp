@@ -143,6 +143,8 @@ json toJson (const TrackRecord& t)
             info["camelot"] = t.info.camelot;
         if (t.info.loudnessLufs)
             info["loudnessLufs"] = *t.info.loudnessLufs;
+        if (! t.info.notes.empty())
+            info["notes"] = t.info.notes;
         j["info"] = info;
     }
     j["sampleRate"] = t.sampleRate;
@@ -216,6 +218,7 @@ TrackRecord trackRecordFromJson (const json& j)
             t.info.bpm = it->at ("bpm").get<double>();
         t.info.key = it->value ("key", std::string());
         t.info.camelot = it->value ("camelot", std::string());
+        t.info.notes = it->value ("notes", std::string());
         if (it->contains ("loudnessLufs"))
             t.info.loudnessLufs = it->at ("loudnessLufs").get<double>();
     }

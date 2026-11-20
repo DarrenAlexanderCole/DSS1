@@ -61,6 +61,7 @@ private:
     // Peaks of the shown sample, one min/max pair per 256 frames (for drawing zoomed out).
     const io::DecodedAudio* peaksFor = nullptr;
     std::vector<float> peakMin, peakMax;
+    juce::Colour waveColour { 0xffff9a2e };
     static constexpr int peakBlock = 256;
 
     enum class Drag { none, marker, pan, overview } drag = Drag::none;

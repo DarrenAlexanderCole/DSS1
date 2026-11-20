@@ -1,4 +1,5 @@
 #include "TransportBar.h"
+#include "Scope.h"
 #include "Settings.h"
 #include "Theme.h"
 
@@ -154,18 +155,23 @@ void TransportBar::paint (juce::Graphics& g)
     const auto length = deck.length();
     if (! overview.empty())
     {
-        const auto mid = area.getCentreY();
         const auto played = length > 0 ? static_cast<float> (deck.position() / static_cast<double> (length)) : 0.0f;
-        const auto columns = static_cast<int> (overview.size());
-        const auto columnWidth = area.getWidth() / static_cast<float> (columns);
+        // Resampled to one column per pixel so the shape is smooth at any window size.
+        const auto inner = area.reduced (3, 4);
+        const auto columns = juce::jmax (1, static_cast<int> (inner.getWidth()));
+        std::vector<scope::Span> cols (static_cast<std::size_t> (columns));
+        const auto src = static_cast<double> (overview.size());
         for (int c = 0; c < columns; ++c)
         {
-            const auto h = overview[static_cast<std::size_t> (c)] * area.getHeight() * 0.44f;
-            const auto x = area.getX() + static_cast<float> (c) * columnWidth;
-            const bool done = static_cast<float> (c) / static_cast<float> (columns) < played;
-            g.setColour (done ? hw::colour::amberDim : hw::colour::amber.withAlpha (0.9f));
-            g.fillRect (x, mid - h, std::max (columnWidth - 0.5f, 0.5f), h * 2.0f);
+            const auto from = static_cast<std::size_t> (src * c / columns);
+            const auto to = juce::jmax (from + 1, static_cast<std::size_t> (src * (c + 1) / columns));
+            float h = 0;
+            for (auto i = from; i < to && i < overview.size(); ++i)
+                h = juce::jmax (h, overview[i]);
+            cols[static_cast<std::size_t> (c)] = { -h, h };
         }
+        scope::wave (g, inner, cols, inner.getWidth() / static_cast<float> (columns), hw::colour::amber,
+                     inner.getX() + played * inner.getWidth(), 0.46f);
         g.setColour (Colours::accent);
         g.fillRect (area.getX() + played * area.getWidth() - 1.0f, area.getY(), 2.0f, area.getHeight());
     }

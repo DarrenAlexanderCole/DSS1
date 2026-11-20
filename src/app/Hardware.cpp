@@ -20,7 +20,7 @@ namespace
             labelBold = juce::Typeface::createSystemTypefaceFor (ArchivoNarrowBold_ttf, ArchivoNarrowBold_ttfSize);
             labelMedium = juce::Typeface::createSystemTypefaceFor (ArchivoNarrowMedium_ttf, ArchivoNarrowMedium_ttfSize);
             brandFace = juce::Typeface::createSystemTypefaceFor (MichromaRegular_ttf, MichromaRegular_ttfSize);
-            vfdFace = juce::Typeface::createSystemTypefaceFor (VT323Regular_ttf, VT323Regular_ttfSize);
+            vfdFace = juce::Typeface::createSystemTypefaceFor (RajdhaniTabSemiBold_ttf, RajdhaniTabSemiBold_ttfSize);
             panelWear = juce::ImageCache::getFromMemory (panelwear_png, panelwear_pngSize);
             grime = juce::ImageCache::getFromMemory (grime_png, grime_pngSize);
             edgeWear = juce::ImageCache::getFromMemory (edgewear_png, edgewear_pngSize);
@@ -61,7 +61,8 @@ juce::Font label (float size, bool bold)
 }
 
 juce::Font brand (float size) { return fontFrom (Assets::get().brandFace, size); }
-juce::Font vfd (float size) { return fontFrom (Assets::get().vfdFace, size); }
+// Rajdhani's capitals sit lower in its line than the old display face's did; scaled so readouts keep their size.
+juce::Font vfd (float size) { return fontFrom (Assets::get().vfdFace, size * 1.06f); }
 
 //--- Light ----------------------------------------------------------------------------------------------------
 
@@ -327,13 +328,14 @@ void recess (juce::Graphics& g, juce::Rectangle<float> area, float corner)
 
 void glass (juce::Graphics& g, juce::Rectangle<float> area, float corner)
 {
-    // Layers over the lit display: a fine filament mesh (like a VFD's grid), a diagonal reflection of the room,
-    // and a bright edge where the glass meets the bezel.
+    // Layers over the lit display: a soft vignette where the glass curves into the bezel, a diagonal
+    // reflection of the room, and a bright edge where the glass meets the bezel.
     juce::Graphics::ScopedSaveState state (g);
     g.reduceClipRegion (area.toNearestInt());
-    g.setColour (juce::Colours::black.withAlpha (0.10f));
-    for (auto y = area.getY() + 1.0f; y < area.getBottom(); y += 3.0f)
-        g.fillRect (area.getX(), y, area.getWidth(), 1.0f);
+    juce::ColourGradient vignette (juce::Colours::transparentBlack, area.getCentreX(), area.getCentreY(), juce::Colours::black.withAlpha (0.28f),
+                                   area.getX(), area.getY(), true);
+    g.setGradientFill (vignette);
+    g.fillRoundedRectangle (area, corner);
     juce::ColourGradient sheen (juce::Colours::white.withAlpha (0.10f), area.getX(), area.getY(), juce::Colours::transparentWhite,
                                 area.getX() + area.getWidth() * 0.3f, area.getY() + area.getHeight() * 0.7f, false);
     sheen.addColour (0.55, juce::Colours::white.withAlpha (0.025f));

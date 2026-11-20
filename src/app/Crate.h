@@ -38,6 +38,9 @@ public:
     /// Saves a track's record (its path says which track). The snapshot updates once it's written.
     void save (const TrackRecord& record);
 
+    /// Sets a track's notes (typed in Catalog). Other saves keep the notes as they are.
+    void setNotes (std::int64_t id, const std::string& notes);
+
     /// Analyses tracks again: BPM, key, loudness and a new grid (the old grid is replaced).
     void analyseAgain (const std::vector<std::int64_t>& ids);
 

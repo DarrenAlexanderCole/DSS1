@@ -1,4 +1,5 @@
 #include "DesignPanel.h"
+#include "Scope.h"
 #include "Hardware.h"
 #include "Settings.h"
 #include "Theme.h"
@@ -597,8 +598,8 @@ void DesignPanel::paint (juce::Graphics& g)
         const auto blocksPerSecond = session.output().sampleRate() / 512.0;
         const auto shown = juce::jmax (static_cast<double> (takePeaks.size()), 10.0 * blocksPerSecond);
         const auto perColumn = shown / columns;
-        const auto mid = area.getCentreY();
-        g.setColour (recording ? juce::Colour (0xffff6a4a) : hw::colour::amber);
+        scope::graticule (g, area, 10, 4, hw::colour::amber);
+        std::vector<scope::Span> cols;
         for (int x = 0; x < columns; ++x)
         {
             const auto from = static_cast<std::size_t> (x * perColumn);
@@ -608,9 +609,10 @@ void DesignPanel::paint (juce::Graphics& g)
             float peak = 0;
             for (auto i = from; i < to; ++i)
                 peak = juce::jmax (peak, takePeaks[i]);
-            const auto h = juce::jmin (1.0f, peak) * area.getHeight() * 0.48f;
-            g.fillRect (area.getX() + static_cast<float> (x), mid - h, 1.0f, juce::jmax (1.0f, h * 2));
+            cols.push_back ({ -juce::jmin (1.0f, peak), juce::jmin (1.0f, peak) });
         }
+        scope::wave (g, area.withWidth (static_cast<float> (cols.size())), cols, 1.0f, recording ? juce::Colour (0xffff6a4a) : hw::colour::amber,
+                     -1.0e9f, 0.48f);
         // The playback position.
         if (! recording && player.hasTake())
         {

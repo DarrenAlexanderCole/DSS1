@@ -125,3 +125,16 @@ TEST_CASE ("The test export puts cues on bar lines of a 120 BPM grid", "[testexp
     CHECK_FALSE (shortTrack.savedLoops[0]);
     CHECK (formatTime (64.0) == "1:04.000");
 }
+
+TEST_CASE ("A track's notes survive a JSON round trip, and records without notes still read", "[track][json]")
+{
+    auto t = makeTrack();
+    t.info.notes = "opener, builds fast - don't mix out before the 2nd drop";
+    const auto json = toJson (t);
+    CHECK (json["info"]["notes"] == t.info.notes);
+    CHECK (trackRecordFromJson (nlohmann::json::parse (json.dump())).info.notes == t.info.notes);
+
+    auto older = toJson (makeTrack());
+    CHECK_FALSE (older["info"].contains ("notes"));
+    CHECK (trackRecordFromJson (older).info.notes.empty());
+}

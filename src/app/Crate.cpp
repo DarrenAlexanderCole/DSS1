@@ -180,10 +180,13 @@ void Crate::findMissingIn (const juce::File& folder)
 
 void Crate::save (const TrackRecord& record)
 {
-    post ([this, record] {
+    post ([this, record = record]() mutable {
         try
         {
             const std::lock_guard lock (storeLock);
+            // Notes are only changed by setNotes: a deck's copy of the record may be older than the notes.
+            if (const auto stored = store->byPath (record.identity.path))
+                record.info.notes = stored->record.info.notes;
             store->save (record);
         }
         catch (const std::exception& e)
@@ -197,6 +200,37 @@ void Crate::save (const TrackRecord& record)
             for (auto& t : snapshot)
                 if (t.record.identity.path == record.identity.path)
                     t.record = record;
+        }
+        sendChangeMessage();
+    });
+}
+
+void Crate::setNotes (std::int64_t id, const std::string& notes)
+{
+    post ([this, id, notes] {
+        std::optional<TrackRecord> saved;
+        try
+        {
+            const std::lock_guard lock (storeLock);
+            if (auto t = store->byId (id))
+            {
+                t->record.info.notes = notes;
+                store->save (t->record);
+                saved = t->record;
+            }
+        }
+        catch (const std::exception& e)
+        {
+            setStatus (juce::String ("Couldn't save the notes: ") + e.what());
+            return;
+        }
+        if (! saved)
+            return;
+        {
+            const std::lock_guard lock (stateLock);
+            for (auto& t : snapshot)
+                if (t.id == id)
+                    t.record.info.notes = notes;
         }
         sendChangeMessage();
     });

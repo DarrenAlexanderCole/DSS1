@@ -5,7 +5,7 @@ juce_add_binary_data(dss1_assets
         ${PROJECT_SOURCE_DIR}/assets/fonts/ArchivoNarrow-Bold.ttf
         ${PROJECT_SOURCE_DIR}/assets/fonts/ArchivoNarrow-Medium.ttf
         ${PROJECT_SOURCE_DIR}/assets/fonts/Michroma-Regular.ttf
-        ${PROJECT_SOURCE_DIR}/assets/fonts/VT323-Regular.ttf
+        ${PROJECT_SOURCE_DIR}/assets/fonts/RajdhaniTab-SemiBold.ttf
         ${PROJECT_SOURCE_DIR}/assets/textures/panel-wear.png
         ${PROJECT_SOURCE_DIR}/assets/textures/grime.png
         ${PROJECT_SOURCE_DIR}/assets/textures/edge-wear.png
@@ -38,6 +38,7 @@ juce_add_gui_app(DSS1
     PRODUCT_NAME          "DSS1"
     COMPANY_NAME          "DSS1"
     BUNDLE_ID             "com.dss1.v2"
+    ICON_BIG              ${PROJECT_SOURCE_DIR}/assets/icon/dss1_icon.png
     VERSION               ${PROJECT_VERSION}
     NEEDS_WEB_BROWSER     FALSE
     NEEDS_CURL            FALSE
@@ -61,6 +62,7 @@ target_sources(DSS1 PRIVATE
     ChopPanel.cpp
     MidiPads.cpp
     BeatScope.cpp
+    Scope.cpp
     Haptics.cpp
     ChopView.cpp
     Session.cpp

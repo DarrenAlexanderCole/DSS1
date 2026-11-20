@@ -9,9 +9,9 @@
 namespace dss1::ui
 {
 
-/// A dot-matrix graphic-EQ display of what you hear, for the recorder's window: 28 bands from 40 Hz to
-/// 16 kHz. Bars jump up and leave glowing trails as they fall, peak dots drift down, and the whole matrix
-/// swells on each kick, so you see the beat as much as hear it. Lit with the rest of the machine.
+/// A spectrum of what you hear, for the recorder's window: a smooth luminous curve from 30 Hz to 16 kHz with a
+/// gradient fill, ghosts of the last moments fading behind it, a peak-hold line that drifts down, and a bloom
+/// on each kick, so you see the beat as much as hear it. Lit with the rest of the machine.
 class BeatScope : public juce::Component, private juce::Timer
 {
 public:
@@ -24,12 +24,12 @@ private:
     void analyse();
 
     AudioEngine& engine;
-    static constexpr int fftOrder = 11, fftSize = 1 << fftOrder, bands = 28;
+    static constexpr int fftOrder = 12, fftSize = 1 << fftOrder, bands = 72, ghosts = 7;
     std::vector<float> samples, window;
     std::vector<std::complex<float>> spectrum;
     std::array<float, bands> level {}, peak {}, peakVelocity {};
-    std::vector<float> cells;  // brightness of each dot (bands x rows), fading
-    int rows = 1;
+    std::array<std::array<float, bands>, ghosts> history {};  // the last few frames, newest first
+    int frame = 0;
     float bassAverage = 0, pulse = 0;
 };
 

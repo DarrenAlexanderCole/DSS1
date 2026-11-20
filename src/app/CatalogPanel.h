@@ -10,7 +10,8 @@
 namespace dss1::ui
 {
 
-/// The Catalog stage: the crate as a sortable table (title, artist, album, genre, time, BPM, key, loudness),
+/// The Catalog stage: the crate as a sortable table (title, artist, album, genre, time, BPM, key, loudness and
+/// the DJ's own notes, typed in place),
 /// music added by dropping files, folders or zips, watched folders, missing files found again, and a deck to
 /// listen with.
 class CatalogPanel : public juce::Component,
@@ -20,6 +21,11 @@ class CatalogPanel : public juce::Component,
 {
 public:
     CatalogPanel (Session& session);
+
+    /// A NOTES cell was edited (row, new text).
+    std::function<void (int, const juce::String&)> onNotesEdited;
+    /// A click on a NOTES cell selects its row like a click anywhere else in the list.
+    void selectRowFromNotes (int row, juce::ModifierKeys);
 
     /// Called with "Export Selected Tracks...": the window shows Deliver set to the selection.
     std::function<void()> onExportSelected;
@@ -42,6 +48,7 @@ private:
     void paintCell (juce::Graphics&, int row, int column, int width, int height, bool selected) override;
     void sortOrderChanged (int column, bool ascending) override;
     void cellDoubleClicked (int row, int column, const juce::MouseEvent&) override;
+    juce::Component* refreshComponentForCell (int row, int column, bool selected, juce::Component* existing) override;
     void cellClicked (int row, int column, const juce::MouseEvent&) override;
     void returnKeyPressed (int row) override;
     void selectedRowsChanged (int lastRowSelected) override;

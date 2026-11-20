@@ -83,6 +83,8 @@ rekordbox::Collection rekordboxCollection (const std::vector<StoredTrack>& track
         details.tonality = r.info.camelot;
         details.averageBpm = r.info.bpm;
         c.tracks.push_back (rekordbox::exportTrack (r, details));
+        if (! r.info.notes.empty())
+            c.tracks.back().otherAttributes.emplace_back ("Comments", r.info.notes);
         playlist.trackKeys.push_back (details.trackId);
     }
     c.playlists.children.push_back (std::move (playlist));

@@ -68,6 +68,7 @@ struct TrackInfo
     std::string key;            ///< e.g. "F minor"
     std::string camelot;        ///< e.g. "4A"
     std::optional<double> loudnessLufs;
+    std::string notes;          ///< the DJ's own notes, typed in Catalog (exported to Rekordbox as Comments)
     bool analysed = false;
     bool operator== (const TrackInfo&) const = default;
 };
