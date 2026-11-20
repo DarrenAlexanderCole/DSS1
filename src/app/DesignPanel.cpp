@@ -223,10 +223,20 @@ DesignPanel::DesignPanel (Session& s, Crate& c) : session (s), crate (c), fx (s.
     sw (releaseSwitch, fx.compFastRelease, "fx.compFastRelease", "FAST", "SLOW", "Release: fast pumps and breathes, slow stays smooth");
     sw (ratioSwitch, fx.compHighRatio, "fx.compHighRatio", "HIGH", "LOW", "Ratio: high is close to limiting");
     sw (hpfSwitch, fx.compSidechainHpf, "fx.compSidechainHpf", "ON", "OFF", "Sidechain high-pass: the compressor ignores the low end, so the kick doesn't pump the mix");
-    sw (crushSwitch, fx.crushOn, "fx.crush", "ON", "OFF", "Crush: 12-bit grit at a third of the rate, like an old drum sampler, before the compressor");
-    crushSwitch.setToggleState (false, juce::dontSendNotification);  // starts off, like the effects
-    fx.crushOn = false;
-    for (auto* b : { &attackSwitch, &releaseSwitch, &ratioSwitch, &hpfSwitch, &crushSwitch })
+    sw (crushSwitch, fx.crushOn, "fx.crush", "ON", "OFF", "CRUSH: 12-bit grit at a third of the rate, like an old drum sampler (with COMP on)");
+    sw (driveSwitch, fx.compDrive, "fx.compDrive", "ON", "OFF", "DRIVE: pushes the sound hard into a saturator before the squeeze: grit, then fuzz (with COMP on)");
+    sw (punchSwitch, fx.compPunch, "fx.compPunch", "ON", "OFF", "PUNCH: a transient shaper after the squeeze, so every hit jumps out (with COMP on)");
+    sw (squashSwitch, fx.compSquash, "fx.compSquash", "ON", "OFF", "SQUASH: the compressor becomes a brick, 20:1 and very fast: pumping, breathing, loud (with COMP on)");
+    sw (pingPongSwitch, fx.echoPingPong, "fx.echoPingPong", "ON", "OFF", "PING (ping pong): the repeats bounce left and right");
+    sw (tapeSwitch, fx.echoTape, "fx.echoTape", "ON", "OFF", "TAPE: worn tape echo, wobbling, dark and saturated; turn FEEDBACK up for a dub howl");
+    sw (duckSwitch, fx.echoDuck, "fx.echoDuck", "ON", "OFF", "DUCK: the repeats stay down while the music plays and bloom in the gaps");
+    sw (freezeSwitch, fx.echoFreeze, "fx.echoFreeze", "ON", "OFF", "FREEZE: stop taking in new sound and loop what's in the echo until you turn it off");
+    sw (gatedSwitch, fx.reverbGated, "fx.reverbGated", "ON", "OFF", "GATE: a big room that slams shut when each hit ends (the 80s gated snare)");
+    sw (shimmerSwitch, fx.reverbShimmer, "fx.reverbShimmer", "ON", "OFF", "HALO (shimmer): the tail rises an octave into a glowing halo");
+    // FREEZE always starts off: a frozen loop left on from last time would be a surprise.
+    freezeSwitch.setToggleState (false, juce::dontSendNotification);
+    fx.echoFreeze = false;
+    for (auto* b : { &attackSwitch, &releaseSwitch, &ratioSwitch, &hpfSwitch })
     {
         b->setToggleState (false, juce::dontSendNotification);
         b->setVisible (false);
@@ -244,7 +254,8 @@ DesignPanel::DesignPanel (Session& s, Crate& c) : session (s), crate (c), fx (s.
     addAndMakeVisible (holdButton);
     resetFxButton.setTooltip ("Turn every effect off");
     resetFxButton.onClick = [this] {
-        for (auto* b : { &filterOn, &echoOn, &reverbOn, &compOn, &crushSwitch })
+        for (auto* b : { &filterOn, &echoOn, &reverbOn, &compOn, &crushSwitch, &driveSwitch, &punchSwitch, &squashSwitch, &pingPongSwitch, &tapeSwitch,
+                         &duckSwitch, &freezeSwitch, &gatedSwitch, &shimmerSwitch })
             b->setToggleState (false, juce::sendNotificationSync);
         fx.reset();
     };
@@ -284,10 +295,15 @@ DesignPanel::DesignPanel (Session& s, Crate& c) : session (s), crate (c), fx (s.
         padSwitch.setButtonText (padNames[i]);
         padSwitch.getProperties().set ("onText", "DB PAD");
         padSwitch.getProperties().set ("offText", "OFF");
-        padSwitch.setTooltip (juce::String ("Record ") + padNames[i] + " dB quieter (what you hear doesn't change)");
+        padSwitch.setTooltip (juce::String ("Record ") + padNames[i] + " dB quieter (what you hear doesn't change, unless MONITOR is on)");
         padSwitch.onClick = [this, i] { setRecordPad (padSwitches[static_cast<std::size_t> (i)].getToggleState() ? i : -1); };
         addAndMakeVisible (padSwitch);
     }
+    monitorSwitch.getProperties().set ("onText", "ON");
+    monitorSwitch.getProperties().set ("offText", "OFF");
+    monitorSwitch.setTooltip ("MONITOR: hear exactly what's being recorded, with the input pad, so you know how the take will sound");
+    monitorSwitch.onClick = [this] { session.output().setMonitorRecording (monitorSwitch.getToggleState()); };
+    addAndMakeVisible (monitorSwitch);
     setRecordPad (settings->getIntValue ("recordPad", -1));
     addAndMakeVisible (scope);
     hwStyle (revealButton, KeyStyle::cream);
@@ -823,11 +839,26 @@ void DesignPanel::resized()
     area.removeFromLeft (gap);
     compArea = area;
 
-    const auto layBay = [&] (juce::Rectangle<int> bay, juce::ToggleButton& on, std::initializer_list<int> knobIndices) {
+    const auto layBay = [&] (juce::Rectangle<int> bay, juce::ToggleButton& on, std::initializer_list<int> knobIndices,
+                             std::initializer_list<juce::ToggleButton*> switches = {}) {
         auto inner = bay.reduced (10, 10);
         // A taller top row (the COMP bay's monitors live in it), so the knobs line up across every bay.
         auto topRow = inner.removeFromTop (66);
-        on.setBounds (topRow.removeFromTop (34).removeFromLeft (130));
+        on.setBounds (topRow.withHeight (34).removeFromLeft (switches.size() > 0 ? 104 : 130));
+        // The bay's shaping switches beside its on switch, in pairs stacked two high, spread over the rest of the
+        // top row.
+        if (switches.size() > 0)
+        {
+            const auto block = topRow.withTrimmedLeft (104).withY (topRow.getY() - 2).withHeight (70);
+            const auto cols = static_cast<int> ((switches.size() + 1) / 2);
+            const auto cw = juce::jmin (100, block.getWidth() / cols);
+            int i = 0;
+            for (auto* s : switches)
+            {
+                s->setBounds (block.getX() + (i / 2) * cw, block.getY() + (i % 2) * 35, cw, 34);
+                ++i;
+            }
+        }
         inner.removeFromTop (20);
         inner.removeFromBottom (22);
         const auto w = inner.getWidth() / static_cast<int> (knobIndices.size());
@@ -839,14 +870,16 @@ void DesignPanel::resized()
         }
     };
     layBay (filterArea, filterOn, { 0 });
-    layBay (echoArea, echoOn, { 1, 2, 3 });
-    layBay (reverbArea, reverbOn, { 4, 5 });
-    layBay (compArea, compOn, { 10, 11, 12, 6, 8, 9, 7 });  // EQ, then AMOUNT, ATTACK, RELEASE, MIX
+    layBay (echoArea, echoOn, { 1, 2, 3 }, { &pingPongSwitch, &tapeSwitch, &duckSwitch, &freezeSwitch });
+    layBay (reverbArea, reverbOn, { 4, 5 }, { &gatedSwitch, &shimmerSwitch });
+    layBay (compArea, compOn, { 10, 11, 12, 6, 8, 9, 7 }, { &driveSwitch, &squashSwitch, &punchSwitch, &crushSwitch });  // EQ, AMOUNT, ATTACK, RELEASE, MIX
     {
         // Monitors along the top of the COMP bay, centred as a group in the space right of its switch, with even
         // gaps: EQ, the transfer curve, the envelope and the mix (widths 3 : 1.4 : 2 : 1.2).
         const auto inner = compArea.reduced (10, 10);
-        const auto free = juce::Rectangle<int> (inner.getX() + 140, inner.getY(), inner.getWidth() - 140, 66);
+        // Right of its switches (laid out by layBay), the monitors.
+        const auto taken = crushSwitch.getRight() + 6 - inner.getX();
+        const auto free = juce::Rectangle<int> (inner.getX() + taken, inner.getY(), inner.getWidth() - taken, 66);
         constexpr int monitorGap = 14, h = 58;
         const float weights[] { 3.0f, 1.4f, 2.0f, 1.2f };
         const auto margin = juce::jmax (12, free.getWidth() / 28);
@@ -880,7 +913,7 @@ void DesignPanel::resized()
     auto keys = rec.removeFromTop (46);
     revealButton.setBounds (keys.removeFromRight (130).reduced (0, 4));
     keys.removeFromRight (30);
-    const auto kw = juce::jmin (130, (keys.getWidth() - 3 * 84 - 6 * 8) / 5);
+    const auto kw = juce::jmin (130, (keys.getWidth() - 3 * 84 - 122 - 6 * 8) / 5);
     for (auto* b : { &recordButton, &playTakeButton, &saveTakeButton, &discardButton, &toChopButton })
     {
         b->setBounds (keys.removeFromLeft (kw));
@@ -889,6 +922,8 @@ void DesignPanel::resized()
     keys.removeFromLeft (10);
     for (auto& sw : padSwitches)
         sw.setBounds (keys.removeFromLeft (84));
+    keys.removeFromLeft (12);
+    monitorSwitch.setBounds (keys.removeFromLeft (110));
     rec.removeFromTop (16);
     timeArea = rec.removeFromLeft (juce::jmin (380, rec.getWidth() / 3)).reduced (4);
     scope.setBounds (timeArea.reduced (14, 10).withTrimmedTop (96));

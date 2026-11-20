@@ -48,8 +48,10 @@ void Effects::prepare (double sampleRate, int)
     }
     // Smoothing: about 20 ms for levels and the filter, 150 ms for delay time (a tape-like glide).
     const auto per = [this] (double seconds) { return static_cast<float> (1.0 - std::exp (-1.0 / (seconds * rate))); };
-    for (auto* s : { &filterAmount, &filterWet, &echoWet, &echoFb, &reverbWet, &reverbRoom, &crushWet, &compWet })
+    for (auto* s : { &filterAmount, &filterWet, &echoWet, &echoFb, &reverbWet, &reverbRoom, &crushWet, &compWet, &gateMix, &shimmerMix, &freezeMix })
         s->step = per (0.02);
+    for (auto& line : shimmerLine)
+        line.assign (static_cast<std::size_t> (rate * 0.1) + 2, 0.0f);  // a 100 ms window for the octave shifter
     echoTime.step = per (0.15);
     echoTime.value = echoTime.target = static_cast<float> (60.0 / 120.0 * 0.75 * rate);
     reset();
@@ -116,6 +118,12 @@ void Effects::reset() noexcept
             std::fill (a.buffer.begin(), a.buffer.end(), 0.0f);
     crushHeld = {};
     crushCounter = 0;
+    driveX = driveY = {};
+    punchFast = punchSlow = duckEnv = gateEnv = gateGain = 0;
+    gateHold = 0;
+    for (auto& line : shimmerLine)
+        std::fill (line.begin(), line.end(), 0.0f);
+    shimmerBack = {};
     compEnvelope = compRms = compSlow = 0;
     for (auto& band : eq)
         band.z1 = band.z2 = {};
@@ -142,7 +150,18 @@ void Effects::process (float* const* channels, int numChannels, int numFrames) n
     echoFb.target = std::clamp (echoFeedback.load (std::memory_order_relaxed), 0.0f, 0.95f);
     reverbWet.target = reverbOn.load (std::memory_order_relaxed) ? std::clamp (reverbMix.load (std::memory_order_relaxed), 0.0f, 1.0f) : 0.0f;
     reverbRoom.target = 0.7f + 0.28f * std::clamp (reverbSize.load (std::memory_order_relaxed), 0.0f, 1.0f);
-    crushWet.target = crushOn.load (std::memory_order_relaxed) ? 1.0f : 0.0f;
+    // CRUSH lives in the COMP bay, so it works while COMP is on.
+    crushWet.target = crushOn.load (std::memory_order_relaxed) && compOn.load (std::memory_order_relaxed) ? 1.0f : 0.0f;
+    const bool drive = compDrive.load (std::memory_order_relaxed), punch = compPunch.load (std::memory_order_relaxed);
+    const bool squash = compSquash.load (std::memory_order_relaxed);
+    const bool pingPong = echoPingPong.load (std::memory_order_relaxed), tape = echoTape.load (std::memory_order_relaxed);
+    const bool duck = echoDuck.load (std::memory_order_relaxed);
+    freezeMix.target = echoFreeze.load (std::memory_order_relaxed) && echoOn.load (std::memory_order_relaxed) ? 1.0f : 0.0f;
+    gateMix.target = reverbGated.load (std::memory_order_relaxed) ? 1.0f : 0.0f;
+    shimmerMix.target = reverbShimmer.load (std::memory_order_relaxed) ? 1.0f : 0.0f;
+    // A tape echo's feedback can pass unity (it saturates instead of exploding), for the dub howl.
+    if (tape)
+        echoFb.target = std::clamp (echoFeedback.load (std::memory_order_relaxed), 0.0f, 0.95f) * 1.12f;
     const auto levels = std::pow (2.0f, 11.0f);  // 12 bit
     const int hold = 3;                           // a third of the rate
 
@@ -166,7 +185,11 @@ void Effects::process (float* const* channels, int numChannels, int numFrames) n
         case CompType::tube: ch = { fastA ? 8.0f : 20.0f, fastR ? 150.0f : 400.0f, high ? 4.0f : 2.0f, 18.0f, 0.5f }; break;
         case CompType::fet:  ch = { fastA ? 0.05f : 0.8f, fastR ? 30.0f : 80.0f, high ? 20.0f : 4.0f, 1.0f, 0.25f }; break;
     }
-    const auto thresholdDb = -36.0f * std::clamp (compAmount.load (std::memory_order_relaxed), 0.0f, 1.0f);
+    if (squash)
+        ch = { 0.1f, 50.0f, 20.0f, 1.0f, ch.drive };
+    const auto thresholdDb = -36.0f * std::clamp (compAmount.load (std::memory_order_relaxed), 0.0f, 1.0f) - (squash ? 12.0f : 0.0f);
+    const auto punchFastAtt = std::exp (-1.0f / (0.0005f * static_cast<float> (rate))), punchFastRel = std::exp (-1.0f / (0.02f * static_cast<float> (rate)));
+    const auto punchSlowAtt = std::exp (-1.0f / (0.025f * static_cast<float> (rate))), punchSlowRel = std::exp (-1.0f / (0.25f * static_cast<float> (rate)));
     const auto attackCoeff = std::exp (-1.0f / (0.001f * ch.attackMs * static_cast<float> (rate)));
     const auto releaseCoeff = std::exp (-1.0f / (0.001f * ch.releaseMs * static_cast<float> (rate)));
     const auto rmsCoeff = std::exp (-1.0f / (0.010f * static_cast<float> (rate)));
@@ -230,6 +253,16 @@ void Effects::process (float* const* channels, int numChannels, int numFrames) n
             for (std::size_t c = 0; c < 2; ++c)
                 for (auto& band : eq)
                     eqd[c] = band.process (eqd[c], c);
+            if (drive)
+                for (std::size_t c = 0; c < 2; ++c)
+                {
+                    // +18 dB into an asymmetric saturator (even and odd harmonics), back down, and the DC the
+                    // asymmetry makes taken out again.
+                    const auto shaped = (std::tanh (eqd[c] * 8.0f + 0.25f) - std::tanh (0.25f)) * 0.32f;
+                    driveY[c] = shaped - driveX[c] + 0.9985f * driveY[c];
+                    driveX[c] = shaped;
+                    eqd[c] = driveY[c];
+                }
             float detect[2] { eqd[0], eqd[1] };
             if (hpf)  // ignore the low end, so the kick doesn't pump everything
                 for (std::size_t c = 0; c < 2; ++c)
@@ -266,9 +299,22 @@ void Effects::process (float* const* channels, int numChannels, int numFrames) n
                                                  : release * compEnvelope + (1.0f - release) * target;
             deepest = std::min (deepest, compEnvelope);
             const auto gain = std::pow (10.0f, (compEnvelope + makeupDb) / 20.0f);
+            // PUNCH: how far the fast envelope jumps above the slow one is a hit; lift it (up to +12 dB).
+            float punchGain = 1.0f;
+            if (punch)
+            {
+                const auto l = std::max (std::abs (eqd[0]), std::abs (eqd[1])) * gain;
+                punchFast = l > punchFast ? punchFastAtt * punchFast + (1.0f - punchFastAtt) * l : punchFastRel * punchFast + (1.0f - punchFastRel) * l;
+                punchSlow = l > punchSlow ? punchSlowAtt * punchSlow + (1.0f - punchSlowAtt) * l : punchSlowRel * punchSlow + (1.0f - punchSlowRel) * l;
+                punchGain = std::clamp (std::pow ((punchFast + 1e-5f) / (punchSlow + 1e-5f), 1.4f), 0.7f, 4.0f);
+            }
             for (std::size_t c = 0; c < 2; ++c)
             {
                 auto squeezed = eqd[c] * gain;
+                if (punch)
+                    squeezed = std::tanh (squeezed * punchGain * 0.9f) / 0.9f;  // soft ceiling so the hits don't clip
+                if (squash)
+                    squeezed = std::tanh (squeezed * 1.4f) / 1.4f;
                 if (ch.drive > 0)
                 {
                     // Tube: warm, even harmonics (a little asymmetry). FET: a touch of odd-harmonic bite.
@@ -281,31 +327,74 @@ void Effects::process (float* const* channels, int numChannels, int numFrames) n
         }
 
         // --- Echo: read behind the write head (linear interpolation), darken the repeats, feed back.
-        const auto delay = echoTime.next();
+        auto delay = echoTime.next();
         const auto eWet = echoWet.next();
         const auto fb = echoFb.next();
+        const auto freeze = freezeMix.next();
+        if (tape)
+        {
+            // Wow (slow) and flutter (fast) move the tape under the head.
+            wowPhase += 0.6 / rate;
+            flutterPhase += 7.0 / rate;
+            if (wowPhase >= 1.0) wowPhase -= 1.0;
+            if (flutterPhase >= 1.0) flutterPhase -= 1.0;
+            delay *= 1.0f + 0.004f * static_cast<float> (std::sin (2.0 * pi * wowPhase)) + 0.0012f * static_cast<float> (std::sin (2.0 * pi * flutterPhase));
+            delay = std::min (delay, static_cast<float> (lineSize - 2));
+        }
+        if (duck)
+        {
+            const auto l = std::max (std::abs (out[0]), std::abs (out[1]));
+            duckEnv = l > duckEnv ? 0.01f * l + 0.99f * duckEnv : 0.99985f * duckEnv + 0.00015f * l;
+        }
+        const auto duckGain = duck ? 1.0f / (1.0f + duckEnv * 8.0f) : 1.0f;
         auto readPos = static_cast<double> (echoWrite) - static_cast<double> (delay);
         while (readPos < 0)
             readPos += static_cast<double> (lineSize);
         const auto r0 = static_cast<std::size_t> (readPos);
         const auto frac = static_cast<float> (readPos - static_cast<double> (r0));
         const auto r1 = (r0 + 1) % lineSize;
+        float delayed[2];
         for (std::size_t c = 0; c < 2; ++c)
         {
-            const auto delayed = echoLine[c][r0] * (1.0f - frac) + echoLine[c][r1] * frac;
-            echoTone[c] += (delayed - echoTone[c]) * 0.35f;  // gentle low-pass in the loop, like tape
+            delayed[c] = echoLine[c][r0] * (1.0f - frac) + echoLine[c][r1] * frac;
+            // Gentle low-pass in the loop, like tape (darker with TAPE; none while frozen, so the loop holds).
+            const auto tone = (tape ? 0.22f : 0.35f) + (1.0f - (tape ? 0.22f : 0.35f)) * freeze;
+            echoTone[c] += (delayed[c] - echoTone[c]) * tone;
+        }
+        for (std::size_t c = 0; c < 2; ++c)
+        {
             // Only what goes in while echo is on gets echoed; the tail keeps ringing after it's turned off.
-            echoLine[c][echoWrite] = out[c] * eWet + echoTone[c] * fb;
-            out[c] += echoTone[c];
+            // PING PONG: the sound goes in on the left and each repeat crosses to the other side.
+            const auto input = pingPong ? (c == 0 ? (out[0] + out[1]) * 0.5f * eWet : 0.0f) : out[c] * eWet;
+            auto back = (pingPong ? echoTone[1 - c] : echoTone[c]) * fb;
+            if (tape)
+                back = std::tanh (back * 1.3f) / 1.3f;  // saturates instead of running away
+            // FREEZE: no new sound in, and the loop goes round at exactly unity.
+            const auto loop = pingPong ? echoTone[1 - c] : echoTone[c];
+            echoLine[c][echoWrite] = (input + back) * (1.0f - freeze) + loop * freeze;
+            out[c] += echoTone[c] * duckGain;
         }
         echoWrite = (echoWrite + 1) % lineSize;
 
         // --- Reverb (Freeverb): eight damped combs in parallel, four allpasses in series.
         const auto rWet = reverbWet.next();
         const auto room = reverbRoom.next();
+        const auto gated = gateMix.next();
+        const auto shimmer = shimmerMix.next();
         if (rWet > 1e-4f)
         {
-            const auto input = (out[0] + out[1]) * 0.015f * rWet;
+            // GATED: a big room that slams shut when the hit is over.
+            const auto level = std::max (std::abs (out[0]), std::abs (out[1]));
+            gateEnv = level > gateEnv ? level : gateEnv * 0.9995f;
+            if (level > 0.08f)
+                gateHold = static_cast<int> (rate * 0.13);
+            else if (gateHold > 0)
+                --gateHold;
+            const auto gateTarget = gateHold > 0 ? 1.0f : 0.0f;
+            gateGain += (gateTarget - gateGain) * (gateTarget > gateGain ? 0.02f : 0.004f);
+            const auto shapedRoom = room + (0.985f - room) * gated;
+            auto input = (out[0] + out[1]) * 0.015f * rWet;
+            input += (shimmerBack[0] + shimmerBack[1]) * 0.5f * 0.012f * shimmer;
             for (std::size_t c = 0; c < 2; ++c)
             {
                 float acc = 0;
@@ -314,7 +403,7 @@ void Effects::process (float* const* channels, int numChannels, int numFrames) n
                     auto& v = comb.buffer[comb.index];
                     comb.store = v * 0.8f + comb.store * 0.2f;  // damping
                     acc += v;
-                    v = input + comb.store * room;
+                    v = input + comb.store * shapedRoom;
                     comb.index = (comb.index + 1) % comb.buffer.size();
                 }
                 for (auto& ap : allpasses[c])
@@ -325,8 +414,38 @@ void Effects::process (float* const* channels, int numChannels, int numFrames) n
                     acc = o;
                     ap.index = (ap.index + 1) % ap.buffer.size();
                 }
-                out[c] += acc * 3.0f;
+                // SHIMMER: the tail, an octave up, goes back in (two taps sweep through a 100 ms window at
+                // twice the speed, crossfaded so the jumps don't click).
+                if (shimmer > 1e-4f)
+                {
+                    auto& line = shimmerLine[c];
+                    const auto n = line.size();
+                    line[shimmerWrite] = acc;
+                    const auto window = static_cast<double> (n - 2);
+                    float shifted = 0;
+                    for (int tap = 0; tap < 2; ++tap)
+                    {
+                        auto ph = shimmerPhase + 0.5 * tap;
+                        if (ph >= 1.0)
+                            ph -= 1.0;
+                        // Reading twice as fast as writing: the distance behind the write head shrinks.
+                        auto pos = static_cast<double> (shimmerWrite) - (1.0 - ph) * window;
+                        while (pos < 0)
+                            pos += static_cast<double> (n);
+                        const auto i0 = static_cast<std::size_t> (pos) % n;
+                        const auto f = static_cast<float> (pos - std::floor (pos));
+                        const auto s = line[i0] * (1.0f - f) + line[(i0 + 1) % n] * f;
+                        shifted += s * static_cast<float> (std::sin (pi * ph));  // a smooth window per tap
+                    }
+                    shimmerBack[c] = shifted;
+                }
+                const auto gate = 1.0f - gated + gated * gateGain;
+                out[c] += acc * 3.0f * gate + shimmerBack[c] * 1.2f * shimmer * rWet;
             }
+            shimmerWrite = (shimmerWrite + 1) % shimmerLine[0].size();
+            shimmerPhase += 1.0 / static_cast<double> (shimmerLine[0].size() - 2);
+            if (shimmerPhase >= 1.0)
+                shimmerPhase -= 1.0;
         }
 
         left[i] = out[0];

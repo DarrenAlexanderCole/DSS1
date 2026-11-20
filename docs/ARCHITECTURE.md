@@ -231,11 +231,22 @@ smoothed core, `scope::trace` for glowing lines, `scope::fillUnder`, `scope::gra
 the overview, the CHOP editor and its overview, and the recorder's take. Readouts use Rajdhani SemiBold with
 digits respaced to one width (`assets/fonts/RajdhaniTab-SemiBold.ttf`).
 
+`Effects` shaping switches: COMP has DRIVE (asymmetric tanh into a DC blocker, before the detector), PUNCH (a
+fast/slow envelope transient shaper after the squeeze), SQUASH (20:1, 0.1 ms / 50 ms, 12 dB deeper) and CRUSH
+(now with COMP on). ECHO has PING (cross-fed lines, input on the left), TAPE (wow and flutter on the delay
+time, darker loop, tanh in the feedback so it can pass unity), DUCK (repeats under an envelope of the dry) and
+FREEZE (no input, loop at unity). REVERB has GATE (input envelope with a 130 ms hold gating the tail, a near-
+infinite room) and HALO (an octave-up two-tap pitch shifter on the tail, fed back in). `AudioEngine`'s MONITOR
+applies the recorder's input pad to what you hear (ramped per block). `DustCover` is the startup lid.
+
+In CHOP's MM a marked pad plays its slice through the sampler (so the pad settings apply) and parks the source
+at the slice's start (`ChopPanel::cueFrom`).
+
 `TempoSteps` is the step-sequencer tempo light (beat position from the grid, else the BPM; 60 Hz), used in the
 header (4 beats) and Prep's grid window (16 steps). The compressor's monitors (`DesignPanel::paintCompMonitors`)
 and CHOP's pad monitors share the backlit-monitor helpers in `Scope` (`monitorBegin`/`monitorEnd`, `inked`).
-In CHOP's MM (as in v1's `ChopSession.hitPad`), an empty pad is marked at the playhead and a marked pad cues the
-source (deck or file preview) from its start and keeps playing (`ChopPanel::cueFrom`); option-tap re-marks.
+In CHOP's MM (as in v1's `ChopSession.hitPad`), an empty pad is marked at the playhead and a marked pad plays its
+slice (see above); option-tap re-marks.
 `sliceEnd` lets a bank's last slice end at the next bank's first mark when they chop the same sound.
 
 Track notes live in `TrackInfo::notes` (JSON "notes", omitted when empty). Only `Crate::setNotes` changes them:

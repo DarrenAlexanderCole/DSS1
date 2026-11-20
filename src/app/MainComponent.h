@@ -3,6 +3,7 @@
 #include "AudioEngine.h"
 #include "Crate.h"
 #include "Session.h"
+#include "DustCover.h"
 #include "Header.h"
 #include "TransportBar.h"
 #include "Theme.h"
@@ -33,6 +34,7 @@ private:
     Session session { crate, audio };
     Header header { session };
     TransportBar transport { session };
+    DustCover cover;  ///< the glass lid, closed when DSS1 opens
     std::vector<std::unique_ptr<juce::Component>> stages;
     int currentStage = 0;
 

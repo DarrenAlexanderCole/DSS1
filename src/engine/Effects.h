@@ -25,11 +25,19 @@ public:
     std::atomic<float> echoFeedback { 0.45f };
     std::atomic<float> echoMix { 0.35f };
     std::atomic<bool> echoOn { false };
+    /// Echo switches: PING PONG bounces the repeats left and right; TAPE wobbles and saturates them like a
+    /// worn tape echo (and lets them run away into a dub howl at high feedback); DUCK keeps the repeats down
+    /// while the music plays and lets them bloom in the gaps; FREEZE stops taking new sound and loops what's in
+    /// the echo, forever, until it's turned off.
+    std::atomic<bool> echoPingPong { false }, echoTape { false }, echoDuck { false }, echoFreeze { false };
 
     /// Reverb: size 0 … 1 (small room to hall), mix 0 … 1.
     std::atomic<float> reverbSize { 0.6f };
     std::atomic<float> reverbMix { 0.3f };
     std::atomic<bool> reverbOn { false };
+    /// Reverb shaping: GATED cuts the tail off sharply when the hit ends (the 80s gated snare); SHIMMER feeds
+    /// the tail back an octave up, so it rises into a glowing halo.
+    std::atomic<bool> reverbGated { false }, reverbShimmer { false };
 
     /// Compressor, modelled on four classic designs:
     /// - OPTO (LA-2A style): slow, smooth, program-dependent release, soft knee.
@@ -49,6 +57,10 @@ public:
     std::atomic<bool> compFastAttack { false }, compFastRelease { false }, compHighRatio { false }, compSidechainHpf { false };
     /// The CRUSH switch: 12-bit, a third of the rate, like an old drum sampler, in front of the compressor.
     std::atomic<bool> crushOn { false };
+    /// COMP switches (with COMP on): DRIVE pushes the EQ'd sound hard into an asymmetric saturator before the
+    /// squeeze (grit, then fuzz); PUNCH is a transient shaper after it (hits jump out, up to +12 dB);
+    /// SQUASH turns the compressor into a brick (20:1, very fast, 12 dB deeper): pumping, breathing, loud.
+    std::atomic<bool> compDrive { false }, compPunch { false }, compSquash { false };
     /// Gain reduction right now, in dB (0 or negative), for the meter.
     std::atomic<float> gainReduction { 0.0f };
 
@@ -120,6 +132,24 @@ private:
 
     std::array<float, 2> crushHeld {};
     int crushCounter = 0;
+
+    // DRIVE: a DC blocker after the asymmetric saturator (last input, last output, per channel).
+    std::array<float, 2> driveX {}, driveY {};
+    // PUNCH: fast and slow envelopes of the level.
+    float punchFast = 0, punchSlow = 0;
+    // TAPE echo: wow and flutter phases.
+    double wowPhase = 0, flutterPhase = 0;
+    // DUCK: the dry level the echo ducks under.
+    float duckEnv = 0;
+    // GATED reverb: input envelope, how long the gate stays open, and its gain.
+    float gateEnv = 0, gateGain = 0;
+    int gateHold = 0;
+    // SHIMMER: an octave-up pitch shifter (two crossfaded taps reading twice as fast) on the reverb's return.
+    std::array<std::vector<float>, 2> shimmerLine;
+    std::size_t shimmerWrite = 0;
+    double shimmerPhase = 0;
+    std::array<float, 2> shimmerBack {};
+    Smoothed gateMix, shimmerMix, freezeMix;
 };
 
 } // namespace dss1::engine

@@ -140,7 +140,7 @@ ChopPanel::ChopPanel (Session& s) : session (s), sampler (s.output().sampler())
     sliceKnob.setRotaryParameters (juce::MathConstants<float>::pi, juce::MathConstants<float>::pi * 2.75f, true);
     sliceKnob.setValue (settings->getIntValue ("sliceLength", settings->getIntValue ("sliceBeats", 2) + 1), juce::dontSendNotification);
     previousSliceSetting = sliceKnob.getValue();
-    sliceKnob.setTooltip ("Beats per slice for EQUAL 16, and how long the last slice plays. MM (manual): tap an empty pad to mark it at the playhead, tap a marked pad to cue the music from it (option-tap re-marks); each slice ends where the next starts (the END marker for the last), "
+    sliceKnob.setTooltip ("Beats per slice for EQUAL 16, and how long the last slice plays. MM (manual): tap an empty pad to mark it at the playhead, tap a marked pad to play its slice with its settings (option-tap re-marks); each slice ends where the next starts (the END marker for the last), "
                           "and EQUAL 16 chops what's on screen.");
     hwScale (sliceKnob, "MM|1/4|1/2|1|2|4|8|16");
     sliceKnob.onValueChange = [this] {
@@ -335,7 +335,7 @@ void ChopPanel::updateModeKeys()
     chopKey.setEnabled (! mm);
     playKey.setEnabled (! mm);
     if (mm)
-        say ("MM: TAP AN EMPTY PAD TO MARK IT AT THE PLAYHEAD, TAP A MARKED PAD TO CUE FROM IT. OPTION-TAP TO RE-MARK");
+        say ("MM: TAP AN EMPTY PAD TO MARK IT AT THE PLAYHEAD, TAP A MARKED PAD TO PLAY ITS SLICE. OPTION-TAP TO RE-MARK");
     repaint();
 }
 
@@ -548,7 +548,7 @@ void ChopPanel::padDown (int pad, float velocity)
         if (! marked || juce::ModifierKeys::currentModifiers.isAltDown())
             markAtPlayhead (pad);
         else
-            cueFrom (pad);
+            cueFrom (pad, velocity);
         refreshPads();
         repaint();
         return;
@@ -639,28 +639,27 @@ bool ChopPanel::startBankFromDeck()
     return true;
 }
 
-void ChopPanel::cueFrom (int pad)
+void ChopPanel::cueFrom (int pad, float velocity)
 {
     const auto& b = current();
     const auto& m = b.marks[static_cast<std::size_t> (pad)];
     if (! m || b.audio == nullptr)
         return;
-    sampler.stopAll();
+    // The pad plays its slice (to the next start) through the sampler, with its GAIN, TUNE, ATTACK, FADE and
+    // REVERSE. The track stops rolling and waits at this slice's start, so Space carries on from here and the
+    // next empty pad you tap is marked from there.
     if (sourceIsOnDeck (b))
     {
+        if (session.deck().isPlaying())
+            session.deck().pause();
         session.deck().seek (*m);
-        if (! session.deck().isPlaying())
-            session.deck().play();
     }
     else
     {
-        auto& preview = session.output().chopPreview();
-        preview.setTake (b.audio);
-        if (session.deck().isPlaying())
-            session.deck().pause();
+        session.output().chopPreview().stop();
         previewCursor = *m;
-        preview.play (static_cast<double> (*m) / juce::jmax (1.0, static_cast<double> (b.audio->channels.front().size())));
     }
+    sampler.trigger (slotOf (pad), velocity);
     say (describe (pad));
 }
 

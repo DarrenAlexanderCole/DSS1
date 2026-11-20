@@ -58,6 +58,14 @@ MainComponent::MainComponent()
             noFocus (*child);
     };
     noFocus (*this);
+
+    // The glass dust cover over the whole machine; click it and it lifts away to the Catalog.
+    cover.onOpened = [this] {
+        showStage (0);
+        removeChildComponent (&cover);
+    };
+    addAndMakeVisible (cover);
+    cover.toFront (true);
     setWantsKeyboardFocus (true);
     // Knobs and faders click into their steps under your finger (Force Touch trackpads).
     haptics::addDetents (*this);
@@ -67,6 +75,12 @@ MainComponent::MainComponent()
 
 bool MainComponent::keyPressed (const juce::KeyPress& key)
 {
+    // While the dust cover is down, any key lifts it.
+    if (cover.getParentComponent() == this && cover.isVisible())
+    {
+        cover.open();
+        return true;
+    }
     // Space or P plays and pauses on every screen (unless typing in a text field, which keeps the key).
     // On CHOP, its keys first: the pads, nudging, undo, and Space for a sound file being chopped.
     auto* chop = dynamic_cast<ChopPanel*> (stages[static_cast<std::size_t> (currentStage)].get());
@@ -138,6 +152,9 @@ void MainComponent::resized()
     transport.setBounds (area.removeFromBottom (120));
     for (auto& s : stages)
         s->setBounds (area);
+    // Between the walnut boards, as if the lid sits in the frame.
+    const auto w = hw::RackUnit::earWidth;
+    cover.setBounds (getLocalBounds().reduced (w, 0));
 }
 
 } // namespace dss1::ui

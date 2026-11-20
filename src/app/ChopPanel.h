@@ -94,8 +94,8 @@ private:
     void setMode (bool chop);
     void cycleSnap();
     std::optional<Frame> sliceEnd (int bankIndex, int pad) const;
-    /// MM: plays the music (the deck, or the sound file being chopped) on from a pad's start.
-    void cueFrom (int pad);
+    /// MM: plays a marked pad's slice with its settings and parks the source (deck or file) at its start.
+    void cueFrom (int pad, float velocity);
     /// MM greys out CHOP / PLAY: there the pads mark or cue by themselves.
     void updateModeKeys();
     /// SLICE at MM (manual): the last slice ends at the END marker you place, not after so many beats.

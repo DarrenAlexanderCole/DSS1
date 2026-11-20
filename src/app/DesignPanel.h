@@ -96,6 +96,12 @@ private:
     // The compressor: its type keys, and a row of switches.
     std::array<juce::TextButton, 4> compTypeKeys;
     juce::ToggleButton attackSwitch { "ATTACK" }, releaseSwitch { "RELEASE" }, ratioSwitch { "RATIO" }, hpfSwitch { "SC HPF" }, crushSwitch { "CRUSH" };
+    /// Sound-shaping switches in the bays: COMP (with CRUSH), ECHO and REVERB.
+    juce::ToggleButton driveSwitch { "DRIVE" }, punchSwitch { "PUNCH" }, squashSwitch { "SQUASH" };
+    juce::ToggleButton pingPongSwitch { "PING" }, tapeSwitch { "TAPE" }, duckSwitch { "DUCK" }, freezeSwitch { "FREEZE" };
+    juce::ToggleButton gatedSwitch { "GATE" }, shimmerSwitch { "HALO" };
+    /// Recorder MONITOR: hear exactly what's going onto the take (with the input pad).
+    juce::ToggleButton monitorSwitch { "MONITOR" };
     void selectCompType (int type);
     float shownReduction = 0;
     /// The compressor's backlit monitors: EQ curve, transfer curve with live gain reduction, envelope, mix.

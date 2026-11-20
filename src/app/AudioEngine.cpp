@@ -67,6 +67,24 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const*, int, fl
                 peakWrite.store ((w + 1) % peakRingSize, std::memory_order_release);
             }
     }
+    // MONITOR: what you hear becomes what's recorded (the pad applied), ramped across the block.
+    {
+        const auto target = monitorRecording.load (std::memory_order_relaxed) ? recordGain.load (std::memory_order_relaxed) : 1.0f;
+        if (std::abs (target - monitorGainNow) > 1e-5f || target < 0.999f)
+        {
+            const auto step = (target - monitorGainNow) / static_cast<float> (juce::jmax (1, numFrames));
+            for (int c = 0; c < juce::jmin (numOutputs, 2); ++c)
+            {
+                auto g = monitorGainNow;
+                for (int i = 0; i < numFrames; ++i)
+                {
+                    g += step;
+                    outputs[c][i] *= g;
+                }
+            }
+            monitorGainNow = target;
+        }
+    }
     // For the spectrum display: what you hear, mono.
     if (numOutputs >= 1)
     {

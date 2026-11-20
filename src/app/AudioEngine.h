@@ -36,6 +36,9 @@ public:
     void drainRecordedPeaks (std::vector<float>& into);
     /// The recorder's input pad: what's recorded is this many dB lower (0, -10, -20, -50). What you hear isn't.
     void setRecordPad (float db) { recordGain.store (juce::Decibels::decibelsToGain (db, -100.0f)); }
+    /// MONITOR: you hear exactly what the recorder takes (the input pad applied to what you hear), so you can
+    /// judge the take's level before you commit to it.
+    void setMonitorRecording (bool on) { monitorRecording.store (on); }
     /// The last `n` samples of what you hear (mono), oldest first, for the spectrum display.
     void recentOutput (std::vector<float>& into, int n) const;
 
@@ -66,6 +69,8 @@ private:
     engine::Sampler pads;
     engine::TakePlayer take, preview;
     std::atomic<float> recordGain { 1.0f };
+    std::atomic<bool> monitorRecording { false };
+    float monitorGainNow = 1.0f;  // audio thread: ramps between blocks so switching never clicks
     std::array<std::vector<float>, 2> padBuffer;  // the padded copy that's recorded
     static constexpr int scopeSize = 8192;
     std::array<std::atomic<float>, scopeSize> scope {};

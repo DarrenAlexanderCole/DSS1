@@ -24,6 +24,8 @@ backlit VU meters. The parts are rendered in 3D. Things to notice:
 - **Tempo lights:** small squares step along with the music like a step sequencer's running light: four beats
   beside **BPM** on the track display, and sixteen steps (one bar) in Prep's grid window. The first square is
   the bar's downbeat when the track has a grid.
+- **Dust cover:** DSS1 opens under a smoked-glass lid with DSS1 etched in it. Click it (or press any key) and
+  it lifts up out of the frame, and you're in the Catalog.
 - **Displays:** everything behind the glass is drawn smooth now, lit warm like the VU meters: waveforms are
   mirrored glowing shapes with a brighter core, the spectrum and pad monitors are smooth curves, and readouts use
   a clean modern face (Rajdhani). The only old things are the materials.
@@ -101,9 +103,18 @@ Load a track (double-click it in Catalog), press PLAY, then open **Listen / Desi
 
 - **Effects** play over everything you hear. Flip a module's switch to turn it on:
   - **FILTER:** one knob, low-pass to the left, high-pass to the right, open in the middle.
-  - **ECHO:** TIME in beats (synced to the track's BPM at your pitch), FEEDBACK and MIX.
-  - **REVERB:** SIZE and MIX.
-  - **COMP:** an opto compressor with a 3-band EQ in front. **LOW** (120 Hz shelf), **MID** (1 kHz) and **HIGH**
+  - **ECHO:** TIME in beats (synced to the track's BPM at your pitch), FEEDBACK and MIX. Switches: **PING**
+    bounces the repeats left and right; **TAPE** makes it a worn tape echo (wobbling, dark, saturated; turn
+    FEEDBACK up for a dub howl that never blows up); **DUCK** keeps the repeats down while the music plays and
+    lets them bloom in the gaps; **FREEZE** stops taking in sound and loops what's in the echo until you turn it
+    off (it always starts off).
+  - **REVERB:** SIZE and MIX. Switches: **GATE** is a big room that slams shut when each hit ends (the 80s gated
+    snare); **HALO** (shimmer) feeds the tail back an octave up, so it rises into a glow.
+  - **COMP:** switches (they work with COMP on): **DRIVE** pushes the sound hard into a saturator before the
+    squeeze (grit, then fuzz); **PUNCH** makes every hit jump out (a transient shaper, up to +12 dB);
+    **SQUASH** turns it into a brick (20:1, very fast): pumping, breathing, loud; **CRUSH** is 12-bit grit at a
+    third of the rate, like an old drum sampler.
+    It's an opto compressor with a 3-band EQ in front. **LOW** (120 Hz shelf), **MID** (1 kHz) and **HIGH**
     (6 kHz shelf) shape what gets squeezed, ±12 dB each. **AMOUNT** sets how hard it works (its readout shows
     the gain reduction while it's on), **ATTACK** (1-200 ms) and **RELEASE** (40 ms-3 s) set how fast it grabs
     and lets go, and **COMP MIX** blends in the dry sound (parallel compression). A compressor has no decay or
@@ -114,7 +125,8 @@ Load a track (double-click it in Catalog), press PLAY, then open **Listen / Desi
 - **XY pad:** hold the mouse down on it and move: left and right sweep the filter, up adds echo. Let go and it
   springs back. With **HOLD** on, it stays where you leave it.
 - **Input pad:** the **-10**, **-20** and **-50** switches after TO CHOP lower what the recorder takes in
-  (one at a time; recording only, you still hear the full level).
+  (one at a time; recording only, you still hear the full level). Turn **MONITOR** on to hear exactly what the
+  recorder is taking in, pad and all, so you can judge the take before you commit.
 - **Spectrum:** under the recorder display, a glowing curve of everything you hear (30 Hz to 16 kHz): ghosts
   of the last moments fade behind it, a thin peak line drifts down, and the window blooms on every kick.
 - **Recorder:** **REC** records what you hear, effects included, and draws the waveform as it goes. Press
@@ -157,7 +169,8 @@ recorder (**TO CHOP**). Pads are laid out and keyed like a drum machine:
 - **Space** plays and pauses the deck, or the sound file you're chopping (from where you last clicked).
 - **SLICE** sets how long the last slice plays, in beats, and the slice size for EQUAL 16. At **MM** (6 o'clock,
   manual) it works like DSS1 v1, with no modes to switch: tap an **empty pad** and it's marked at the playhead;
-  tap a **marked pad** and the music cues from its start and keeps rolling, so you can tap the next empty pad.
+  tap a **marked pad** and it plays its slice, with its GAIN, TUNE, ATTACK, FADE and REVERSE, while the
+  track waits at that slice's start (Space carries on from there, and the next empty pad marks from there).
   Each slice ends where the next one starts (a bank's last slice ends at the next bank's first, the END marker
   for the very last). To move a start, drag its flag, nudge it, **option-tap** the pad to re-mark it at the
   playhead, or clear it and tap again. CHOP / PLAY grey out in MM. EQUAL 16 in MM chops what's on screen.
