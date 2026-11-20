@@ -215,6 +215,7 @@ void Sampler::render (float* const* outputs, int numChannels, int numFrames) noe
     }
 
     std::array<bool, slots> nowPlaying {};
+    std::array<float, slots> peaks {};
     for (std::size_t vi = 0; vi < voices.size(); ++vi)
     {
         auto& v = voices[vi];
@@ -243,7 +244,10 @@ void Sampler::render (float* const* outputs, int numChannels, int numFrames) noe
                 for (int c = 0; c < std::min (numChannels, 2); ++c)
                 {
                     const auto& src = ch[std::min (static_cast<std::size_t> (c), ch.size() - 1)];
-                    outputs[c][i] += (src[p] + (src[p + 1] - src[p]) * frac) * g;
+                    const auto sample = (src[p] + (src[p + 1] - src[p]) * frac) * g;
+                    outputs[c][i] += sample;
+                    auto& peak = peaks[static_cast<std::size_t> (v.slot)];
+                    peak = std::max (peak, std::abs (sample));
                 }
                 v.position += v.step * v.direction;
                 v.level -= v.fadeStep;
@@ -255,7 +259,11 @@ void Sampler::render (float* const* outputs, int numChannels, int numFrames) noe
         shownPosition[vi].store (v.position, std::memory_order_relaxed);
     }
     for (std::size_t s = 0; s < static_cast<std::size_t> (slots); ++s)
+    {
         playing[s].store (nowPlaying[s], std::memory_order_relaxed);
+        if (peaks[s] > slotPeak[s].load (std::memory_order_relaxed))
+            slotPeak[s].store (peaks[s], std::memory_order_relaxed);
+    }
     framesRendered.fetch_add (static_cast<std::uint64_t> (numFrames));
 }
 

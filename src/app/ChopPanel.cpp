@@ -73,7 +73,8 @@ ChopPanel::ChopPanel (Session& s) : session (s), sampler (s.output().sampler())
     for (int p = 0; p < 16; ++p)
     {
         auto& pad = pads[static_cast<std::size_t> (p)];
-        pad.setButtonText (juce::String (p + 1));
+        pad.setButtonText ({});  // the number and key are drawn over the pad (paintOverChildren)
+        pad.setTitle ("Pad " + juce::String (p + 1));
         pad.setTooltip ("Key " + keyName (p) + ". Empty: marks the playhead. Then plays its slice. Right-click for more.");
         pad.addMouseListener (this, false);  // played from mouseDown/mouseUp, so HOLD works with the mouse
         addAndMakeVisible (pad);
@@ -98,12 +99,6 @@ ChopPanel::ChopPanel (Session& s) : session (s), sampler (s.output().sampler())
     // Modes.
     hold = settings->getBoolValue ("padHold", false);
     sampler.setChoke (settings->getBoolValue ("padChoke", true));
-    for (auto* k : { &chopKey, &playKey })
-        hwStyle (*k, KeyStyle::cream);
-    chopKey.setTooltip ("CHOP: a pad press moves its mark to the playhead; a click on the waveform moves the chosen pad's mark there");
-    playKey.setTooltip ("PLAY: pads play their slices (empty pads still mark); click a slice to hear it");
-    chopKey.onClick = [this] { setMode (true); };
-    playKey.onClick = [this] { setMode (false); };
     holdKey.setTooltip ("HOLD: a slice plays only while its pad or key is held. Off: one-shot, it plays to its end.");
     holdKey.setClickingTogglesState (true);
     holdKey.setToggleState (hold, juce::dontSendNotification);
@@ -163,7 +158,6 @@ ChopPanel::ChopPanel (Session& s) : session (s), sampler (s.output().sampler())
                 }
             saveKit();
         }
-        updateModeKeys();
         previousSliceSetting = sliceKnob.getValue();
         settings->setValue ("sliceLength", static_cast<int> (sliceKnob.getValue()));
         for (int b = 0; b < 8; ++b)
@@ -232,7 +226,7 @@ ChopPanel::ChopPanel (Session& s) : session (s), sampler (s.output().sampler())
         saveKit();
     };
 
-    for (auto* k : { &chopKey, &playKey, &holdKey, &chokeKey, &equalKey, &transientKey, &undoKey, &nudgeLeft, &nudgeRight, &loadKey, &saveKey,
+    for (auto* k : { &holdKey, &chokeKey, &equalKey, &transientKey, &undoKey, &nudgeLeft, &nudgeRight, &loadKey, &saveKey,
                      &clearKey, &clearBankKey, &stopKey, &folderKey, &reverseKey, &showSavedKey, &midiKey })
         addAndMakeVisible (k);
     addAndMakeVisible (sliceKnob);
@@ -269,8 +263,8 @@ ChopPanel::ChopPanel (Session& s) : session (s), sampler (s.output().sampler())
     cycleSnap();
     cycleSnap();
     cycleSnap();  // (sets the label for the stored choice)
-    setMode (false);
-    updateModeKeys();
+    meters = std::make_unique<PadMeters> (sampler, [this] { return bank; });
+    addAndMakeVisible (*meters);
     selectBank (0);
     restoreKit();
     message = "PRESS A PAD (OR ITS KEY) TO MARK A SLICE";
@@ -326,25 +320,6 @@ void ChopPanel::say (const juce::String& text)
     messageTime = juce::Time::getMillisecondCounter();
     repaint (messageArea);
     repaint (readoutArea);
-}
-
-void ChopPanel::updateModeKeys()
-{
-    // In MM the pads decide for themselves (empty pads mark, marked pads cue), so CHOP / PLAY step aside.
-    const bool mm = manualLength();
-    chopKey.setEnabled (! mm);
-    playKey.setEnabled (! mm);
-    if (mm)
-        say ("MM: TAP AN EMPTY PAD TO MARK IT AT THE PLAYHEAD, TAP A MARKED PAD TO PLAY ITS SLICE. OPTION-TAP TO RE-MARK");
-    repaint();
-}
-
-void ChopPanel::setMode (bool chop)
-{
-    chopMode = chop;
-    chopKey.setToggleState (chop, juce::dontSendNotification);
-    playKey.setToggleState (! chop, juce::dontSendNotification);
-    say (chop ? "CHOP: PADS MOVE TO THE PLAYHEAD, CLICK THE WAVEFORM TO PLACE" : "PLAY: PADS PLAY THEIR SLICES, CLICK A SLICE TO HEAR IT");
 }
 
 void ChopPanel::cycleSnap()
@@ -474,9 +449,10 @@ bool ChopPanel::handleKey (const juce::KeyPress& key)
         }
         return false;
     }
-    if (mods.isCommandDown() || mods.isCtrlDown() || mods.isAltDown())
+    if (mods.isCommandDown() || mods.isCtrlDown())
         return false;
-    const auto c = juce::CharacterFunctions::toLowerCase (key.getTextCharacter());
+    // The key itself, not the character it types (option changes that on a Mac).
+    const auto c = juce::CharacterFunctions::toLowerCase (static_cast<juce::juce_wchar> (key.getKeyCode()));
     for (int p = 0; p < 16; ++p)
         if (c == static_cast<juce::juce_wchar> (padKeys[p]))
         {
@@ -484,6 +460,11 @@ bool ChopPanel::handleKey (const juce::KeyPress& key)
             if (! held[static_cast<std::size_t> (p)])
             {
                 held[static_cast<std::size_t> (p)] = true;
+                if (! keysLearned)
+                {
+                    keysLearned = true;  // they know the keys now: the letters can go
+                    repaint();
+                }
                 padDown (p);
             }
             return true;
@@ -538,25 +519,15 @@ void ChopPanel::padDown (int pad, float velocity)
     }
     const auto& b = current();
     const bool marked = b.marks[static_cast<std::size_t> (pad)].has_value() && b.audio != nullptr;
-    if (manualLength())
-    {
-        // MM, like DSS1 v1: an empty pad takes its start from the playhead; a pad that's already marked cues the
-        // music from its start and keeps it rolling, so you can tap the next empty pad. No modes to switch.
-        // Each slice ends where the next one starts. Option-tap a marked pad to move its start to the playhead.
-        selected = pad;
-        showPadSettings();
-        if (! marked || juce::ModifierKeys::currentModifiers.isAltDown())
-            markAtPlayhead (pad);
-        else
-            cueFrom (pad, velocity);
-        refreshPads();
-        repaint();
-        return;
-    }
+    // No modes: an empty pad is marked at the playhead, a marked pad plays its slice. Option-tap (or option +
+    // its key) moves a pad's start to the playhead. In MM (manual), slices run to the next start and the track
+    // waits at the slice's start, like DSS1 v1.
     selected = pad;
     showPadSettings();
-    if (! marked || chopMode)
+    if (! marked || juce::ModifierKeys::currentModifiers.isAltDown())
         markAtPlayhead (pad);
+    else if (manualLength())
+        cueFrom (pad, velocity);
     else
     {
         sampler.trigger (slotOf (pad), velocity);
@@ -1658,7 +1629,9 @@ void ChopPanel::paint (juce::Graphics& g)
 
     // Control unit labels.
     label (bankKeys[0], "BANKS", "A-H");
-    label (chopKey, "MODE", "TAP PADS TO CHOP");
+    if (meters != nullptr && meters->getWidth() > 40)
+        label (*meters, "LEVEL", "BANK " + juce::String::charToString (static_cast<juce::juce_wchar> ('A' + bank)));
+    label (holdKey, "PADS", "TAP AN EMPTY PAD TO MARK IT, A MARKED ONE TO PLAY IT");
     label (equalKey, "CHOP", "EQUAL / AT THE HITS");
     label (nudgeLeft, "NUDGE", "ARROWS", 120);
     label (loadKey, "SAMPLE", "FILE / SAVE / CLEAR");
@@ -1693,15 +1666,25 @@ void ChopPanel::paint (juce::Graphics& g)
 
 void ChopPanel::paintOverChildren (juce::Graphics& g)
 {
-    // Each pad's key, in the corner, like the legend on a drum machine; the chosen pad outlined.
+    // Each pad's number small in its corner; its keyboard key big in the middle until the keyboard has been
+    // used (then the hide shows clean); the chosen pad outlined.
     const auto& b = current();
     for (int p = 0; p < 16; ++p)
     {
-        const auto area = pads[static_cast<std::size_t> (p)].getBounds().toFloat().reduced (7, 5);
+        const auto padArea = pads[static_cast<std::size_t> (p)].getBounds().toFloat();
+        const auto area = padArea.reduced (7, 5);
         const bool marked = b.marks[static_cast<std::size_t> (p)].has_value() && b.audio != nullptr;
-        g.setFont (hw::brand (13.0f));
-        g.setColour (hw::colour::silk.withAlpha (marked ? 0.85f : 0.55f));
-        g.drawText (keyName (p), area.reduced (4.0f, 3.0f), juce::Justification::topLeft, false);
+        g.setFont (hw::brand (juce::jlimit (8.0f, 11.0f, padArea.getHeight() * 0.13f)));
+        g.setColour (hw::colour::silk.withAlpha (marked ? 0.75f : 0.45f));
+        g.drawText (juce::String (p + 1), area.reduced (3.0f, 2.0f), juce::Justification::topLeft, false);
+        if (! keysLearned)
+        {
+            g.setFont (hw::brand (juce::jlimit (14.0f, 28.0f, padArea.getHeight() * 0.32f)));
+            g.setColour (juce::Colours::black.withAlpha (0.45f));
+            g.drawText (keyName (p), padArea.translated (0, 1.5f), juce::Justification::centred, false);
+            g.setColour (hw::colour::silk.withAlpha (marked ? 0.92f : 0.7f));
+            g.drawText (keyName (p), padArea, juce::Justification::centred, false);
+        }
         if (p == selected)
         {
             g.setColour (juce::Colours::white.withAlpha (0.75f));
@@ -1745,7 +1728,7 @@ void ChopPanel::resized()
     area.removeFromTop (34);
     area.removeFromBottom (18);
 
-    auto padColumn = area.removeFromLeft (juce::jmin (330, area.getWidth() / 3));
+    auto padColumn = area.removeFromLeft (juce::jmin (540, area.getWidth() * 37 / 100));
     {
         // The pads sized to fit the height, and the bank keys exactly as wide as the pads, edges aligned.
         constexpr int gap = 6;
@@ -1753,8 +1736,11 @@ void ChopPanel::resized()
         padColumn.removeFromTop (8);
         const auto size = juce::jmin ((padColumn.getHeight() - 3 * gap) / 4, (padColumn.getWidth() - 3 * gap) / 4);
         const auto gridW = size * 4 + 3 * gap;
-        // Centred in their column, so the space either side balances.
-        const auto left = padColumn.getX() + juce::jmax (0, (padColumn.getWidth() - gridW) / 2);
+        // Right against the controls; the level lights fill the space to their left, as tall as banks and pads.
+        const auto left = padColumn.getRight() - gridW;
+        if (meters != nullptr)
+            meters->setBounds (juce::Rectangle<int> (padColumn.getX(), banks.getY(), juce::jmax (0, left - 18 - padColumn.getX()),
+                                                     padColumn.getY() + 4 * size + 3 * gap - banks.getY()));
         for (int row = 0; row < 4; ++row)
             for (int col = 0; col < 4; ++col)
                 pads[static_cast<std::size_t> (padAt (row, col))].setBounds (left + col * (size + gap), padColumn.getY() + row * (size + gap), size, size);
@@ -1767,7 +1753,7 @@ void ChopPanel::resized()
             bankKeys[static_cast<std::size_t> (k)].setBounds (x0, banks.getY(), x1 - x0, banks.getHeight());
         }
     }
-    area.removeFromLeft (30);
+    area.removeFromLeft (22);
 
     auto settingsColumn = area.removeFromRight (juce::jmin (420, area.getWidth() * 2 / 5));
     area.removeFromRight (30);
@@ -1776,7 +1762,7 @@ void ChopPanel::resized()
     auto middle = area;
     auto modes = middle.removeFromTop (32);
     const auto mw = (modes.getWidth() - 3 * 6) / 4;
-    for (auto* k : { &chopKey, &playKey, &holdKey, &chokeKey })
+    for (auto* k : { &holdKey, &chokeKey })
     {
         k->setBounds (modes.removeFromLeft (mw));
         modes.removeFromLeft (6);

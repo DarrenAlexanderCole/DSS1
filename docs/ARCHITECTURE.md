@@ -242,6 +242,9 @@ applies the recorder's input pad to what you hear (ramped per block). `DustCover
 In CHOP's MM a marked pad plays its slice through the sampler (so the pad settings apply) and parks the source
 at the slice's start (`ChopPanel::cueFrom`).
 
+CHOP has no CHOP/PLAY modes: empty pads mark, marked pads play, option re-marks. `Sampler::takePeak` reports
+each pad's loudest output since last asked; `PadMeters` shows the bank's 16 as a light matrix.
+
 `TempoSteps` is the step-sequencer tempo light (beat position from the grid, else the BPM; 60 Hz), used in the
 header (4 beats) and Prep's grid window (16 steps). The compressor's monitors (`DesignPanel::paintCompMonitors`)
 and CHOP's pad monitors share the backlit-monitor helpers in `Scope` (`monitorBegin`/`monitorEnd`, `inked`).

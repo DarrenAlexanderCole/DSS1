@@ -27,6 +27,13 @@ namespace dss1::engine
 class Sampler
 {
 public:
+    /// The loudest each pad has played (its output, after its gain and envelope) since this was last asked,
+    /// and resets it: for level lights. Any thread.
+    float takePeak (int slot) noexcept
+    {
+        return slot >= 0 && slot < slots ? slotPeak[static_cast<std::size_t> (slot)].exchange (0.0f, std::memory_order_relaxed) : 0.0f;
+    }
+
     static constexpr int banks = 8, padsPerBank = 16, slots = banks * padsPerBank;
     static constexpr int maxVoices = 16;
 
@@ -101,6 +108,7 @@ private:
     std::array<std::atomic<std::int64_t>, slots> regionStart {}, regionEnd {};
     std::array<std::atomic<float>, slots> padGain {}, padRatio {}, padAttack {}, padFade {};
     std::array<std::atomic<bool>, slots> padReverse {};
+    std::array<std::atomic<float>, slots> slotPeak {};  // loudest output of each pad since the screen last asked
     struct Retired
     {
         std::shared_ptr<const io::DecodedAudio> audio;

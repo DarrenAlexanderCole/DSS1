@@ -242,3 +242,22 @@ TEST_CASE ("The take player plays a take from anywhere and stops at the end", "[
     t.setTake (nullptr);
     CHECK_FALSE (t.hasTake());
 }
+
+TEST_CASE ("Each pad reports how loud it played, once", "[sampler]")
+{
+    Sampler s;
+    s.prepare (44100.0);
+    s.setSample (3, clip (44100.0, 44100, 0.5f));
+    s.setSample (20, clip (44100.0, 44100, 0.5f));
+    Sampler::PadSettings half;
+    half.gainDb = -6.0206f;  // half the gain
+    s.setPadSettings (20, half);
+    CHECK (s.takePeak (3) == 0.0f);
+    s.trigger (3);
+    s.trigger (20);
+    render (s, 1000);
+    CHECK (s.takePeak (3) == 0.5f);
+    CHECK (std::abs (s.takePeak (20) - 0.25f) < 1e-4f);
+    CHECK (s.takePeak (3) == 0.0f);  // asked once, reset
+    CHECK (s.takePeak (7) == 0.0f);  // never played
+}

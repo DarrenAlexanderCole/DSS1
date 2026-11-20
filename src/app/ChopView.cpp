@@ -502,7 +502,7 @@ void ChopView::mouseDown (const juce::MouseEvent& e)
         return;
     }
     const bool chosenEmpty = ! b.marks[static_cast<std::size_t> (owner.selected)].has_value();
-    if (owner.chopMode || (chosenEmpty && b.audio != nullptr && ! owner.sourceIsOnDeck (b)))
+    if (chosenEmpty && b.audio != nullptr && ! owner.sourceIsOnDeck (b))
     {
         // CHOP: put the chosen pad's marker here (and keep dragging it).
         if (b.audio == nullptr && ! owner.startBankFromDeck())

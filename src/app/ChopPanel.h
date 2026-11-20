@@ -1,6 +1,7 @@
 #pragma once
 
 #include "MidiPads.h"
+#include "PadMeters.h"
 #include "Session.h"
 
 #include <juce_data_structures/juce_data_structures.h>
@@ -91,13 +92,10 @@ private:
     void applyChop (Frame from, Frame to, const std::vector<Frame>& marks, const juce::String& what);
     void loadFile();
     void saveBank();
-    void setMode (bool chop);
     void cycleSnap();
     std::optional<Frame> sliceEnd (int bankIndex, int pad) const;
     /// MM: plays a marked pad's slice with its settings and parks the source (deck or file) at its start.
     void cueFrom (int pad, float velocity);
-    /// MM greys out CHOP / PLAY: there the pads mark or cue by themselves.
-    void updateModeKeys();
     /// SLICE at MM (manual): the last slice ends at the END marker you place, not after so many beats.
     bool manualLength() const { return sliceKnob.getValue() < 0.5; }
     std::optional<double> sliceBeats() const;
@@ -134,7 +132,7 @@ private:
     juce::PropertiesFile* settings = nullptr;
 
     int bank = 0, selected = 0;
-    bool chopMode = false, hold = false;
+    bool hold = false;
     Snap snap = Snap::zero;
     std::array<ChopBank, 8> bankData;
     std::vector<std::pair<int, ChopBank>> undoStack;
@@ -156,7 +154,12 @@ private:
     juce::Rectangle<int> midiArea;
     double previousSliceSetting = 3;
     juce::TextButton snapKey, zoomOutKey { "-" }, zoomInKey { "+" }, sliceZoomKey { "SLICE" }, wholeKey { "WHOLE" };
-    juce::TextButton chopKey { "CHOP" }, playKey { "PLAY" }, holdKey { "HOLD" }, chokeKey { "CHOKE" };
+    juce::TextButton holdKey { "HOLD" }, chokeKey { "CHOKE" };
+    /// Lights beside the pads: how loud each pad of this bank plays.
+    std::unique_ptr<PadMeters> meters;
+    /// Once a pad has been played from the keyboard, the big key letters on the pads aren't needed (until
+    /// the app opens again).
+    bool keysLearned = false;
     juce::TextButton equalKey { "EQUAL 16" }, transientKey { "TRANSIENTS" }, undoKey { "UNDO" }, nudgeLeft { "<" }, nudgeRight { ">" };
     juce::TextButton loadKey { "LOAD..." }, saveKey { "SAVE BANK" }, clearKey { "CLEAR" }, clearBankKey { "CLEAR BANK" }, stopKey { "STOP ALL" },
         folderKey { "CHANGE..." };

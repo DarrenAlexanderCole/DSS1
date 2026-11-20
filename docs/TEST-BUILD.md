@@ -150,17 +150,21 @@ recorder (**TO CHOP**). Pads are laid out and keyed like a drum machine:
 | 5 `A` | 6 `S` | 7 `D` | 8 `F` |
 | 1 `Z` | 2 `X` | 3 `C` | 4 `V` |
 
+- **The pads** show their number small in the corner and their keyboard key big in the middle. Once you've
+  played a pad from the keyboard the letters fade away (they come back next time DSS1 opens).
+- **LEVEL** (left of the pads): a light matrix, one column per pad of the bank you're on (1-16), lighting up as
+  loud as each pad plays (after its GAIN), with a peak light that hangs for a moment.
 - **The waveform** zooms like Prep's: scroll (or pinch) to zoom around the mouse, swipe or drag to move, the
   strip below shows the whole sample (click it to jump). **SLICE** zooms to the chosen pad's slice, **WHOLE**
   shows everything; double-click a slice to zoom to it. Zoomed right in you see the wave itself.
 - **Chop it:** press **Space** to play, then tap empty pads on the hits you want. Or **TRANSIENTS** puts a slice
   at each of the 16 strongest hits (in the loop that's playing, or what's on screen), or **EQUAL 16** cuts the
-  loop (or 16 x **SLICE** beats from the playhead) into 16 equal slices. In **CHOP** mode a pad press moves its
-  mark to the playhead and a click on the waveform puts the chosen pad's mark there.
+  loop (or 16 x **SLICE** beats from the playhead) into 16 equal slices. There are no modes: an empty pad marks,
+  a marked pad plays, and **option-tap** (or option + its key) moves a pad's start to the playhead.
 - **Fine-tune:** drag a marker, or nudge the chosen one with the **Left / Right** arrows (Shift: further) or
   **< >**. **SNAP** sets where markers land: **ZERO** (the nearest zero crossing, so slices don't click),
   **BEAT** (the grid) or **OFF**. **UNDO** (Cmd+Z) takes back marks and pad settings.
-- **Play:** in **PLAY** mode pads play their slices; click a slice on the waveform to hear it. **CHOKE** (on) lets
+- **Play:** tap a marked pad to play its slice; click a slice on the waveform to hear it. **CHOKE** (on) lets
   one slice play at a time; **HOLD** plays a slice only while held. Nothing clicks: cuts are crossfaded.
 - **Pad settings** (right): **GAIN**, **TUNE** (semitones), **ATTACK**, **FADE** and **REVERSE** for the chosen
   pad. Above each knob a backlit monitor shows what it does: GAIN the slice's waveform at its level (dashes
@@ -173,7 +177,7 @@ recorder (**TO CHOP**). Pads are laid out and keyed like a drum machine:
   track waits at that slice's start (Space carries on from there, and the next empty pad marks from there).
   Each slice ends where the next one starts (a bank's last slice ends at the next bank's first, the END marker
   for the very last). To move a start, drag its flag, nudge it, **option-tap** the pad to re-mark it at the
-  playhead, or clear it and tap again. CHOP / PLAY grey out in MM. EQUAL 16 in MM chops what's on screen.
+  playhead, or clear it and tap again. EQUAL 16 in MM chops what's on screen.
 - **MIDI:** plug in a pad controller (an Akai MPD, MPK, MPC, or anything that sends notes): its 16 pads play
   DSS1's pads (Akai pads work out of the box, harder hits play louder), and MIDI Start/Stop or MMC plays and
   pauses. **MIDI LEARN** to map your own: hit a controller pad for each DSS1 pad in turn (click a DSS1 pad to

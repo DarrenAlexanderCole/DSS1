@@ -65,6 +65,7 @@ target_sources(DSS1 PRIVATE
     Scope.cpp
     TempoSteps.cpp
     DustCover.cpp
+    PadMeters.cpp
     Haptics.cpp
     ChopView.cpp
     Session.cpp
