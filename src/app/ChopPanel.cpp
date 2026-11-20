@@ -15,6 +15,12 @@ namespace dss1::ui
 
 namespace
 {
+    // Pad note maps. Akai MPC pads (and MPC software) send the "MPC Classic" map: drum notes, not in order.
+    // Akai MPD / MPK pads (and most others) send 36-51 in order.
+    constexpr std::array<int, 16> mpcClassic { 37, 36, 42, 82, 40, 38, 46, 44, 48, 47, 45, 43, 49, 55, 51, 53 };
+    constexpr std::array<int, 16> chromatic36 { 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51 };
+    constexpr std::array<int, 16> chromatic37 { 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52 };
+
     // SLICE: MM (manual) at 6 o'clock, then 1/4 … 16 beats round the dial.
     constexpr double lengths[] { 0, 0.25, 0.5, 1, 2, 4, 8, 16 };
     const char* const lengthNames[] { "MM", "1/4", "1/2", "1", "2", "4", "8", "16" };
@@ -237,7 +243,10 @@ ChopPanel::ChopPanel (Session& s) : session (s), sampler (s.output().sampler())
             padNotes[static_cast<std::size_t> (p)] = stored.size() == 16 ? stored[p].getIntValue() : 36 + p;
         playController = settings->getIntValue ("midiPlayCC", -1);
         playNote = settings->getIntValue ("midiPlayNote", -1);
+        padMapSource = settings->getValue ("midiPadMap", "auto");
     }
+    midi.onDevicesChanged = [this] { autoMidiMap(); };
+    autoMidiMap();
     midi.onNoteOn = [this] (int note, float velocity) { midiNoteOn (note, velocity); };
     midi.onNoteOff = [this] (int note) { midiNoteOff (note); };
     midi.onControl = [this] (int cc, int value) { midiControl (cc, value); };
@@ -1194,6 +1203,7 @@ void ChopPanel::midiNoteOn (int note, float velocity)
         if (note == playNote)
             playNote = -1;
         padNotes[static_cast<std::size_t> (learnTarget)] = note;
+        padMapSource = "learned";
         saveMidiMap();
         const auto learned = learnTarget;
         learnTarget = (learnTarget + 1) % 16;
@@ -1206,6 +1216,43 @@ void ChopPanel::midiNoteOn (int note, float velocity)
     for (int p = 0; p < 16; ++p)
         if (padNotes[static_cast<std::size_t> (p)] == note)
             return padDown (p, juce::jlimit (0.05f, 1.0f, velocity));
+    // A note no pad has: if it belongs to a map we know (an MPC's pad 4 sends 82, say), switch to that map,
+    // unless you've learned or chosen your own.
+    if (padMapSource == "auto")
+    {
+        const auto has = [note] (const std::array<int, 16>& m) { return std::find (m.begin(), m.end(), note) != m.end(); };
+        const std::array<int, 16>* found = has (mpcClassic) ? &mpcClassic : has (chromatic36) ? &chromatic36 : has (chromatic37) ? &chromatic37 : nullptr;
+        if (found != nullptr)
+        {
+            usePadMap (*found, found == &mpcClassic ? "MPC CLASSIC" : found == &chromatic36 ? "NOTES 36-51" : "NOTES 37-52", false);
+            for (int p = 0; p < 16; ++p)
+                if (padNotes[static_cast<std::size_t> (p)] == note)
+                    return padDown (p, juce::jlimit (0.05f, 1.0f, velocity));
+        }
+    }
+}
+
+void ChopPanel::usePadMap (const std::array<int, 16>& notes, const juce::String& name, bool chosen)
+{
+    padNotes = notes;
+    if (chosen)
+        padMapSource = "chosen";
+    saveMidiMap();
+    say ("PADS: " + name);
+}
+
+void ChopPanel::autoMidiMap()
+{
+    // Follow the controller: an MPC sends the MPC Classic map; anything else, 36-51.
+    if (padMapSource != "auto")
+        return;
+    const auto devices = midi.deviceNames();
+    const bool mpc = std::any_of (devices.begin(), devices.end(), [] (const juce::String& d) { return d.containsIgnoreCase ("MPC"); });
+    if (devices.isEmpty())
+        return;
+    const auto& wanted = mpc ? mpcClassic : chromatic36;
+    if (padNotes != wanted)
+        usePadMap (wanted, mpc ? "MPC CLASSIC (" + devices[0].toUpperCase() + ")" : juce::String ("NOTES 36-51"), false);
 }
 
 void ChopPanel::midiNoteOff (int note)
@@ -1266,14 +1313,15 @@ void ChopPanel::showMidiMenu()
     juce::PopupMenu menu;
     const auto devices = midi.deviceNames();
     menu.addSectionHeader (devices.isEmpty() ? juce::String ("NO MIDI CONTROLLERS") : "MIDI: " + devices.joinIntoString (", ").substring (0, 60));
-    const auto preset = [this] (int first, const juce::String& what) {
-        for (int p = 0; p < 16; ++p)
-            padNotes[static_cast<std::size_t> (p)] = first + p;
-        saveMidiMap();
-        say ("PADS: " + what);
-    };
-    menu.addItem ("Akai MPD / MPK Pads (Notes 36-51)", [preset] { preset (36, "AKAI MPD / MPK, NOTES 36-51"); });
-    menu.addItem ("Akai MPC Pads (Notes 37-52)", [preset] { preset (37, "AKAI MPC, NOTES 37-52"); });
+    menu.addItem ("Follow the Controller (Automatic)", true, padMapSource == "auto", [this] {
+        padMapSource = "auto";
+        settings->setValue ("midiPadMap", padMapSource);
+        autoMidiMap();
+        say ("PADS FOLLOW THE CONTROLLER");
+    });
+    menu.addItem ("Akai MPC (MPC Classic Note Map)", [this] { usePadMap (mpcClassic, "AKAI MPC CLASSIC", true); });
+    menu.addItem ("Akai MPD / MPK (Notes 36-51)", [this] { usePadMap (chromatic36, "AKAI MPD / MPK, NOTES 36-51", true); });
+    menu.addItem ("Chromatic From 37 (Notes 37-52)", [this] { usePadMap (chromatic37, "NOTES 37-52", true); });
     menu.addSeparator();
     menu.addItem ("Forget the Learned Play Button", playController >= 0 || playNote >= 0, false, [this] {
         playController = playNote = -1;
@@ -1291,6 +1339,7 @@ void ChopPanel::saveMidiMap()
     settings->setValue ("midiPadNotes", notes.joinIntoString (","));
     settings->setValue ("midiPlayCC", playController);
     settings->setValue ("midiPlayNote", playNote);
+    settings->setValue ("midiPadMap", padMapSource);
 }
 
 //--- Curve monitors --------------------------------------------------------------------------------------------
@@ -1551,8 +1600,8 @@ void ChopPanel::paintOverChildren (juce::Graphics& g)
         const auto area = pads[static_cast<std::size_t> (p)].getBounds().toFloat().reduced (7, 5);
         const bool marked = b.marks[static_cast<std::size_t> (p)].has_value() && b.audio != nullptr;
         g.setFont (hw::brand (13.0f));
-        g.setColour (marked ? juce::Colours::white.withAlpha (0.85f) : hw::colour::silkDim.withAlpha (0.8f));
-        g.drawText (keyName (p), area, juce::Justification::topLeft, false);
+        g.setColour (juce::Colour (0xff2c1a0c).withAlpha (marked ? 0.8f : 0.5f));
+        g.drawText (keyName (p), area.reduced (4.0f, 3.0f), juce::Justification::topLeft, false);
         if (p == selected)
         {
             g.setColour (juce::Colours::white.withAlpha (0.75f));

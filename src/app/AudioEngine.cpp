@@ -27,6 +27,8 @@ void AudioEngine::audioDeviceAboutToStart (juce::AudioIODevice* device)
     pads.prepare (deviceRate);
     take.prepare (deviceRate);
     preview.prepare (deviceRate);
+    for (auto& b : padBuffer)
+        b.assign (static_cast<std::size_t> (juce::jmax (8192, device->getCurrentBufferSizeSamples() * 2)), 0.0f);
 }
 
 void AudioEngine::audioDeviceIOCallbackWithContext (const float* const*, int, float* const* outputs, int numOutputs,
@@ -43,16 +45,39 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const*, int, fl
         if (lock.isLocked() && numOutputs >= 2)
             if (auto* writer = activeWriter.load())
             {
-                writer->write (outputs, numFrames);
+                // The pad: record a turned-down copy (what you hear stays as it is).
+                const auto gain = recordGain.load (std::memory_order_relaxed);
+                const float* const* source = outputs;
+                const float* padded[2] { padBuffer[0].data(), padBuffer[1].data() };
+                if (gain < 0.999f && static_cast<std::size_t> (numFrames) <= padBuffer[0].size())
+                {
+                    for (int c = 0; c < 2; ++c)
+                        for (int i = 0; i < numFrames; ++i)
+                            padBuffer[static_cast<std::size_t> (c)][static_cast<std::size_t> (i)] = outputs[c][i] * gain;
+                    source = padded;
+                }
+                writer->write (source, numFrames);
                 recordedFrames += numFrames;
                 float peak = 0;
                 for (int c = 0; c < 2; ++c)
                     for (int i = 0; i < numFrames; ++i)
-                        peak = std::max (peak, std::abs (outputs[c][i]));
+                        peak = std::max (peak, std::abs (source[c][i]));
                 const auto w = peakWrite.load (std::memory_order_relaxed);
                 peakRing[static_cast<std::size_t> (w)].store (peak, std::memory_order_relaxed);
                 peakWrite.store ((w + 1) % peakRingSize, std::memory_order_release);
             }
+    }
+    // For the spectrum display: what you hear, mono.
+    if (numOutputs >= 1)
+    {
+        auto w = scopeWrite.load (std::memory_order_relaxed);
+        for (int i = 0; i < numFrames; ++i)
+        {
+            const auto v = numOutputs >= 2 ? 0.5f * (outputs[0][i] + outputs[1][i]) : outputs[0][i];
+            scope[static_cast<std::size_t> (w)].store (v, std::memory_order_relaxed);
+            w = (w + 1) % scopeSize;
+        }
+        scopeWrite.store (w, std::memory_order_release);
     }
     for (int c = 0; c < 2; ++c)
     {
@@ -63,6 +88,15 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const*, int, fl
         const auto rms = numFrames > 0 ? std::sqrt (sum / static_cast<float> (numFrames)) : 0.0f;
         levels[c].store (c < numOutputs ? rms : levels[0].load(), std::memory_order_relaxed);
     }
+}
+
+void AudioEngine::recentOutput (std::vector<float>& into, int n) const
+{
+    n = juce::jlimit (1, scopeSize, n);
+    into.resize (static_cast<std::size_t> (n));
+    const auto end = scopeWrite.load (std::memory_order_acquire);
+    for (int i = 0; i < n; ++i)
+        into[static_cast<std::size_t> (i)] = scope[static_cast<std::size_t> ((end - n + i + scopeSize) % scopeSize)].load (std::memory_order_relaxed);
 }
 
 juce::String AudioEngine::startRecording (const juce::File& file)

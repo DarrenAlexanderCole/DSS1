@@ -219,10 +219,12 @@ their settings as WAVs into `<samples folder>/Bank X/`.
 transport (Start/Stop/Continue, MMC) to the message thread; `ChopPanel` maps notes to pads (default 36-51, the
 Akai MPD/MPK layout; MIDI LEARN; velocity sets the pad's level) and a learned control or note to play/pause.
 
-The effects' compressor (`Effects::CompType`) has four characters: OPTO (program-dependent release, soft knee),
-VCA (RMS detector, firm knee), TUBE (vari-mu: ratio rises with level, wide knee, even-harmonic saturation) and
-FET (very fast, odd-harmonic bite), with switches for attack, release, ratio, a sidechain high-pass and a
-12-bit crusher in front; gain reduction is published for the readout.
+The effects' compressor runs as an OPTO in the UI (`Effects::CompType` still holds VCA, TUBE and FET for later):
+program-dependent release and a soft knee, with attack and release set by `compAttackMs` / `compReleaseMs`. A
+3-band EQ (RBJ biquads: 120 Hz low shelf, 1 kHz bell, 6 kHz high shelf) sits in the wet path before detection,
+so it shapes both what is heard and what drives the squeeze; gain reduction is published for the readout.
+`BeatScope` reads the engine's output ring (`AudioEngine::recentOutput`), runs a 2048-point FFT into 28 log
+bands and draws them as a fading amber dot matrix under the recorder display.
 
 `src/engine/TakePlayer.h` plays the last take back, mixed in after the effects. Takes record into the temp
 folder and move to Music/DSS1 Recordings (and into the library) only when saved.

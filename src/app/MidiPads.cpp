@@ -7,7 +7,11 @@ MidiPads::MidiPads()
 {
     openAll();
     // Controllers plugged in (or out) later.
-    deviceWatch = juce::MidiDeviceListConnection::make ([this] { openAll(); });
+    deviceWatch = juce::MidiDeviceListConnection::make ([this] {
+        openAll();
+        if (onDevicesChanged)
+            onDevicesChanged();
+    });
 }
 
 MidiPads::~MidiPads()

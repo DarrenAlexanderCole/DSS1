@@ -110,11 +110,14 @@ public:
     explicit VuMeter (juce::String caption);
     /// Linear RMS, 0 … 1. Call from the message thread (a timer reading the engine's meters).
     std::function<float()> source;
+    /// A pad: reads this many dB lower (e.g. -20), for loud masters that would pin the needle.
+    void setPad (float db) { padDb = db; }
     void paint (juce::Graphics&) override;
 
 private:
     void timerCallback() override;
     juce::String caption;
+    float padDb = 0;
     float needle = 0, velocity = 0;  // a sprung needle with some weight: it swings, overshoots a touch, settles
     double lastTick = 0;
 };

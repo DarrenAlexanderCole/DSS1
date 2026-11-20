@@ -41,6 +41,11 @@ public:
     std::atomic<bool> compOn { false };
     std::atomic<float> compAmount { 0.4f };   ///< 0 … 1: how hard it squeezes (threshold 0 … -36 dB)
     std::atomic<float> compMix { 1.0f };      ///< 0 … 1: dry/compressed (parallel compression below 1)
+    /// Opto attack and release, ms (the other types have their own).
+    std::atomic<float> compAttackMs { 10.0f }, compReleaseMs { 400.0f };
+    /// The 3-band EQ in front of the compressor (part of the COMP module, on with it): low shelf 120 Hz, mid
+    /// bell 1 kHz, high shelf 6 kHz, each -12 … +12 dB.
+    std::atomic<float> eqLowDb { 0.0f }, eqMidDb { 0.0f }, eqHighDb { 0.0f };
     std::atomic<bool> compFastAttack { false }, compFastRelease { false }, compHighRatio { false }, compSidechainHpf { false };
     /// The CRUSH switch: 12-bit, a third of the rate, like an old drum sampler, in front of the compressor.
     std::atomic<bool> crushOn { false };
@@ -85,6 +90,21 @@ private:
 
     double rate = 44100.0;
     Smoothed filterAmount, filterWet, echoTime, echoWet, echoFb, reverbWet, reverbRoom, crushWet, compWet;
+    struct Biquad
+    {
+        float b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0;
+        std::array<float, 2> z1 {}, z2 {};
+        float process (float x, std::size_t c) noexcept
+        {
+            const auto y = b0 * x + z1[c];
+            z1[c] = b1 * x - a1 * y + z2[c];
+            z2[c] = b2 * x - a2 * y;
+            return y;
+        }
+    };
+    std::array<Biquad, 3> eq;
+    std::array<float, 3> eqSet { 999.0f, 999.0f, 999.0f };
+    void updateEq();
     float compEnvelope = 0;      // gain reduction, dB
     float compRms = 0;           // detector (VCA)
     float compSlow = 0;          // opto: how long it's been working, for the program-dependent release

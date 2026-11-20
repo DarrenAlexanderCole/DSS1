@@ -121,7 +121,9 @@ bool Theme::drawRenderedKey (juce::Graphics& g, juce::Button& b, bool over, bool
     auto r = b.getLocalBounds().toFloat();
     if (style == KeyStyle::pad)
     {
-        const auto img = part (down ? "pad_down" : "pad_up");
+        // Treated rawhide in a dark bezel (the render's bezel spans 0.9 of the image), filling the pad's
+        // space, with a light-pipe ring round it that glows in the pad's colour.
+        const auto img = part (down ? "pad_hide_down" : "pad_hide_up");
         if (! img.isValid())
             return false;
         const auto colour = juce::Colour (static_cast<juce::uint32> (static_cast<juce::int64> (b.getProperties()[padColourId])));
@@ -129,36 +131,33 @@ bool Theme::drawRenderedKey (juce::Graphics& g, juce::Button& b, bool over, bool
         const auto lightLevel = hw::light();
         const auto size = juce::jmin (r.getWidth(), r.getHeight());
         const auto sq = r.withSizeKeepingCentre (size, size);
-        // Lit pads spill their colour onto the panel round them.
-        if (lit)
-        {
-            g.setColour (colour.withAlpha (0.28f * lightLevel));
-            g.fillRoundedRectangle (sq.expanded (size * 0.06f), size * 0.12f);
-        }
-        const auto drawn = sq.expanded (size * 0.1f);  // the render has a margin for its shadow
         g.setOpacity (1.0f);
-        g.drawImage (img, drawn, juce::RectanglePlacement::stretchToFit);
-        // The silicone lit from below: colour through the rubber, brightest in the middle.
-        const auto face = sq.reduced (size * 0.11f).translated (0, down ? size * 0.02f : 0.0f);
-        const auto tint = lit ? colour.withMultipliedBrightness (0.7f + 0.3f * lightLevel) : colour.withMultipliedSaturation (0.5f);
-        g.setColour (tint.withAlpha (lit ? 0.62f : 0.07f));
-        g.fillRoundedRectangle (face, size * 0.07f);
+        g.drawImage (img, sq.withSizeKeepingCentre (size / 0.9f, size / 0.9f), juce::RectanglePlacement::stretchToFit);
+        // The ring sits between 0.85 and 0.80 of the render: about 3.5% in from the bezel's edge.
+        const auto ring = sq.reduced (size * 0.035f);
+        const auto ringW = juce::jmax (2.0f, size * 0.03f);
         if (lit)
         {
-            juce::ColourGradient glow (juce::Colours::white.withAlpha (0.35f * lightLevel), face.getCentreX(), face.getCentreY() - face.getHeight() * 0.1f,
-                                       juce::Colours::transparentWhite, face.getX(), face.getBottom(), true);
-            g.setGradientFill (glow);
-            g.fillRoundedRectangle (face, size * 0.07f);
+            const auto c = colour.withMultipliedBrightness (0.75f + 0.25f * lightLevel);
+            // Spill onto the hide and the panel, then the lit pipe itself.
+            g.setColour (c.withAlpha (0.18f * lightLevel));
+            g.drawRoundedRectangle (ring, size * 0.07f, ringW * 4.0f);
+            g.setColour (c.withAlpha (0.35f * lightLevel));
+            g.drawRoundedRectangle (ring, size * 0.07f, ringW * 2.0f);
+            g.setColour (c.withAlpha (0.95f));
+            g.drawRoundedRectangle (ring, size * 0.07f, ringW);
+            g.setColour (juce::Colours::white.withAlpha (0.35f * lightLevel));
+            g.drawRoundedRectangle (ring, size * 0.07f, ringW * 0.35f);
         }
         if (! enabled)
         {
             g.setColour (juce::Colours::black.withAlpha (0.35f));
-            g.fillRoundedRectangle (sq, size * 0.08f);
+            g.fillRoundedRectangle (sq, size * 0.06f);
         }
         return true;
     }
 
-    const char* name = "key_dark";
+    const char* name = "key_black";  // black phenolic, the default key
     switch (style)
     {
         case KeyStyle::cream: name = "key_cream"; break;
@@ -308,9 +307,11 @@ void Theme::drawButtonText (juce::Graphics& g, juce::TextButton& b, bool, bool d
             break;
         case KeyStyle::pad:
         {
-            const bool lit = b.getProperties()[padLitId];
-            g.setFont (hw::brand (juce::jlimit (12.0f, 20.0f, b.getHeight() * 0.32f)));
-            g.setColour ((lit ? juce::Colours::white : juce::Colour (0xff6e6c66)).withAlpha (alpha));
+            // Stamped into the hide.
+            g.setFont (hw::brand (juce::jlimit (12.0f, 20.0f, b.getHeight() * 0.3f)));
+            g.setColour (juce::Colour (0xfffff2dc).withAlpha (0.35f * alpha));
+            g.drawText (text, area.translated (0, 1.0f), juce::Justification::centred);
+            g.setColour (juce::Colour (0xff2c1a0c).withAlpha (0.78f * alpha));
             g.drawText (text, area, juce::Justification::centred);
             break;
         }

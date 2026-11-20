@@ -31,6 +31,7 @@ private:
 
     Session& session;
     hw::VuMeter left { "CHANNEL A" }, right { "CHANNEL B" };
+    juce::ToggleButton vuPad { "PAD" };
     std::array<juce::TextButton, 5> stageKeys;
     juce::TextButton startKey { "|<" }, backKey { "<<" }, forwardKey { ">>" }, cueKey { "CUE" }, playKey { "PLAY" };
     bool cueWasDown = false;

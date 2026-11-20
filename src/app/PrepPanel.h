@@ -41,6 +41,8 @@ private:
     void addMemoryCue (Frame at);
     void jumpMemory (int direction);
     void saveLoop (Frame start, double beats);
+    Frame loopEndFor (Frame start, double beats) const;
+    void resizePlayingLoop();
     void loopIn();
     void loopOut();
     void playSavedLoop (std::size_t slot);

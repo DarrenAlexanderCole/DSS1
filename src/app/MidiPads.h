@@ -22,6 +22,8 @@ public:
     std::function<void (bool play)> onTransport;
     /// Something arrived (to blink a light).
     std::function<void()> onActivity;
+    /// Controllers were plugged in or out.
+    std::function<void()> onDevicesChanged;
 
     /// The controllers listening right now.
     juce::StringArray deviceNames() const;

@@ -71,4 +71,41 @@ for i in range(70):
     ang = rng.uniform(0, np.pi); length = rng.uniform(3, 18)
     d.line([(x, y), (x + np.cos(ang) * length, y + np.sin(ang) * length)], fill=(255, 255, 255, int(rng.uniform(30, 80))), width=1)
 img.save(f'{out}/keywear.png', optimize=True)
+# Rawhide for the pads: tan fibres and mottling, darker patches from oil and handling, a polished wear groove
+# where it's been played (alpha holds height for the bump).
+H = W = 512
+yy, xx = np.mgrid[0:H, 0:W] / H - 0.5
+fibres = filtered_noise(H, W, 1.2, 6) * 0.5 + filtered_noise(H, W, 3, 1.5) * 0.3
+mottle = filtered_noise(H, W, 40, 40)
+patches = filtered_noise(H, W, 90, 90)
+r = np.sqrt(xx ** 2 + yy ** 2)
+groove = np.exp(-((r - 0.16) / 0.07) ** 2) * (0.6 + 0.4 * filtered_noise(H, W, 30, 30))   # played ring, off-centre-ish
+polish = np.exp(-(r / 0.22) ** 2)
+base = np.array([0.80, 0.66, 0.47])
+dark = np.array([0.42, 0.29, 0.17])
+t = np.clip(0.28 + 0.22 * fibres + 0.07 * mottle + 0.06 * patches + 0.5 * groove, 0, 1)
+col = base[None, None, :] * (1 - t[..., None]) + dark[None, None, :] * t[..., None]
+col *= (1 + 0.06 * polish[..., None])
+height = np.clip(0.5 + 0.25 * fibres - 0.45 * groove + 0.05 * mottle, 0, 1)
+rgba = np.concatenate([np.clip(col, 0, 1), height[..., None]], axis=-1)
+Image.fromarray((rgba * 255).astype(np.uint8), 'RGBA').save(f'{out}/rawhide.png', optimize=True)
+
+# Burl walnut for the side boards: swirling figure round knots, dark, matte, deep pores.
+H, W = 2400, 240
+wx = 30 * filtered_noise(H, W, 120, 60) + 10 * filtered_noise(H, W, 40, 20)
+wy = 30 * filtered_noise(H, W, 120, 60) + 10 * filtered_noise(H, W, 40, 20)
+y = np.arange(H)[:, None].astype(float); x = np.arange(W)[None, :].astype(float)
+field = np.zeros((H, W))
+for kx, ky in [(rng.uniform(0, W), rng.uniform(0, H)) for _ in range(9)]:
+    d = np.sqrt((x + wx - kx) ** 2 + ((y + wy - ky) * 0.6) ** 2)
+    field += 40.0 / (d + 25.0)
+lines = np.sin((x + wx * 1.5) * 0.09 + field * 9.0 + wy * 0.05) * 0.5 + 0.5
+fine = np.sin((x + wx * 2) * 0.35 + field * 22) * 0.5 + 0.5
+knots = np.clip(field - 2.6, 0, 1)
+pores = np.clip(filtered_noise(H, W, 2.5, 1.2), 1.4, 4) - 1.4
+t = np.clip(0.55 * lines + 0.2 * fine + 0.25 * filtered_noise(H, W, 80, 40) * 0.5, 0, 1)
+dark = np.array([0.045, 0.022, 0.012]); light = np.array([0.24, 0.13, 0.065])
+col = dark[None, None, :] * (1 - t[..., None]) + light[None, None, :] * t[..., None]
+col *= (1 - 0.55 * pores[..., None]) * (1 - 0.6 * knots[..., None])
+Image.fromarray((np.clip(col, 0, 1) * 255).astype(np.uint8)).save(f'{out}/walnut.png', optimize=True)
 print('ok')

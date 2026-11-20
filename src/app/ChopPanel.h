@@ -105,6 +105,10 @@ private:
     void setLearning (bool on);
     void showMidiMenu();
     void saveMidiMap();
+    /// Pads mapped as the connected controller sends them, unless you've learned or chosen a map.
+    void autoMidiMap();
+    void usePadMap (const std::array<int, 16>& notes, const juce::String& name, bool chosen);
+    juce::String padMapSource;  // "auto" (follows the controller), "chosen" (a preset), "learned"
     void updateRegions (int bankIndex);
     void pushSettings (int bankIndex, int pad);
     bool startBankFromDeck();

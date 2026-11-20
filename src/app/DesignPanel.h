@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Crate.h"
+#include "BeatScope.h"
 #include "Session.h"
 
 #include <juce_data_structures/juce_data_structures.h>
@@ -105,6 +106,10 @@ private:
     juce::TextButton recordButton { "REC" }, playTakeButton { "PLAY" }, saveTakeButton { "SAVE" }, discardButton { "DISCARD" },
         toChopButton { "TO CHOP" }, revealButton { "SHOW TAKES" };
     juce::File savedTake;  // the last take saved
+    // The recorder's input pad: -10, -20 or -50 dB (one at a time, or none).
+    std::array<juce::ToggleButton, 3> padSwitches;
+    void setRecordPad (int which);
+    BeatScope scope;
     std::vector<float> takePeaks;
     juce::Rectangle<int> waveArea;
     juce::String lastTake, recorderMessage;

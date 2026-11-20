@@ -10,5 +10,5 @@
 ## render/
 
 Rendered parts and generated textures for the hi-fi look (2026-11-19), all made here, no third-party art:
-knobs, keys, toggles, screws and pads rendered with Blender by `tools/render/render_parts.py`; brushed
-aluminium and walnut made by `tools/render/make_textures.py`. Re-run those scripts to change them.
+knobs, black phenolic keys, toggles, screws, the power lamp and rawhide pads rendered with Blender by `tools/render/render_parts.py`; brushed
+aluminium, burl walnut, rawhide, scratch and wear maps made by `tools/render/make_textures.py`. Re-run those scripts to change them.

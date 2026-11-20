@@ -34,6 +34,10 @@ public:
     /// Peaks of what's being recorded, one per audio block, for drawing the take as it records. Call from the
     /// message thread: appends the peaks since the last call to `into`.
     void drainRecordedPeaks (std::vector<float>& into);
+    /// The recorder's input pad: what's recorded is this many dB lower (0, -10, -20, -50). What you hear isn't.
+    void setRecordPad (float db) { recordGain.store (juce::Decibels::decibelsToGain (db, -100.0f)); }
+    /// The last `n` samples of what you hear (mono), oldest first, for the spectrum display.
+    void recentOutput (std::vector<float>& into, int n) const;
 
     // --- Recorder: what you hear (after effects), to a 24-bit WAV ----------------------------------------
     /// Starts recording to `file`. Returns an error message, or empty on success.
@@ -61,6 +65,11 @@ private:
     engine::Effects fx;
     engine::Sampler pads;
     engine::TakePlayer take, preview;
+    std::atomic<float> recordGain { 1.0f };
+    std::array<std::vector<float>, 2> padBuffer;  // the padded copy that's recorded
+    static constexpr int scopeSize = 8192;
+    std::array<std::atomic<float>, scopeSize> scope {};
+    std::atomic<int> scopeWrite { 0 };
     static constexpr int peakRingSize = 4096;
     std::array<std::atomic<float>, peakRingSize> peakRing {};
     std::atomic<int> peakWrite { 0 };

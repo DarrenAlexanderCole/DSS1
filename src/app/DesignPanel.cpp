@@ -146,7 +146,7 @@ DesignPanel::Knob& DesignPanel::addKnob (const juce::String& name, double min, d
     return *knobs.back();
 }
 
-DesignPanel::DesignPanel (Session& s, Crate& c) : session (s), crate (c), fx (s.effects()), pad (s.effects())
+DesignPanel::DesignPanel (Session& s, Crate& c) : session (s), crate (c), fx (s.effects()), pad (s.effects()), scope (s.output())
 {
     settings = &appSettings();
 
@@ -166,6 +166,16 @@ DesignPanel::DesignPanel (Session& s, Crate& c) : session (s), crate (c), fx (s.
                  return percent (v);
              });
     addKnob ("COMP MIX", 0.0, 1.0, 0.01, 1.0, "DRY||||||WET", [this] (double v) { fx.compMix = static_cast<float> (v); }, percent);
+    // The opto's envelope, and the 3-band EQ in front of it.
+    const auto ms = [] (double v) { return v >= 1000.0 ? juce::String (v / 1000.0, 2) + " S" : juce::String (juce::roundToInt (v)) + " MS"; };
+    addKnob ("ATTACK", 1.0, 200.0, 0.5, 10.0, "1||||||200", [this] (double v) { fx.compAttackMs = static_cast<float> (v); }, ms);
+    addKnob ("RELEASE", 40.0, 3000.0, 1.0, 400.0, "40||||||3S", [this] (double v) { fx.compReleaseMs = static_cast<float> (v); }, ms);
+    const auto db = [] (double v) { return (v > 0.05 ? "+" : "") + juce::String (v, 1) + " DB"; };
+    addKnob ("LOW", -12.0, 12.0, 0.5, 0.0, "-12||||||0||||||+12", [this] (double v) { fx.eqLowDb = static_cast<float> (v); }, db);
+    addKnob ("MID", -12.0, 12.0, 0.5, 0.0, "-12||||||0||||||+12", [this] (double v) { fx.eqMidDb = static_cast<float> (v); }, db);
+    addKnob ("HIGH", -12.0, 12.0, 0.5, 0.0, "-12||||||0||||||+12", [this] (double v) { fx.eqHighDb = static_cast<float> (v); }, db);
+    knobs[8]->slider.setSkewFactorFromMidPoint (20.0);
+    knobs[9]->slider.setSkewFactorFromMidPoint (400.0);
 
     // Effects start off each time DSS1 opens; their knob settings are remembered.
     const auto toggle = [this] (juce::ToggleButton& b, std::atomic<bool>& flag) {
@@ -192,7 +202,10 @@ DesignPanel::DesignPanel (Session& s, Crate& c) : session (s), crate (c), fx (s.
         k.onClick = [this, t] { selectCompType (t); };
         addAndMakeVisible (k);
     }
-    selectCompType (settings->getIntValue ("fx.compType", 1));
+    // The compressor is an opto now (with its own attack and release), so the type keys and switches are gone.
+    selectCompType (static_cast<int> (engine::Effects::CompType::opto));
+    for (auto& k : compTypeKeys)
+        k.setVisible (false);
     const auto sw = [this] (juce::ToggleButton& b, std::atomic<bool>& flag, const char* key, const char* on, const char* off, const char* tip) {
         b.getProperties().set ("onText", on);
         b.getProperties().set ("offText", off);
@@ -212,6 +225,12 @@ DesignPanel::DesignPanel (Session& s, Crate& c) : session (s), crate (c), fx (s.
     sw (crushSwitch, fx.crushOn, "fx.crush", "ON", "OFF", "Crush: 12-bit grit at a third of the rate, like an old drum sampler, before the compressor");
     crushSwitch.setToggleState (false, juce::dontSendNotification);  // starts off, like the effects
     fx.crushOn = false;
+    for (auto* b : { &attackSwitch, &releaseSwitch, &ratioSwitch, &hpfSwitch, &crushSwitch })
+    {
+        b->setToggleState (false, juce::dontSendNotification);
+        b->setVisible (false);
+    }
+    fx.compFastAttack = fx.compFastRelease = fx.compHighRatio = fx.compSidechainHpf = false;
 
     pad.onChange = [this] { syncFromEffects(); };
     addAndMakeVisible (pad);
@@ -256,6 +275,20 @@ DesignPanel::DesignPanel (Session& s, Crate& c) : session (s), crate (c), fx (s.
     };
     for (auto* b : { &playTakeButton, &saveTakeButton, &discardButton, &toChopButton })
         addAndMakeVisible (b);
+    // Input pad for the recorder: turns down what's recorded (not what you hear), for hot sources.
+    const char* padNames[] { "-10", "-20", "-50" };
+    for (int i = 0; i < 3; ++i)
+    {
+        auto& padSwitch = padSwitches[static_cast<std::size_t> (i)];
+        padSwitch.setButtonText (padNames[i]);
+        padSwitch.getProperties().set ("onText", "DB PAD");
+        padSwitch.getProperties().set ("offText", "OFF");
+        padSwitch.setTooltip (juce::String ("Record ") + padNames[i] + " dB quieter (what you hear doesn't change)");
+        padSwitch.onClick = [this, i] { setRecordPad (padSwitches[static_cast<std::size_t> (i)].getToggleState() ? i : -1); };
+        addAndMakeVisible (padSwitch);
+    }
+    setRecordPad (settings->getIntValue ("recordPad", -1));
+    addAndMakeVisible (scope);
     hwStyle (revealButton, KeyStyle::cream);
     revealButton.onClick = [] {
         recordingsFolder().createDirectory();
@@ -437,6 +470,16 @@ void DesignPanel::toggleRecording()
     repaint();
 }
 
+void DesignPanel::setRecordPad (int which)
+{
+    constexpr float dbs[] { -10.0f, -20.0f, -50.0f };
+    which = juce::jlimit (-1, 2, which);
+    for (int i = 0; i < 3; ++i)
+        padSwitches[static_cast<std::size_t> (i)].setToggleState (i == which, juce::dontSendNotification);
+    session.output().setRecordPad (which >= 0 ? dbs[which] : 0.0f);
+    settings->setValue ("recordPad", which);
+}
+
 void DesignPanel::selectCompType (int type)
 {
     type = juce::jlimit (0, 3, type);
@@ -510,6 +553,7 @@ void DesignPanel::paint (juce::Graphics& g)
     hw::recess (g, padArea.toFloat());
 
     hw::silk (g, "RECORDER", "WHAT YOU HEAR, WITH EFFECTS", recorderArea.toFloat().withHeight (16).translated (0, -22));
+    hw::silk (g, "INPUT PAD", "RECORDING ONLY", padSwitches[0].getBounds().toFloat().withWidth (260).withHeight (16).translated (0, -22));
     hw::recess (g, timeArea.toFloat());
     const bool recording = session.output().isRecording();
     const auto secs = session.output().recordedSeconds();
@@ -530,7 +574,13 @@ void DesignPanel::paint (juce::Graphics& g)
         };
         status = (player.isPlaying() ? "PLAY " : (pendingTake.existsAsFile() ? "TAKE " : "SAVED ")) + mmss (at) + " / " + mmss (len);
     }
-    hw::glowText (g, status, t.removeFromTop (38), hw::vfd (40.0f), recording ? juce::Colour (0xffff4a3a) : hw::colour::amber);
+    {
+        // As big as fits.
+        auto size = 40.0f;
+        while (size > 18.0f && juce::GlyphArrangement::getStringWidth (hw::vfd (size), status) > t.getWidth() - 30.0f)
+            size -= 2.0f;
+        hw::glowText (g, status, t.removeFromTop (38), hw::vfd (size), recording ? juce::Colour (0xffff4a3a) : hw::colour::amber);
+    }
     hw::glowText (g, lastTake.isEmpty() ? "SAVED TAKES GO TO MUSIC > DSS1 RECORDINGS" : lastTake.toUpperCase(), t.removeFromTop (22), hw::vfd (20.0f),
                   hw::colour::amberMid);
     hw::glowText (g, recorderMessage, t.removeFromTop (22), hw::vfd (20.0f), hw::colour::amberDim);
@@ -596,7 +646,7 @@ void DesignPanel::resized()
     area.removeFromTop (38);
     area.removeFromBottom (16);
     const int gap = 14;
-    const auto slot = (area.getWidth() - 3 * gap) / 9;
+    const auto slot = (area.getWidth() - 3 * gap) / 13;
     filterArea = area.removeFromLeft (slot);
     area.removeFromLeft (gap);
     echoArea = area.removeFromLeft (slot * 3);
@@ -621,33 +671,7 @@ void DesignPanel::resized()
     layBay (filterArea, filterOn, { 0 });
     layBay (echoArea, echoOn, { 1, 2, 3 });
     layBay (reverbArea, reverbOn, { 4, 5 });
-    {
-        // COMP: on switch and type keys along the top; the switches, then AMOUNT and MIX.
-        auto inner = compArea.reduced (10, 10);
-        auto topRow = inner.removeFromTop (34);
-        compOn.setBounds (topRow.removeFromLeft (100));
-        topRow.removeFromLeft (6);
-        const auto tw = (topRow.getWidth() - 3 * 5) / 4;
-        for (auto& k : compTypeKeys)
-        {
-            k.setBounds (topRow.removeFromLeft (tw).reduced (0, 3));
-            topRow.removeFromLeft (5);
-        }
-        inner.removeFromTop (20);
-        inner.removeFromBottom (22);
-        auto knobArea = inner.removeFromRight (inner.getWidth() * 2 / 5);
-        const auto kw = knobArea.getWidth() / 2;
-        for (const auto i : { 6, 7 })
-        {
-            const auto cell = knobArea.removeFromLeft (kw);
-            const auto size = juce::jmin (cell.getWidth(), cell.getHeight(), 110);
-            knobs[static_cast<std::size_t> (i)]->slider.setBounds (cell.withSizeKeepingCentre (size, size));
-        }
-        inner.removeFromRight (8);
-        const auto swW = inner.getWidth() / 5;
-        for (auto* b : { &attackSwitch, &releaseSwitch, &ratioSwitch, &hpfSwitch, &crushSwitch })
-            b->setBounds (inner.removeFromLeft (swW).withSizeKeepingCentre (swW, 64));
-    }
+    layBay (compArea, compOn, { 10, 11, 12, 6, 8, 9, 7 });  // EQ, then AMOUNT, ATTACK, RELEASE, MIX
 
     // Lower unit: the XY pad, then the recorder (keys and clock, the take's waveform).
     area = lowerUnit.reduced (hw::RackUnit::earWidth, 0).reduced (30, 0);
@@ -668,14 +692,18 @@ void DesignPanel::resized()
     auto keys = rec.removeFromTop (46);
     revealButton.setBounds (keys.removeFromRight (130).reduced (0, 4));
     keys.removeFromRight (30);
-    const auto kw = juce::jmin (130, (keys.getWidth() - 4 * 8) / 5);
+    const auto kw = juce::jmin (130, (keys.getWidth() - 3 * 84 - 6 * 8) / 5);
     for (auto* b : { &recordButton, &playTakeButton, &saveTakeButton, &discardButton, &toChopButton })
     {
         b->setBounds (keys.removeFromLeft (kw));
         keys.removeFromLeft (8);
     }
+    keys.removeFromLeft (10);
+    for (auto& sw : padSwitches)
+        sw.setBounds (keys.removeFromLeft (84));
     rec.removeFromTop (16);
     timeArea = rec.removeFromLeft (juce::jmin (380, rec.getWidth() / 3)).reduced (4);
+    scope.setBounds (timeArea.reduced (14, 10).withTrimmedTop (96));
     rec.removeFromLeft (24);
     waveArea = rec.withTrimmedTop (24).reduced (4);
 }

@@ -17,8 +17,6 @@ juce_add_binary_data(dss1_assets
         ${PROJECT_SOURCE_DIR}/assets/render/keywear.png
         ${PROJECT_SOURCE_DIR}/assets/render/knob_alu.png
         ${PROJECT_SOURCE_DIR}/assets/render/knob_brass.png
-        ${PROJECT_SOURCE_DIR}/assets/render/key_dark_up.png
-        ${PROJECT_SOURCE_DIR}/assets/render/key_dark_down.png
         ${PROJECT_SOURCE_DIR}/assets/render/key_cream_up.png
         ${PROJECT_SOURCE_DIR}/assets/render/key_cream_down.png
         ${PROJECT_SOURCE_DIR}/assets/render/key_cue_up.png
@@ -30,8 +28,11 @@ juce_add_binary_data(dss1_assets
         ${PROJECT_SOURCE_DIR}/assets/render/toggle_up.png
         ${PROJECT_SOURCE_DIR}/assets/render/toggle_down.png
         ${PROJECT_SOURCE_DIR}/assets/render/screw.png
-        ${PROJECT_SOURCE_DIR}/assets/render/pad_up.png
-        ${PROJECT_SOURCE_DIR}/assets/render/pad_down.png)
+        ${PROJECT_SOURCE_DIR}/assets/render/pad_hide_up.png
+        ${PROJECT_SOURCE_DIR}/assets/render/pad_hide_down.png
+        ${PROJECT_SOURCE_DIR}/assets/render/key_black_up.png
+        ${PROJECT_SOURCE_DIR}/assets/render/key_black_down.png
+        ${PROJECT_SOURCE_DIR}/assets/render/power_lamp.png)
 
 juce_add_gui_app(DSS1
     PRODUCT_NAME          "DSS1"
@@ -59,6 +60,7 @@ target_sources(DSS1 PRIVATE
     PrepPanel.cpp
     ChopPanel.cpp
     MidiPads.cpp
+    BeatScope.cpp
     Haptics.cpp
     ChopView.cpp
     Session.cpp

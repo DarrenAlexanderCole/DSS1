@@ -16,9 +16,12 @@ DSS1 now looks like 60s-80s hi-fi: brushed aluminium faces, walnut cheeks, machi
 knobs, black and ivory keys, chrome toggles, silicone pads, black-glass windows lit amber from behind and
 backlit VU meters. The parts are rendered in 3D. Things to notice:
 
-- **The frame:** one walnut board down each side holds all the racks.
-- **Wear:** the keys are brushed gunmetal, each worn in its own way (rubbed edges, a fingertip polish, fine
-  scratches), and the faces carry hairline scratches along the grain: used, but looked after.
+- **The frame:** one board of matte burl walnut down each side holds all the racks; it sits back in the shadows.
+- **Keys:** black phenolic with white legends, worn in their own ways (rubbed edges, a fingertip polish), and
+  the faces carry hairline scratches along the grain: used, but looked after.
+- **Pads:** treated rawhide with worn grooves, each with a ring that lights up when the pad plays or is marked.
+- **Power:** a red jewel lamp in a knurled chrome bezel. The **PAD** switch beside it takes 20 dB off both VU
+  meters so loud masters don't pin the needles (on by default).
 - **Power-up:** the displays and meters warm up when DSS1 opens, with a flicker, and the needles kick across.
 - **Living light:** the displays breathe slightly, and dip with loud music like a real amplifier's supply.
 - **Haptics:** on a MacBook (Force Touch) trackpad, knobs and faders click into their steps under your finger.
@@ -30,7 +33,8 @@ Where things are:
   **>>**, **CUE** and **PLAY**.
 - **Bottom unit (every screen):** the whole-track overview (click to jump), the **pitch fader** with its BPM
   readout, **RANGE** keys (8%, 16% or 50%), **RESET** and the **KEY LOCK** switch.
-- **Prep:** the loop length and beat-jump size are now **knobs** (drag up and down, or scroll). Hot cues are
+- **Prep:** the loop length and beat-jump size are now **knobs** (drag up and down, or scroll). Turning
+  **LOOP BEATS** while a loop plays resizes it live, from the same start. Hot cues are
   backlit pads.
 
 ## Try it
@@ -88,14 +92,18 @@ Load a track (double-click it in Catalog), press PLAY, then open **Listen / Desi
   - **FILTER:** one knob, low-pass to the left, high-pass to the right, open in the middle.
   - **ECHO:** TIME in beats (synced to the track's BPM at your pitch), FEEDBACK and MIX.
   - **REVERB:** SIZE and MIX.
-  - **COMP:** pick a character with the keys: **OPTO** (slow, smooth), **VCA** (clean, punchy glue), **TUBE**
-    (warm, squeezes harder the harder you push) or **FET** (fast, aggressive). **AMOUNT** sets how hard it works
-    (its readout shows the gain reduction while it's on), **COMP MIX** blends in the dry sound (parallel
-    compression). Switches: **ATTACK** fast/slow, **RELEASE** fast/slow, **RATIO** high/low, **SC HPF** (ignore
-    the low end so the kick doesn't pump the mix) and **CRUSH** (12-bit, old-sampler grit).
+  - **COMP:** an opto compressor with a 3-band EQ in front. **LOW** (120 Hz shelf), **MID** (1 kHz) and **HIGH**
+    (6 kHz shelf) shape what gets squeezed, ±12 dB each. **AMOUNT** sets how hard it works (its readout shows
+    the gain reduction while it's on), **ATTACK** (1-200 ms) and **RELEASE** (40 ms-3 s) set how fast it grabs
+    and lets go, and **COMP MIX** blends in the dry sound (parallel compression). A compressor has no decay or
+    sustain stage, so attack and release are its whole envelope.
   - Double-click a knob to reset it. **ALL OFF** turns every effect off.
 - **XY pad:** hold the mouse down on it and move: left and right sweep the filter, up adds echo. Let go and it
   springs back. With **HOLD** on, it stays where you leave it.
+- **Input pad:** the **-10**, **-20** and **-50** switches after TO CHOP lower what the recorder takes in
+  (one at a time; recording only, you still hear the full level).
+- **Spectrum:** the dot matrix under the recorder display dances to whatever you hear: bars jump with the beat,
+  trails fade, peak dots fall, and the whole matrix flares on every kick.
 - **Recorder:** **REC** records what you hear, effects included, and draws the waveform as it goes. Press
   **STOP**, then **PLAY** to hear the take on its own (the deck pauses; click the waveform to play from there).
   **SAVE** keeps it (Music > DSS1 Recordings, and into Catalog); **DISCARD** throws it away; pressing **REC**
@@ -141,7 +149,9 @@ recorder (**TO CHOP**). Pads are laid out and keyed like a drum machine:
   DSS1's pads (Akai pads work out of the box, harder hits play louder), and MIDI Start/Stop or MMC plays and
   pauses. **MIDI LEARN** to map your own: hit a controller pad for each DSS1 pad in turn (click a DSS1 pad to
   pick which), press a button on the controller to make it play/pause, then press **MIDI LEARN** again. Right-
-  click it for Akai presets. The light by **MIDI** blinks with what arrives.
+  click it for maps: **Follow the controller** (the default: an MPC gets the MPC pad layout, other controllers
+  36-51, and a note outside the map switches to the layout it belongs to), **Akai MPC**, **MPD/MPK 36-51** or
+  **Chromatic 37-52**. If an MPC Sample pad still plays the wrong DSS1 pad, tell me which pad played which. The light by **MIDI** blinks with what arrives.
 - **SHOW SAVED** opens the samples folder in Finder.
 - **SAVE BANK** writes the slices, with their settings, as WAVs to the **SAVE TO** folder (Bank A … Bank H).
   **CLEAR** clears the chosen pad, **CLEAR BANK** the whole bank. Your chops are still there next time.

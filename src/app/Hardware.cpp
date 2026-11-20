@@ -282,14 +282,16 @@ void sideBoard (juce::Graphics& g, juce::Rectangle<float> area, bool left)
     const auto outer = left ? area.getX() : area.getRight();
     const auto inner = left ? area.getRight() : area.getX();
     // Rounded outer edge, a soft highlight where it turns towards the light, flat towards the racks.
-    juce::ColourGradient round (juce::Colours::black.withAlpha (0.62f), outer, 0, juce::Colours::black.withAlpha (0.25f), inner, 0, false);
-    round.addColour (0.12, juce::Colours::black.withAlpha (0.12f));
-    round.addColour (0.30, juce::Colour (0x2effefd8));
-    round.addColour (0.50, juce::Colours::transparentBlack);
+    // Matte, oiled not lacquered: no shine, just the turn of the edge into shadow, so the board stays back and
+    // the machine stands forward.
+    juce::ColourGradient round (juce::Colours::black.withAlpha (0.7f), outer, 0, juce::Colours::black.withAlpha (0.35f), inner, 0, false);
+    round.addColour (0.15, juce::Colours::black.withAlpha (0.2f));
+    round.addColour (0.35, juce::Colour (0x0affefd8));
+    round.addColour (0.6, juce::Colours::black.withAlpha (0.12f));
     g.setGradientFill (round);
     g.fillRect (area);
     // Light from above on the oil finish, fading down the board; the ends a little darker (end grain).
-    juce::ColourGradient top (juce::Colour (0x26fff2e2), 0, area.getY(), juce::Colours::transparentWhite, 0, area.getY() + area.getHeight() * 0.45f, false);
+    juce::ColourGradient top (juce::Colour (0x0cfff2e2), 0, area.getY(), juce::Colours::transparentWhite, 0, area.getY() + area.getHeight() * 0.45f, false);
     g.setGradientFill (top);
     g.fillRect (area);
     juce::ColourGradient ends (juce::Colours::black.withAlpha (0.45f), 0, area.getY(), juce::Colours::transparentBlack, 0, area.getY() + 10, false);
@@ -577,7 +579,7 @@ void VuMeter::timerCallback()
     // VU ballistics: ~300 ms to rise to a level. 0 VU sits at -18 dBFS RMS.
     const auto rms = source ? source() : 0.0f;
     feedLight (rms);
-    const auto db = (rms > 0.001f ? 20.0f * std::log10 (rms) : -60.0f) + 18.0f;  // in VU
+    const auto db = (rms > 0.001f ? 20.0f * std::log10 (rms) : -60.0f) + 18.0f + padDb;  // in VU
     auto target = juce::jlimit (0.0f, 1.05f, juce::jmap (db, -20.0f, 3.0f, 0.0f, 1.0f));
     // On power-up the needles kick across and fall back, like real meters.
     const auto now = juce::Time::getMillisecondCounterHiRes();

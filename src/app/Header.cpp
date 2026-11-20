@@ -1,4 +1,5 @@
 #include "Header.h"
+#include "Settings.h"
 #include "Theme.h"
 
 namespace dss1::ui
@@ -10,6 +11,19 @@ Header::Header (Session& s) : session (s)
     right.source = [this] { return session.outputLevel (1); };
     addAndMakeVisible (left);
     addAndMakeVisible (right);
+    // A -20 dB pad on the meters, for loud masters (on unless you turn it off).
+    vuPad.getProperties().set ("onText", "-20 DB");
+    vuPad.getProperties().set ("offText", "0 DB");
+    vuPad.setTooltip ("Meter pad: the VU meters read 20 dB lower, so loud masters don't pin the needles");
+    vuPad.setToggleState (appSettings().getBoolValue ("vuPad", true), juce::dontSendNotification);
+    vuPad.onClick = [this] {
+        const auto pad = vuPad.getToggleState() ? -20.0f : 0.0f;
+        left.setPad (pad);
+        right.setPad (pad);
+        appSettings().setValue ("vuPad", vuPad.getToggleState());
+    };
+    vuPad.onClick();
+    addAndMakeVisible (vuPad);
 
     const char* names[] { "CATALOG", "PREP", "LISTEN / DESIGN", "CHOP", "DELIVER" };
     for (int i = 0; i < 5; ++i)
@@ -97,13 +111,22 @@ void Header::paint (juce::Graphics& g)
     g.setColour (hw::colour::ink.withAlpha (0.6f));
     g.setFont (hw::label (11.0f));
     g.drawText ("MODEL V2  /  " + juce::String (DSS1_BUILD_LABEL).toUpperCase(), badge.removeFromTop (16), juce::Justification::centredLeft);
-    const auto lamp = juce::Point<float> (badge.getX() + 14, badge.getBottom() - 16);
-    g.setColour (juce::Colour (0xff9a9b9d));
-    g.fillEllipse (juce::Rectangle<float> (30, 30).withCentre (lamp));
-    g.setColour (juce::Colours::black);
-    g.drawEllipse (juce::Rectangle<float> (30, 30).withCentre (lamp), 1.0f);
-    hw::led (g, lamp, 10.0f, juce::Colour (0xffe0301b), true);
-    hw::silk (g, "POWER", {}, { lamp.x + 26, lamp.y - 8, 80, 16 });
+    const auto lamp = juce::Point<float> (badge.getX() + 16, badge.getBottom() - 18);
+    if (const auto img = hw::part ("power_lamp"); img.isValid())
+    {
+        // A red jewel pilot lamp in a chrome bezel, glowing with the supply.
+        const auto lit = hw::light();
+        g.setColour (juce::Colour (0xffff2a10).withAlpha (0.22f * lit));
+        g.fillEllipse (juce::Rectangle<float> (54, 54).withCentre (lamp));
+        g.setOpacity (1.0f);
+        g.drawImage (img, juce::Rectangle<float> (44, 44).withCentre (lamp), juce::RectanglePlacement::stretchToFit);
+        juce::ColourGradient glow (juce::Colour (0xffff5030).withAlpha (0.75f * lit), lamp.x - 2, lamp.y - 3, juce::Colours::transparentBlack, lamp.x + 9, lamp.y + 9, true);
+        g.setGradientFill (glow);
+        g.fillEllipse (juce::Rectangle<float> (18, 18).withCentre (lamp));
+    }
+    else
+        hw::led (g, lamp, 10.0f, juce::Colour (0xffe0301b), true);
+    hw::silk (g, "POWER", {}, { lamp.x + 28, lamp.y - 8, 70, 16 });
 
     // Silk-screen labels.
     hw::silk (g, "OUTPUT", "LEVEL", meterArea.toFloat().withHeight (16).translated (0, -20));
@@ -153,6 +176,7 @@ void Header::resized()
     area.removeFromTop (28);
     auto top = area.removeFromTop (138);
     brandArea = top.removeFromLeft (190);
+    vuPad.setBounds (brandArea.getX() + 112, brandArea.getBottom() - 38, 90, 40);
     top.removeFromLeft (18);
     meterArea = top.removeFromLeft (juce::jmin (440, top.getWidth() / 2));
     {

@@ -181,3 +181,25 @@ TEST_CASE ("Compressor switches: high ratio squeezes harder, mix brings back the
     run (parallel, wet);
     CHECK (rms (wet.l, 30000, 44000) == Approx (rms (dry.l, 30000, 44000)).epsilon (0.01));
 }
+
+TEST_CASE ("The COMP module's EQ: low shelf, mid bell, high shelf", "[effects]")
+{
+    const auto gainAt = [] (float freq, float low, float mid, float high) {
+        Effects fx;
+        fx.prepare (rate, 256);
+        fx.compOn = true;
+        fx.compAmount = 0.0f;  // threshold 0 dB: no squeezing at this level, no make-up
+        fx.compType = static_cast<int> (Effects::CompType::opto);
+        fx.eqLowDb = low;
+        fx.eqMidDb = mid;
+        fx.eqHighDb = high;
+        auto s = sine (freq, 1.0, 0.1f);
+        run (fx, s);
+        return 20.0f * std::log10 (rms (s.l, 30000, 44000) / (0.1f / 1.414f));
+    };
+    CHECK (gainAt (60.0f, 12.0f, 0, 0) > 10.0f);
+    CHECK (std::abs (gainAt (5000.0f, 12.0f, 0, 0)) < 1.0f);
+    CHECK (gainAt (1000.0f, 0, -12.0f, 0) < -10.0f);
+    CHECK (gainAt (12000.0f, 0, 0, 12.0f) > 10.0f);
+    CHECK (std::abs (gainAt (1000.0f, 0, 0, 0)) < 0.2f);
+}

@@ -55,6 +55,47 @@ void Effects::prepare (double sampleRate, int)
     reset();
 }
 
+void Effects::updateEq()
+{
+    // RBJ cookbook shelves and bell, recomputed only when a band moves.
+    const float want[3] { std::clamp (eqLowDb.load (std::memory_order_relaxed), -12.0f, 12.0f), std::clamp (eqMidDb.load (std::memory_order_relaxed), -12.0f, 12.0f),
+                          std::clamp (eqHighDb.load (std::memory_order_relaxed), -12.0f, 12.0f) };
+    const float freq[3] { 120.0f, 1000.0f, 6000.0f };
+    for (std::size_t i = 0; i < 3; ++i)
+    {
+        if (std::abs (want[i] - eqSet[i]) < 0.01f)
+            continue;
+        eqSet[i] = want[i];
+        const auto A = std::pow (10.0f, want[i] / 40.0f);
+        const auto w0 = 2.0f * pi * freq[i] / static_cast<float> (rate);
+        const auto cw = std::cos (w0), sw = std::sin (w0);
+        float b0, b1, b2, a0, a1, a2;
+        if (i == 1)
+        {
+            const auto alpha = sw / (2.0f * 0.8f);
+            b0 = 1 + alpha * A; b1 = -2 * cw; b2 = 1 - alpha * A;
+            a0 = 1 + alpha / A; a1 = -2 * cw; a2 = 1 - alpha / A;
+        }
+        else
+        {
+            const auto alpha = sw / 2.0f * std::sqrt (2.0f);  // shelf slope 1
+            const auto sq = 2.0f * std::sqrt (A) * alpha;
+            if (i == 0)
+            {
+                b0 = A * ((A + 1) - (A - 1) * cw + sq); b1 = 2 * A * ((A - 1) - (A + 1) * cw); b2 = A * ((A + 1) - (A - 1) * cw - sq);
+                a0 = (A + 1) + (A - 1) * cw + sq; a1 = -2 * ((A - 1) + (A + 1) * cw); a2 = (A + 1) + (A - 1) * cw - sq;
+            }
+            else
+            {
+                b0 = A * ((A + 1) + (A - 1) * cw + sq); b1 = -2 * A * ((A - 1) + (A + 1) * cw); b2 = A * ((A + 1) + (A - 1) * cw - sq);
+                a0 = (A + 1) - (A - 1) * cw + sq; a1 = 2 * ((A - 1) - (A + 1) * cw); a2 = (A + 1) - (A - 1) * cw - sq;
+            }
+        }
+        auto& band = eq[i];
+        band.b0 = b0 / a0; band.b1 = b1 / a0; band.b2 = b2 / a0; band.a1 = a1 / a0; band.a2 = a2 / a0;
+    }
+}
+
 void Effects::reset() noexcept
 {
     for (auto& f : lowpass)
@@ -76,6 +117,9 @@ void Effects::reset() noexcept
     crushHeld = {};
     crushCounter = 0;
     compEnvelope = compRms = compSlow = 0;
+    for (auto& band : eq)
+        band.z1 = band.z2 = {};
+    eqSet = { 999.0f, 999.0f, 999.0f };
     sidechainState = {};
     gainReduction.store (0.0f);
 }
@@ -114,7 +158,10 @@ void Effects::process (float* const* channels, int numChannels, int numFrames) n
     Character ch {};
     switch (type)
     {
-        case CompType::opto: ch = { fastA ? 3.0f : 10.0f, fastR ? 150.0f : 500.0f, high ? 6.0f : 3.0f, 10.0f, 0.0f }; break;
+        case CompType::opto:
+            ch = { std::clamp (compAttackMs.load (std::memory_order_relaxed), 0.5f, 300.0f), std::clamp (compReleaseMs.load (std::memory_order_relaxed), 20.0f, 5000.0f),
+                   high ? 6.0f : 3.0f, 10.0f, 0.0f };
+            break;
         case CompType::vca:  ch = { fastA ? 0.3f : 3.0f, fastR ? 40.0f : 120.0f, high ? 10.0f : 4.0f, 2.0f, 0.0f }; break;
         case CompType::tube: ch = { fastA ? 8.0f : 20.0f, fastR ? 150.0f : 400.0f, high ? 4.0f : 2.0f, 18.0f, 0.5f }; break;
         case CompType::fet:  ch = { fastA ? 0.05f : 0.8f, fastR ? 30.0f : 80.0f, high ? 20.0f : 4.0f, 1.0f, 0.25f }; break;
@@ -128,6 +175,7 @@ void Effects::process (float* const* channels, int numChannels, int numFrames) n
     // Make-up gain: about half of what the threshold and ratio take away at full scale.
     const auto makeupDb = -thresholdDb * (1.0f - 1.0f / ch.ratio) * 0.5f;
     float deepest = 0;
+    updateEq();
 
     const auto lineSize = echoLine[0].size();
     const auto nyquistGuard = static_cast<float> (rate * 0.45);
@@ -177,7 +225,12 @@ void Effects::process (float* const* channels, int numChannels, int numFrames) n
         const auto kWet = compWet.next();
         if (kWet > 1e-4f)
         {
-            float detect[2] { out[0], out[1] };
+            // The EQ first, then the compressor hears (and squeezes) the EQ'd sound.
+            float eqd[2] { out[0], out[1] };
+            for (std::size_t c = 0; c < 2; ++c)
+                for (auto& band : eq)
+                    eqd[c] = band.process (eqd[c], c);
+            float detect[2] { eqd[0], eqd[1] };
             if (hpf)  // ignore the low end, so the kick doesn't pump everything
                 for (std::size_t c = 0; c < 2; ++c)
                 {
@@ -215,7 +268,7 @@ void Effects::process (float* const* channels, int numChannels, int numFrames) n
             const auto gain = std::pow (10.0f, (compEnvelope + makeupDb) / 20.0f);
             for (std::size_t c = 0; c < 2; ++c)
             {
-                auto squeezed = out[c] * gain;
+                auto squeezed = eqd[c] * gain;
                 if (ch.drive > 0)
                 {
                     // Tube: warm, even harmonics (a little asymmetry). FET: a touch of odd-harmonic bite.

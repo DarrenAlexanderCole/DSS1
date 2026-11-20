@@ -294,7 +294,95 @@ def pad(name, down=False):
     camera(sc, 2.4, 256, 256)
     render(sc, name)
 
+def power_lamp(name):
+    # A pilot lamp: a faceted red jewel in a knurled chrome bezel.
+    sc = reset()
+    chrome = principled('Chrome', (0.9, 0.9, 0.9), 1.0, 0.1)
+    add_bump(chrome, knurl(36), 0.2)
+    cylinder(1.0, 0.25, 0.0, chrome, bevel=0.06, name='bezel')
+    cone(0.82, 0.72, 0.12, 0.25, chrome, bevel=0.02, name='lip')
+    jewel = bpy.data.materials.new('Jewel'); jewel.use_nodes = True
+    b = jewel.node_tree.nodes['Principled BSDF']
+    b.inputs['Base Color'].default_value = (0.55, 0.01, 0.005, 1)
+    b.inputs['Roughness'].default_value = 0.05
+    b.inputs['Transmission Weight'].default_value = 0.6
+    b.inputs['Emission Color'].default_value = (1.0, 0.03, 0.005, 1)
+    b.inputs['Emission Strength'].default_value = 0.35
+    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=2, radius=0.66, location=(0, 0, 0.3))
+    o = bpy.context.active_object; o.scale = (1, 1, 0.7); o.data.materials.append(jewel)   # faceted (flat shaded)
+    camera(sc, 2.6, 128, 128)
+    render(sc, name)
+
+def bakelite_key(name, down=False):
+    # A black phenolic (bakelite) key: satin, hard, a little worn at the edges and polished where fingers land.
+    sc = reset()
+    top = principled('Cap', (0.006, 0.006, 0.007), 0.0, 0.5, coat=0.7)
+    n = top.node_tree.nodes; l = top.node_tree.links; bs = n['Principled BSDF']
+    bs.inputs['Coat Roughness'].default_value = 0.14
+    # Edges rubbed a touch lighter (worn coat); centre a little glossier.
+    geo = n.new('ShaderNodeNewGeometry'); bev = n.new('ShaderNodeBevel'); bev.inputs['Radius'].default_value = 0.05
+    dot = n.new('ShaderNodeVectorMath'); dot.operation = 'DOT_PRODUCT'
+    l.new(bev.outputs['Normal'], dot.inputs[0]); l.new(geo.outputs['Normal'], dot.inputs[1])
+    edge = n.new('ShaderNodeMapRange'); edge.inputs['From Min'].default_value = 0.999; edge.inputs['From Max'].default_value = 0.9
+    l.new(dot.outputs['Value'], edge.inputs['Value'])
+    mix = n.new('ShaderNodeMix'); mix.data_type = 'RGBA'
+    mix.inputs['A'].default_value = (0.006, 0.006, 0.007, 1); mix.inputs['B'].default_value = (0.06, 0.056, 0.052, 1)
+    l.new(edge.outputs['Result'], mix.inputs['Factor']); l.new(mix.outputs['Result'], bs.inputs['Base Color'])
+    tc = n.new('ShaderNodeTexCoord'); grad = n.new('ShaderNodeTexGradient'); grad.gradient_type = 'SPHERICAL'
+    mp = n.new('ShaderNodeMapping'); mp.inputs['Scale'].default_value = (0.75, 1.8, 1)
+    l.new(tc.outputs['Object'], mp.inputs['Vector']); l.new(mp.outputs['Vector'], grad.inputs['Vector'])
+    rr = n.new('ShaderNodeMapRange'); rr.inputs['To Min'].default_value = 0.5; rr.inputs['To Max'].default_value = 0.3
+    l.new(grad.outputs['Fac'], rr.inputs['Value']); l.new(rr.outputs['Result'], bs.inputs['Roughness'])
+    add_bump(top, grain(220), 0.02)
+    well = principled('Well', (0.01, 0.01, 0.01), 0.3, 0.5)
+    rounded_box(2.62, 1.02, 0.08, 0.0, 0.035, well, name='well')
+    h = 0.16 if down else 0.34
+    rounded_box(2.5, 0.9, h, 0.0, 0.13, top, name='cap')
+    camera(sc, 2.9, 320, 128)
+    render(sc, name)
+
+def rawhide_pad(name, down=False):
+    # A drum pad: treated rawhide stretched over a square frame (texture from make_textures.py: fibres,
+    # mottling, a polished wear groove where it's played), in a dark metal bezel with a light-pipe ring.
+    sc = reset()
+    hide = bpy.data.materials.new('Hide'); hide.use_nodes = True
+    n = hide.node_tree.nodes; l = hide.node_tree.links; bs = n['Principled BSDF']
+    tex = n.new('ShaderNodeTexImage')
+    tex.image = bpy.data.images.load(os.path.abspath(os.path.join(OUT, 'rawhide.png')))
+    tc = n.new('ShaderNodeTexCoord'); mp = n.new('ShaderNodeMapping')
+    mp.inputs['Scale'].default_value = (0.5, 0.5, 1); mp.inputs['Location'].default_value = (0.5, 0.5, 0)
+    l.new(tc.outputs['Object'], mp.inputs['Vector']); l.new(mp.outputs['Vector'], tex.inputs['Vector'])
+    l.new(tex.outputs['Color'], bs.inputs['Base Color'])
+    bs.inputs['Roughness'].default_value = 0.55
+    bs.inputs['Coat Weight'].default_value = 0.25; bs.inputs['Coat Roughness'].default_value = 0.35   # treated, oiled
+    bs.inputs['Subsurface Weight'].default_value = 0.2
+    bump = n.new('ShaderNodeBump'); bump.inputs['Strength'].default_value = 0.35
+    l.new(tex.outputs['Alpha'], bump.inputs['Height']); l.new(bump.outputs['Normal'], bs.inputs['Normal'])
+    bezel = principled('Bezel', (0.03, 0.03, 0.032), 0.8, 0.35)
+    ring = principled('Ring', (0.75, 0.75, 0.72), 0.0, 0.25)          # frosted light pipe (lit by the app)
+    ring.node_tree.nodes['Principled BSDF'].inputs['Transmission Weight'].default_value = 0.5
+    rounded_box(2.16, 2.16, 0.10, 0.0, 0.12, bezel, name='bezel')
+    rounded_box(2.04, 2.04, 0.13, 0.0, 0.11, ring, name='ring')
+    rounded_box(1.92, 1.92, 0.12, 0.0, 0.10, bezel, name='seat')
+    # The hide: a thin slab domed a little (stretched), pressed down when played.
+    bpy.ops.mesh.primitive_grid_add(x_subdivisions=64, y_subdivisions=64, size=1.86, location=(0, 0, 0.16))
+    o = bpy.context.active_object
+    for v in o.data.vertices:
+        x, y = v.co.x / 0.93, v.co.y / 0.93
+        edge = max(abs(x), abs(y))
+        v.co.z = (0.05 if not down else -0.01) * (1 - edge ** 6)
+    sol = o.modifiers.new('s', 'SOLIDIFY'); sol.thickness = 0.04
+    bpy.ops.object.shade_smooth()
+    o.data.materials.append(hide)
+    camera(sc, 2.4, 256, 256)
+    render(sc, name)
+
 PARTS = {
+    'power_lamp': lambda: power_lamp('power_lamp'),
+    'key_black_up': lambda: bakelite_key('key_black_up'),
+    'key_black_down': lambda: bakelite_key('key_black_down', True),
+    'pad_hide_up': lambda: rawhide_pad('pad_hide_up'),
+    'pad_hide_down': lambda: rawhide_pad('pad_hide_down', True),
     'knob_alu': lambda: knob('knob_alu', (0.84, 0.84, 0.85), 1.0),
     'knob_brass': lambda: knob('knob_brass', (0.88, 0.62, 0.30), 1.0),
     'key_dark_up': lambda: key('key_dark_up', (0.16, 0.165, 0.175), 0.9, 0.34, worn=True),

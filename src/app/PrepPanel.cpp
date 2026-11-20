@@ -100,6 +100,7 @@ PrepPanel::PrepPanel (Session& s) : session (s), waveform (s)
     loopKnob.setTooltip ("Length of Save Loop (key L)");
     loopKnob.onValueChange = [this] {
         settings->setValue ("loopBeats", loopLength());
+        resizePlayingLoop();
         repaint();
     };
     saveLoopButton.setTooltip ("Save a loop of this many beats from the playhead into the next free slot (key L)");
@@ -344,17 +345,52 @@ void PrepPanel::jumpMemory (int direction)
         session.deck().seek (*target);
 }
 
-void PrepPanel::saveLoop (Frame start, double beats)
+Frame PrepPanel::loopEndFor (Frame start, double beats) const
 {
     const auto* r = session.record();
     if (r == nullptr)
-        return;
+        return start;
     Frame end;
     if (r->grid && ! r->grid->isEmpty())
         end = static_cast<Frame> (std::llround (r->grid->frameAt (r->grid->beatAt (static_cast<double> (start)) + beats)));
     else
         end = start + static_cast<Frame> (std::llround (beats * 60.0 / r->info.bpm.value_or (120.0) * r->sampleRate));
-    end = std::min (end, r->lengthFrames);
+    return std::min (end, r->lengthFrames);
+}
+
+void PrepPanel::resizePlayingLoop()
+{
+    // LOOP BEATS changes the loop that's playing, right away: same start, new length. A saved loop that's
+    // playing is resized too.
+    auto& deck = session.deck();
+    const auto* r = session.record();
+    if (r == nullptr || ! deck.isLooping())
+        return;
+    const auto slot = activeLoopSlot();
+    const auto start = static_cast<Frame> (std::llround (deck.loopStartFrame()));
+    const auto beats = static_cast<double> (loopLength());
+    const auto end = loopEndFor (start, beats);
+    if (end <= start)
+        return;
+    deck.setLoop (start, end);
+    // If the playhead is now past the end, carry on from the same place in the shorter loop.
+    if (const auto pos = deck.position(); pos >= static_cast<double> (end))
+        deck.seek (start + static_cast<Frame> (std::fmod (pos - static_cast<double> (start), static_cast<double> (end - start))));
+    if (slot)
+        edit ([&] (TrackRecord& rec) {
+            if (rec.savedLoops[*slot])
+                rec.savedLoops[*slot]->end = end;
+        });
+    say ("Loop: " + juce::String (loopLength()) + (loopLength() == 1 ? " beat" : " beats") + (slot ? " (saved loop " + juce::String (*slot + 1) + " updated)" : juce::String()));
+    refresh();
+}
+
+void PrepPanel::saveLoop (Frame start, double beats)
+{
+    const auto* r = session.record();
+    if (r == nullptr)
+        return;
+    const auto end = loopEndFor (start, beats);
     if (end <= start)
         return;
 
