@@ -23,7 +23,7 @@ backlit VU meters. The parts are rendered in 3D. Things to notice:
 - **Displays:** everything behind the glass is drawn smooth now, lit warm like the VU meters: waveforms are
   mirrored glowing shapes with a brighter core, the spectrum and pad monitors are smooth curves, and readouts use
   a clean modern face (Rajdhani). The only old things are the materials.
-- **Icon:** a speaker driver in walnut and brushed aluminium, with DSS1 printed on the cone.
+- **Icon:** a speaker driver in walnut and brushed aluminium, with a small DSS1 on its dark cone.
 - **Power:** a red jewel lamp in a knurled chrome bezel. The **PAD** switch beside it takes 20 dB off both VU
   meters so loud masters don't pin the needles (on by default).
 - **Power-up:** the displays and meters warm up when DSS1 opens, with a flicker, and the needles kick across.

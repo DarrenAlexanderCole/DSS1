@@ -108,7 +108,7 @@ CR = R - 0.6
 bpy.ops.mesh.primitive_cone_add(vertices=128, radius1=0.9, radius2=CR, depth=0.75, end_fill_type='NOTHING', location=(0, 0, -0.33))
 cone = bpy.context.active_object
 bpy.ops.object.shade_smooth()
-paper = mat('paper', (0.035, 0.033, 0.032), rough=0.7)
+paper = mat('paper', (0.05, 0.05, 0.05), rough=0.75)
 n = paper.node_tree.nodes; l = paper.node_tree.links; b = n['Principled BSDF']
 tc = n.new('ShaderNodeTexCoord'); mp = n.new('ShaderNodeMapping'); tx = n.new('ShaderNodeTexImage')
 tx.image = bpy.data.images.load(PRINT); tx.extension = 'CLIP'
@@ -116,7 +116,7 @@ tx.image = bpy.data.images.load(PRINT); tx.extension = 'CLIP'
 mp.inputs['Scale'].default_value = (0.5 / CR, 0.5 / CR, 1); mp.inputs['Location'].default_value = (0.5, 0.5, 0)
 l.new(tc.outputs['Object'], mp.inputs['Vector']); l.new(mp.outputs['Vector'], tx.inputs['Vector'])
 ink = n.new('ShaderNodeMix'); ink.data_type = 'RGBA'
-ink.inputs[6].default_value = (0.035, 0.033, 0.032, 1); ink.inputs[7].default_value = (0.82, 0.80, 0.76, 1)
+ink.inputs[6].default_value = (0.05, 0.05, 0.05, 1); ink.inputs[7].default_value = (0.62, 0.61, 0.58, 1)
 l.new(tx.outputs['Alpha'], ink.inputs[0]); l.new(ink.outputs[2], b.inputs['Base Color'])
 inkr = n.new('ShaderNodeMapRange'); inkr.inputs['To Min'].default_value = 0.72; inkr.inputs['To Max'].default_value = 0.35
 l.new(tx.outputs['Alpha'], inkr.inputs['Value']); l.new(inkr.outputs['Result'], b.inputs['Roughness'])
