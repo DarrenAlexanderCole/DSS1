@@ -63,6 +63,7 @@ target_sources(DSS1 PRIVATE
     MidiPads.cpp
     BeatScope.cpp
     Scope.cpp
+    TempoSteps.cpp
     Haptics.cpp
     ChopView.cpp
     Session.cpp

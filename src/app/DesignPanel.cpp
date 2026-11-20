@@ -501,6 +501,8 @@ void DesignPanel::timerCallback()
             shownReduction = 0.0f;
         repaint (compArea);
     }
+    for (const auto& m : compMonitors)
+        repaint (m);  // they follow the knobs and the live gain reduction
     {
         auto& player = session.output().takePlayer();
         const bool playingTake = player.isPlaying();
@@ -518,6 +520,168 @@ void DesignPanel::timerCallback()
         session.output().drainRecordedPeaks (takePeaks);
         repaint (timeArea.expanded (6));
         repaint (waveArea.expanded (6));
+    }
+}
+
+void DesignPanel::paintCompMonitors (juce::Graphics& g)
+{
+    const auto ink = scope::monitorInk();
+    const auto on = fx.compOn.load();
+    const auto amount = juce::jlimit (0.0f, 1.0f, fx.compAmount.load());
+    const auto thresholdDb = -36.0f * amount;
+    constexpr float ratio = 3.0f, kneeDb = 10.0f;  // the opto's character (engine::Effects)
+    const auto outFor = [&] (float inDb) {
+        // Soft-knee static curve.
+        const auto over = inDb - thresholdDb;
+        if (over <= -kneeDb * 0.5f)
+            return inDb;
+        if (over >= kneeDb * 0.5f)
+            return thresholdDb + over / ratio;
+        const auto x = over + kneeDb * 0.5f;
+        return inDb + (1.0f / ratio - 1.0f) * x * x / (2.0f * kneeDb);
+    };
+
+    // 1. EQ: the response of the low shelf (120 Hz), bell (1 kHz) and high shelf (6 kHz), 20 Hz … 20 kHz, ±12 dB.
+    if (const auto area = compMonitors[0].toFloat(); ! area.isEmpty())
+    {
+        const auto plot = scope::monitorBegin (g, area);
+        scope::monitorGrid (g, plot, 3, 4);
+        const auto lo = fx.eqLowDb.load(), mid = fx.eqMidDb.load(), hi = fx.eqHighDb.load();
+        const auto sig = [] (float x) { return 1.0f / (1.0f + std::exp (-2.4f * x)); };
+        const auto dbAt = [&] (float hz) {
+            const auto o = std::log2 (hz);
+            return lo * sig (std::log2 (120.0f) - o) + mid * std::exp (-std::pow (o - std::log2 (1000.0f), 2.0f) / (2.0f * 0.85f * 0.85f))
+                   + hi * sig (o - std::log2 (6000.0f));
+        };
+        const auto yFor = [&] (float db) { return plot.getCentreY() - juce::jlimit (-12.0f, 12.0f, db) / 12.0f * plot.getHeight() * 0.46f; };
+        juce::Path curve;
+        for (auto x = plot.getX(); x <= plot.getRight(); x += 1.0f)
+        {
+            const auto hz = 20.0f * std::pow (1000.0f, (x - plot.getX()) / plot.getWidth());
+            const auto y = yFor (dbAt (hz));
+            if (x <= plot.getX())
+                curve.startNewSubPath (x, y);
+            else
+                curve.lineTo (x, y);
+        }
+        auto shade = curve;
+        shade.lineTo (plot.getRight(), plot.getCentreY());
+        shade.lineTo (plot.getX(), plot.getCentreY());
+        shade.closeSubPath();
+        g.setColour (ink.withAlpha (0.16f));
+        g.fillPath (shade);
+        scope::dashed (g, { plot.getX(), plot.getCentreY() }, { plot.getRight(), plot.getCentreY() }, 0.3f);
+        scope::inked (g, curve);
+        scope::monitorCaption (g, plot, "EQ");
+        scope::monitorCaption (g, plot, "100   1K   10K", juce::Justification::bottomRight);
+        scope::monitorEnd (g, area);
+    }
+
+    // 2. AMOUNT: the transfer curve (in → out), with a dot where the music is and the live gain reduction.
+    if (const auto area = compMonitors[1].toFloat(); ! area.isEmpty())
+    {
+        const auto plot = scope::monitorBegin (g, area);
+        scope::monitorGrid (g, plot, 4, 4);
+        const auto x = [&] (float db) { return plot.getX() + (db + 48.0f) / 48.0f * plot.getWidth(); };
+        const auto y = [&] (float db) { return plot.getBottom() - (juce::jlimit (-48.0f, 0.0f, db) + 48.0f) / 48.0f * plot.getHeight(); };
+        scope::dashed (g, { plot.getX(), plot.getBottom() }, { plot.getRight(), plot.getY() }, 0.3f);
+        juce::Path curve;
+        for (float db = -48.0f; db <= 0.01f; db += 0.5f)
+        {
+            if (db <= -48.0f)
+                curve.startNewSubPath (x (db), y (outFor (db)));
+            else
+                curve.lineTo (x (db), y (outFor (db)));
+        }
+        scope::inked (g, curve);
+        // The threshold, and the gain reduction as a bar down the right edge.
+        scope::dashed (g, { x (thresholdDb), plot.getY() }, { x (thresholdDb), plot.getBottom() }, 0.25f);
+        const auto gr = on ? juce::jlimit (0.0f, 24.0f, -shownReduction) : 0.0f;
+        if (gr > 0.05f)
+        {
+            const auto bar = juce::Rectangle<float> (plot.getRight() - 5.0f, plot.getY(), 4.0f, plot.getHeight() * gr / 24.0f);
+            g.setColour (ink.withAlpha (0.75f));
+            g.fillRect (bar);
+            // Where on the curve the music sits: the input that gives this much reduction.
+            float inDb = thresholdDb;
+            for (float db = thresholdDb - kneeDb; db <= 0.0f; db += 0.25f)
+                if (db - outFor (db) >= gr)
+                {
+                    inDb = db;
+                    break;
+                }
+            g.fillEllipse (x (inDb) - 3.0f, y (outFor (inDb)) - 3.0f, 6.0f, 6.0f);
+        }
+        scope::monitorCaption (g, plot, on ? "GR " + juce::String (gr, 1) : juce::String ("3:1"));
+        scope::monitorEnd (g, area);
+    }
+
+    // 3. ATTACK / RELEASE: how the squeeze grabs a hit and lets go (a gate of loud music, then quiet).
+    if (const auto area = compMonitors[2].toFloat(); ! area.isEmpty())
+    {
+        const auto plot = scope::monitorBegin (g, area);
+        scope::monitorGrid (g, plot, 6, 2);
+        const auto attackMs = juce::jmax (0.5f, fx.compAttackMs.load()), releaseMs = juce::jmax (20.0f, fx.compReleaseMs.load());
+        const auto hitMs = juce::jmax (120.0f, attackMs * 4.0f);
+        const auto spanMs = hitMs + juce::jmin (releaseMs * 3.0f, 6000.0f) + 20.0f;
+        const auto xFor = [&] (float ms) { return plot.getX() + ms / spanMs * plot.getWidth(); };
+        // The hit (faint), then the gain reduction following it.
+        g.setColour (ink.withAlpha (0.12f));
+        g.fillRect (juce::Rectangle<float> (xFor (10.0f), plot.getY() + 4.0f, xFor (10.0f + hitMs) - xFor (10.0f), plot.getHeight() - 4.0f));
+        juce::Path env;
+        env.startNewSubPath (plot.getX(), plot.getBottom());
+        for (auto px = plot.getX(); px <= plot.getRight(); px += 1.0f)
+        {
+            const auto ms = (px - plot.getX()) / plot.getWidth() * spanMs - 10.0f;
+            float v = 0;
+            if (ms > 0 && ms <= hitMs)
+                v = 1.0f - std::exp (-ms / attackMs);
+            else if (ms > hitMs)
+                v = (1.0f - std::exp (-hitMs / attackMs)) * std::exp (-(ms - hitMs) / releaseMs);
+            env.lineTo (px, plot.getBottom() - v * (plot.getHeight() - 6.0f));
+        }
+        scope::inked (g, env);
+        scope::monitorCaption (g, plot, "ATTACK " + juce::String (juce::roundToInt (attackMs)) + "   RELEASE " + juce::String (juce::roundToInt (releaseMs)),
+                               juce::Justification::topRight);
+        scope::monitorEnd (g, area);
+    }
+
+    // 4. MIX: a drum hit as it comes out, the dry hit dashed behind it and the squeezed one blended in.
+    if (const auto area = compMonitors[3].toFloat(); ! area.isEmpty())
+    {
+        const auto plot = scope::monitorBegin (g, area);
+        const auto mix = juce::jlimit (0.0f, 1.0f, fx.compMix.load());
+        const auto squeeze = 1.0f / (1.0f + 2.5f * amount);
+        juce::Path dryTop, outShape;
+        const auto mid = plot.getCentreY();
+        std::vector<float> outH;
+        for (auto px = plot.getX(); px <= plot.getRight(); px += 1.0f)
+        {
+            const auto t = (px - plot.getX()) / plot.getWidth();
+            const auto dry = std::exp (-t * 5.0f) * 0.95f + 0.05f;
+            const auto wet = juce::jmin (dry, 0.18f + (dry - 0.18f) * squeeze) * (1.0f + 0.6f * amount);
+            const auto out = juce::jmin (1.0f, dry * (1.0f - mix) + wet * mix);
+            if (px <= plot.getX())
+                dryTop.startNewSubPath (px, mid - dry * plot.getHeight() * 0.48f);
+            else
+                dryTop.lineTo (px, mid - dry * plot.getHeight() * 0.48f);
+            outH.push_back (out * plot.getHeight() * 0.48f);
+        }
+        outShape.startNewSubPath (plot.getX(), mid - outH.front());
+        for (std::size_t i = 1; i < outH.size(); ++i)
+            outShape.lineTo (plot.getX() + static_cast<float> (i), mid - outH[i]);
+        for (auto i = outH.size(); i-- > 0;)
+            outShape.lineTo (plot.getX() + static_cast<float> (i), mid + outH[i]);
+        outShape.closeSubPath();
+        g.setColour (ink.withAlpha (0.45f));
+        g.fillPath (outShape);
+        juce::Path d;
+        const float dashes[] = { 3.0f, 2.0f };
+        juce::PathStrokeType (1.0f).createDashedStroke (d, dryTop, dashes, 2);
+        g.setColour (ink.withAlpha (0.5f));
+        g.fillPath (d);
+        scope::monitorCaption (g, plot, "MIX", juce::Justification::topRight);
+        scope::monitorEnd (g, area);
     }
 }
 
@@ -549,6 +713,8 @@ void DesignPanel::paint (juce::Graphics& g)
         hw::silk (g, k->name, {}, b.withHeight (16).translated (0, -18), juce::Justification::centred);
         hw::readout (g, k->readout (k->slider.getValue()), b.withY (b.getBottom() + 1).withHeight (22), hw::vfd (20.0f));
     }
+
+    paintCompMonitors (g);
 
     hw::silk (g, "XY PAD", "X FILTER   Y ECHO", padArea.toFloat().withHeight (16).translated (0, -22));
     hw::recess (g, padArea.toFloat());
@@ -640,7 +806,7 @@ void DesignPanel::paintOverChildren (juce::Graphics& g)
 void DesignPanel::resized()
 {
     auto all = getLocalBounds();
-    effectsUnit = all.removeFromTop (juce::jmin (232, all.getHeight() * 2 / 5));
+    effectsUnit = all.removeFromTop (juce::jmin (264, all.getHeight() * 9 / 20));
     lowerUnit = all;
 
     // Effects: four bays sized by how many knobs they hold (1, 3, 2, 3).
@@ -659,7 +825,9 @@ void DesignPanel::resized()
 
     const auto layBay = [&] (juce::Rectangle<int> bay, juce::ToggleButton& on, std::initializer_list<int> knobIndices) {
         auto inner = bay.reduced (10, 10);
-        on.setBounds (inner.removeFromTop (34).removeFromLeft (130));
+        // A taller top row (the COMP bay's monitors live in it), so the knobs line up across every bay.
+        auto topRow = inner.removeFromTop (66);
+        on.setBounds (topRow.removeFromTop (34).removeFromLeft (130));
         inner.removeFromTop (20);
         inner.removeFromBottom (22);
         const auto w = inner.getWidth() / static_cast<int> (knobIndices.size());
@@ -674,6 +842,19 @@ void DesignPanel::resized()
     layBay (echoArea, echoOn, { 1, 2, 3 });
     layBay (reverbArea, reverbOn, { 4, 5 });
     layBay (compArea, compOn, { 10, 11, 12, 6, 8, 9, 7 });  // EQ, then AMOUNT, ATTACK, RELEASE, MIX
+    {
+        // Monitors along the top of the COMP bay, right of its switch: EQ over the EQ knobs, then the transfer
+        // curve, the envelope and the mix, each as wide as the knobs it shows.
+        const auto inner = compArea.reduced (10, 10);
+        const auto cellW = inner.getWidth() / 7;
+        const auto y = inner.getY(), h = 62;
+        const auto x0 = inner.getX() + 138;
+        const auto at = [&] (int fromCell, int toCell) { return juce::Rectangle<int> (inner.getX() + fromCell * cellW + 4, y, (toCell - fromCell) * cellW - 8, h); };
+        compMonitors[0] = at (0, 3).withLeft (x0);   // EQ, starting right of the switch
+        compMonitors[1] = at (3, 4);                  // AMOUNT: transfer curve
+        compMonitors[2] = at (4, 6);                  // ATTACK / RELEASE: envelope
+        compMonitors[3] = at (6, 7);                  // MIX
+    }
 
     // Lower unit: the XY pad, then the recorder (keys and clock, the take's waveform).
     area = lowerUnit.reduced (hw::RackUnit::earWidth, 0).reduced (30, 0);

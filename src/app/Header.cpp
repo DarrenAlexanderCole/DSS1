@@ -24,6 +24,7 @@ Header::Header (Session& s) : session (s)
     };
     vuPad.onClick();
     addAndMakeVisible (vuPad);
+    addAndMakeVisible (beatSteps);
 
     const char* names[] { "CATALOG", "PREP", "LISTEN / DESIGN", "CHOP", "DELIVER" };
     for (int i = 0; i < 5; ++i)
@@ -187,6 +188,11 @@ void Header::resized()
     }
     top.removeFromLeft (22);
     displayArea = top.reduced (4, 4);
+    {
+        // On the BPM label's row, after the label (same rows as paint lays out: title, artist, label, value).
+        const auto inner = displayArea.reduced (16, 10);
+        beatSteps.setBounds (inner.getX() + 40, inner.getY() + 30 + 22 + 6 + 3, 52, 10);
+    }
 
     area.removeFromTop (30);
     auto row = area.removeFromTop (48);

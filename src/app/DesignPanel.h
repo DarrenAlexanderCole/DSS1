@@ -98,6 +98,9 @@ private:
     juce::ToggleButton attackSwitch { "ATTACK" }, releaseSwitch { "RELEASE" }, ratioSwitch { "RATIO" }, hpfSwitch { "SC HPF" }, crushSwitch { "CRUSH" };
     void selectCompType (int type);
     float shownReduction = 0;
+    /// The compressor's backlit monitors: EQ curve, transfer curve with live gain reduction, envelope, mix.
+    void paintCompMonitors (juce::Graphics&);
+    std::array<juce::Rectangle<int>, 4> compMonitors;
     juce::Rectangle<int> filterArea, echoArea, reverbArea, compArea, effectsUnit, lowerUnit, padArea, recorderArea, timeArea, takeArea;
 
     XyPad pad;

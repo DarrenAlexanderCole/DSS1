@@ -307,11 +307,11 @@ void Theme::drawButtonText (juce::Graphics& g, juce::TextButton& b, bool, bool d
             break;
         case KeyStyle::pad:
         {
-            // Stamped into the hide.
+            // White ink printed on the dark hide, with a faint shadow under it.
             g.setFont (hw::brand (juce::jlimit (12.0f, 20.0f, b.getHeight() * 0.3f)));
-            g.setColour (juce::Colour (0xfffff2dc).withAlpha (0.35f * alpha));
+            g.setColour (juce::Colours::black.withAlpha (0.45f * alpha));
             g.drawText (text, area.translated (0, 1.0f), juce::Justification::centred);
-            g.setColour (juce::Colour (0xff2c1a0c).withAlpha (0.78f * alpha));
+            g.setColour (hw::colour::silk.withAlpha (0.92f * alpha));
             g.drawText (text, area, juce::Justification::centred);
             break;
         }

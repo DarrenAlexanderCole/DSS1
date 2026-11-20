@@ -19,7 +19,11 @@ backlit VU meters. The parts are rendered in 3D. Things to notice:
 - **The frame:** one board of matte burl walnut down each side holds all the racks; it sits back in the shadows.
 - **Keys:** black phenolic with white legends, worn in their own ways (rubbed edges, a fingertip polish), and
   the faces carry hairline scratches along the grain: used, but looked after.
-- **Pads:** treated rawhide with worn grooves, each with a ring that lights up when the pad plays or is marked.
+- **Pads:** treated rawhide dyed charcoal, with worn grooves and white legends (number and key), each with a ring
+  that lights up when the pad plays or is marked. In CHOP the 16 sit centred in their space.
+- **Tempo lights:** small squares step along with the music like a step sequencer's running light: four beats
+  beside **BPM** on the track display, and sixteen steps (one bar) in Prep's grid window. The first square is
+  the bar's downbeat when the track has a grid.
 - **Displays:** everything behind the glass is drawn smooth now, lit warm like the VU meters: waveforms are
   mirrored glowing shapes with a brighter core, the spectrum and pad monitors are smooth curves, and readouts use
   a clean modern face (Rajdhani). The only old things are the materials.
@@ -103,7 +107,9 @@ Load a track (double-click it in Catalog), press PLAY, then open **Listen / Desi
     (6 kHz shelf) shape what gets squeezed, ±12 dB each. **AMOUNT** sets how hard it works (its readout shows
     the gain reduction while it's on), **ATTACK** (1-200 ms) and **RELEASE** (40 ms-3 s) set how fast it grabs
     and lets go, and **COMP MIX** blends in the dry sound (parallel compression). A compressor has no decay or
-    sustain stage, so attack and release are its whole envelope.
+    sustain stage, so attack and release are its whole envelope. Four backlit monitors along the top show what
+    the knobs do: the **EQ** curve, the **transfer curve** (with a dot riding it and a bar for the live gain
+    reduction while it's on), the **attack/release** envelope on a hit, and how the **mix** shapes a drum hit.
   - Double-click a knob to reset it. **ALL OFF** turns every effect off.
 - **XY pad:** hold the mouse down on it and move: left and right sweep the filter, up adds echo. Let go and it
   springs back. With **HOLD** on, it stays where you leave it.
@@ -150,8 +156,10 @@ recorder (**TO CHOP**). Pads are laid out and keyed like a drum machine:
   length. A cursor runs through them while the pad plays. Double-click a knob to reset it. Pads with settings show a small light.
 - **Space** plays and pauses the deck, or the sound file you're chopping (from where you last clicked).
 - **SLICE** sets how long the last slice plays, in beats, and the slice size for EQUAL 16. At **MM** (6 o'clock,
-  manual) nothing is automatic: drag the **END** marker to where the last slice should stop, and EQUAL 16 chops
-  what's on screen.
+  manual) you chop by tapping along with the music: MODE switches to **CHOP**, and whichever pad you hit, the
+  marks go in order, A1 to A16, then on into B1 and through to H16, without stopping the music. Each slice ends
+  where the next one starts (A16 ends at B1); drag the **END** marker for the very last. Switch MODE to **PLAY**
+  to play the pads. EQUAL 16 in MM chops what's on screen.
 - **MIDI:** plug in a pad controller (an Akai MPD, MPK, MPC, or anything that sends notes): its 16 pads play
   DSS1's pads (Akai pads work out of the box, harder hits play louder), and MIDI Start/Stop or MMC plays and
   pauses. **MIDI LEARN** to map your own: hit a controller pad for each DSS1 pad in turn (click a DSS1 pad to

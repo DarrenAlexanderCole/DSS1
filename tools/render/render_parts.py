@@ -342,8 +342,8 @@ def bakelite_key(name, down=False):
     render(sc, name)
 
 def rawhide_pad(name, down=False):
-    # A drum pad: treated rawhide stretched over a square frame (texture from make_textures.py: fibres,
-    # mottling, a polished wear groove where it's played), in a dark metal bezel with a light-pipe ring.
+    # A drum pad: treated rawhide, dyed near-black, stretched over a square frame (texture from make_textures.py:
+    # fibres, mottling, a polished wear groove where it's played), in a dark metal bezel with a light-pipe ring.
     sc = reset()
     hide = bpy.data.materials.new('Hide'); hide.use_nodes = True
     n = hide.node_tree.nodes; l = hide.node_tree.links; bs = n['Principled BSDF']
@@ -352,11 +352,14 @@ def rawhide_pad(name, down=False):
     tc = n.new('ShaderNodeTexCoord'); mp = n.new('ShaderNodeMapping')
     mp.inputs['Scale'].default_value = (0.5, 0.5, 1); mp.inputs['Location'].default_value = (0.5, 0.5, 0)
     l.new(tc.outputs['Object'], mp.inputs['Vector']); l.new(mp.outputs['Vector'], tex.inputs['Vector'])
-    l.new(tex.outputs['Color'], bs.inputs['Base Color'])
-    bs.inputs['Roughness'].default_value = 0.55
-    bs.inputs['Coat Weight'].default_value = 0.25; bs.inputs['Coat Roughness'].default_value = 0.35   # treated, oiled
-    bs.inputs['Subsurface Weight'].default_value = 0.2
-    bump = n.new('ShaderNodeBump'); bump.inputs['Strength'].default_value = 0.35
+    # Dyed dark charcoal: the hide's fibres and mottling stay, just deep in the dye.
+    dye = n.new('ShaderNodeHueSaturation')
+    dye.inputs['Saturation'].default_value = 0.10; dye.inputs['Value'].default_value = 0.11
+    l.new(tex.outputs['Color'], dye.inputs['Color']); l.new(dye.outputs['Color'], bs.inputs['Base Color'])
+    bs.inputs['Roughness'].default_value = 0.6
+    bs.inputs['Coat Weight'].default_value = 0.3; bs.inputs['Coat Roughness'].default_value = 0.4   # treated, oiled
+    bs.inputs['Subsurface Weight'].default_value = 0.05
+    bump = n.new('ShaderNodeBump'); bump.inputs['Strength'].default_value = 0.45
     l.new(tex.outputs['Alpha'], bump.inputs['Height']); l.new(bump.outputs['Normal'], bs.inputs['Normal'])
     bezel = principled('Bezel', (0.03, 0.03, 0.032), 0.8, 0.35)
     ring = principled('Ring', (0.75, 0.75, 0.72), 0.0, 0.25)          # frosted light pipe (lit by the app)

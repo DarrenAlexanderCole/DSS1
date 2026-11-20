@@ -37,4 +37,21 @@ juce::Path smooth (const std::vector<juce::Point<float>>& points);
 /// at the floor.
 void fillUnder (juce::Graphics&, const juce::Path& curve, float topY, float floorY, juce::Colour, float alpha = 0.55f);
 
+// --- Backlit monitors: small amber-lit screens like the VU meters, with curves printed in dark ink. ----------
+
+/// The ink the monitors draw with.
+juce::Colour monitorInk();
+/// Draws a monitor's bezel and lit face in `area` and returns the plot area inside it.
+juce::Rectangle<float> monitorBegin (juce::Graphics&, juce::Rectangle<float> area);
+/// The glass over a monitor (call after drawing its contents, with the same `area`).
+void monitorEnd (juce::Graphics&, juce::Rectangle<float> area);
+/// A faint printed grid on a monitor's plot.
+void monitorGrid (juce::Graphics&, juce::Rectangle<float> plot, int across = 4, int down = 4);
+/// A curve in ink with a soft shadow.
+void inked (juce::Graphics&, const juce::Path&, float width = 1.7f, float alpha = 0.9f);
+/// A dashed ink line from `a` to `b`.
+void dashed (juce::Graphics&, juce::Point<float> a, juce::Point<float> b, float alpha = 0.4f);
+/// A tiny printed caption in a monitor's corner.
+void monitorCaption (juce::Graphics&, juce::Rectangle<float> plot, const juce::String&, juce::Justification = juce::Justification::topLeft);
+
 } // namespace dss1::ui::scope

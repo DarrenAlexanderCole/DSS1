@@ -2,6 +2,7 @@
 
 #include "Hardware.h"
 #include "Session.h"
+#include "TempoSteps.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -32,6 +33,7 @@ private:
     Session& session;
     hw::VuMeter left { "CHANNEL A" }, right { "CHANNEL B" };
     juce::ToggleButton vuPad { "PAD" };
+    TempoSteps beatSteps { session, 4 };  ///< the bar's four beats, beside the BPM
     std::array<juce::TextButton, 5> stageKeys;
     juce::TextButton startKey { "|<" }, backKey { "<<" }, forwardKey { ">>" }, cueKey { "CUE" }, playKey { "PLAY" };
     bool cueWasDown = false;

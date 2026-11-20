@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Session.h"
+#include "TempoSteps.h"
 #include "WaveformView.h"
 
 #include <juce_data_structures/juce_data_structures.h>
@@ -81,6 +82,7 @@ private:
 
     juce::Label bpmLabel;
     juce::TextEditor bpmEditor;
+    TempoSteps tempoSteps { session, 16 };  ///< sixteenths stepping along in the BPM window
     juce::TextButton downbeatButton { "Downbeat Here" }, nudgeEarlier { "< Nudge" }, nudgeLater { "Nudge >" };
     juce::TextButton halveButton { "/2" }, doubleButton { "x2" }, tempoChangeButton { "Tempo Change Here" }, clearGridButton { "Clear Grid" };
 

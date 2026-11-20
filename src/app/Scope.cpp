@@ -187,4 +187,69 @@ void wave (juce::Graphics& g, juce::Rectangle<float> area, const std::vector<Spa
     }
 }
 
+juce::Colour monitorInk() { return juce::Colour (0xff2a1606); }
+
+juce::Rectangle<float> monitorBegin (juce::Graphics& g, juce::Rectangle<float> area)
+{
+    const auto lit = hw::light();
+    g.setColour (juce::Colours::black);
+    g.fillRoundedRectangle (area, 4.0f);
+    const auto face = area.reduced (4.0f);
+    const auto b = 0.55f + 0.45f * lit;
+    juce::ColourGradient back (juce::Colour (0xffffd28a).withMultipliedBrightness (b), face.getCentreX(), face.getBottom(),
+                               juce::Colour (0xff9a6a2a).withMultipliedBrightness (b), face.getX(), face.getY(), true);
+    back.addColour (0.5, juce::Colour (0xfff0b968).withMultipliedBrightness (b));
+    g.setGradientFill (back);
+    g.fillRoundedRectangle (face, 2.0f);
+    return face.reduced (6.0f, 5.0f);
+}
+
+void monitorEnd (juce::Graphics& g, juce::Rectangle<float> area)
+{
+    const auto face = area.reduced (4.0f);
+    juce::ColourGradient refl (juce::Colours::white.withAlpha (0.22f), face.getX(), face.getY(), juce::Colours::transparentWhite, face.getX(),
+                               face.getY() + face.getHeight() * 0.45f, false);
+    g.setGradientFill (refl);
+    g.fillRoundedRectangle (face.withHeight (face.getHeight() * 0.45f), 2.0f);
+    juce::ColourGradient lip (juce::Colours::black.withAlpha (0.5f), face.getX(), face.getY(), juce::Colours::transparentBlack, face.getX(), face.getY() + 6.0f, false);
+    g.setGradientFill (lip);
+    g.fillRoundedRectangle (face, 2.0f);
+}
+
+void monitorGrid (juce::Graphics& g, juce::Rectangle<float> plot, int across, int down)
+{
+    g.setColour (monitorInk().withAlpha (0.09f));
+    for (int i = 1; i < across; ++i)
+        g.fillRect (plot.getX() + plot.getWidth() * static_cast<float> (i) / static_cast<float> (across), plot.getY(), 1.0f, plot.getHeight());
+    for (int i = 1; i < down; ++i)
+        g.fillRect (plot.getX(), plot.getY() + plot.getHeight() * static_cast<float> (i) / static_cast<float> (down), plot.getWidth(), 1.0f);
+}
+
+void inked (juce::Graphics& g, const juce::Path& p, float width, float alpha)
+{
+    const auto ink = monitorInk();
+    g.setColour (ink.withAlpha (0.12f * alpha));
+    g.strokePath (p, juce::PathStrokeType (width * 3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    g.setColour (ink.withAlpha (alpha));
+    g.strokePath (p, juce::PathStrokeType (width, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+}
+
+void dashed (juce::Graphics& g, juce::Point<float> a, juce::Point<float> b, float alpha)
+{
+    juce::Path p, d;
+    p.startNewSubPath (a);
+    p.lineTo (b);
+    const float dashes[] = { 3.0f, 3.0f };
+    juce::PathStrokeType (1.0f).createDashedStroke (d, p, dashes, 2);
+    g.setColour (monitorInk().withAlpha (alpha));
+    g.fillPath (d);
+}
+
+void monitorCaption (juce::Graphics& g, juce::Rectangle<float> plot, const juce::String& text, juce::Justification j)
+{
+    g.setColour (monitorInk().withAlpha (0.55f));
+    g.setFont (hw::label (9.5f));
+    g.drawText (text, plot.reduced (2.0f, 1.0f), j, false);
+}
+
 } // namespace dss1::ui::scope

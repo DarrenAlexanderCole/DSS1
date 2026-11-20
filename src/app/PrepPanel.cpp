@@ -122,7 +122,7 @@ PrepPanel::PrepPanel (Session& s) : session (s), waveform (s)
     bpmLabel.setColour (juce::Label::textColourId, Colours::dimText);
     addAndMakeVisible (bpmLabel);
     bpmEditor.setInputRestrictions (7, "0123456789.");
-    bpmEditor.setJustification (juce::Justification::centred);
+    bpmEditor.setJustification (juce::Justification::centredLeft);
     bpmEditor.setTooltip ("Tempo at the playhead. Type a new one and press Return.");
     bpmEditor.onReturnKey = [this] {
         setBpm (bpmEditor.getText().getDoubleValue());
@@ -133,6 +133,7 @@ PrepPanel::PrepPanel (Session& s) : session (s), waveform (s)
         grabKeyboardFocus();
     };
     addAndMakeVisible (bpmEditor);
+    addAndMakeVisible (tempoSteps);  // over the right of the BPM window
 
     downbeatButton.setTooltip ("Make the playhead beat 1 of a bar. Right-click the waveform for Beat 1 Here at any spot.");
     downbeatButton.onClick = [this] { setDownbeat (playhead()); };
@@ -771,6 +772,7 @@ void PrepPanel::resized()
 
     // Grid: BPM display, then two rows of keys.
     bpmEditor.setBounds (grid.removeFromTop (50));
+    tempoSteps.setBounds (bpmEditor.getBounds().withTrimmedLeft (bpmEditor.getWidth() * 2 / 5).reduced (12, 17));
     grid.removeFromTop (12);
     auto g1 = grid.removeFromTop (42);
     const auto gw = (g1.getWidth() - 3 * 6) / 4;
