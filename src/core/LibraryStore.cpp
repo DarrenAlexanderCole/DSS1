@@ -184,7 +184,116 @@ void LibraryStore::migrate()
             )SQL");
         });
     }
+    if (current < 4)
+    {
+        // 4: crates, the folders you work from (every watched folder becomes one).
+        transaction ([this] {
+            exec (R"SQL(
+                CREATE TABLE crates (
+                    path      TEXT PRIMARY KEY,
+                    name      TEXT NOT NULL,
+                    last_used INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+                    removed   INTEGER NOT NULL DEFAULT 0
+                );
+                INSERT OR IGNORE INTO crates (path, name)
+                    SELECT path, replace(path, rtrim(path, replace(path, '/', '')), '') FROM watched_folders;
+                PRAGMA user_version = 4;
+            )SQL");
+        });
+    }
     // Later schema versions add their upgrade steps here, one `if (current < N)` each.
+}
+
+namespace
+{
+    /// SQL that's true for a track inside the folder bound as ?1 (any depth).
+    constexpr const char* insideFolder = "(substr(path, 1, length(?1) + 1) = ?1 || '/')";
+
+    std::string withoutTrailingSlash (std::string p)
+    {
+        while (p.size() > 1 && (p.back() == '/' || p.back() == '\\'))
+            p.pop_back();
+        return p;
+    }
+}
+
+std::size_t LibraryStore::showOnly (const std::string& folder)
+{
+    const auto f = withoutTrailingSlash (folder);
+    transaction ([&] {
+        Statement s (db_.get(), (std::string ("UPDATE tracks SET aside = CASE WHEN ") + insideFolder + " THEN 0 ELSE 1 END").c_str());
+        s.bind (1, f);
+        s.step();
+    });
+    return count();
+}
+
+std::size_t LibraryStore::setAsideIn (const std::string& folder)
+{
+    Statement s (db_.get(), (std::string ("UPDATE tracks SET aside = 1 WHERE aside = 0 AND ") + insideFolder).c_str());
+    s.bind (1, withoutTrailingSlash (folder));
+    s.step();
+    return static_cast<std::size_t> (sqlite3_changes (db_.get()));
+}
+
+void LibraryStore::addCrate (const std::string& path, const std::string& name)
+{
+    Statement s (db_.get(), R"SQL(
+        INSERT INTO crates (path, name) VALUES (?1, ?2)
+        ON CONFLICT (path) DO UPDATE SET removed = 0, last_used = strftime('%s', 'now'))SQL");
+    s.bind (1, withoutTrailingSlash (path));
+    s.bind (2, name);
+    s.step();
+}
+
+bool LibraryStore::removeCrate (const std::string& path)
+{
+    Statement s (db_.get(), "UPDATE crates SET removed = 1 WHERE path = ?1 AND removed = 0");
+    s.bind (1, withoutTrailingSlash (path));
+    s.step();
+    return sqlite3_changes (db_.get()) > 0;
+}
+
+void LibraryStore::renameCrate (const std::string& path, const std::string& name)
+{
+    Statement s (db_.get(), "UPDATE crates SET name = ?2 WHERE path = ?1");
+    s.bind (1, withoutTrailingSlash (path));
+    s.bind (2, name);
+    s.step();
+}
+
+void LibraryStore::touchCrate (const std::string& path)
+{
+    Statement s (db_.get(), "UPDATE crates SET last_used = strftime('%s', 'now') WHERE path = ?1");
+    s.bind (1, withoutTrailingSlash (path));
+    s.step();
+}
+
+std::vector<CrateFolder> LibraryStore::crates() const
+{
+    Statement s (db_.get(), "SELECT path, name, last_used FROM crates WHERE removed = 0 ORDER BY name COLLATE NOCASE, path");
+    std::vector<CrateFolder> out;
+    while (s.step())
+        out.push_back ({ s.text (0), s.text (1), s.integer (2) });
+    return out;
+}
+
+std::size_t LibraryStore::bringBackAllCrates()
+{
+    std::size_t n = 0;
+    transaction ([&] {
+        const auto before = count();
+        exec ("UPDATE tracks SET aside = 0 WHERE aside = 1");
+        Statement removed (db_.get(), "SELECT path FROM crates WHERE removed = 1");
+        std::vector<std::string> gone;
+        while (removed.step())
+            gone.push_back (removed.text (0));
+        for (const auto& p : gone)
+            setAsideIn (p);
+        const auto after = count();
+        n = after > before ? after - before : 0;
+    });
+    return n;
 }
 
 void LibraryStore::addWatchedFolder (const std::string& path)

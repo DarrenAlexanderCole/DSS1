@@ -72,6 +72,20 @@ CatalogPanel::CatalogPanel (Session& s) : session (s), crate (s.library())
     };
     addAndMakeVisible (addButton);
 
+    crateWindow.onClick = [this] { showCrateMenu(); };
+    crateWindow.setMouseCursor (juce::MouseCursor::PointingHandCursor);
+    crateWindow.setTooltip ("Your crates: each folder you work from. Click for the list; < and > step through them.");
+    addAndMakeVisible (crateWindow);
+    for (auto* b : { &cratePrev, &crateNext })
+    {
+        hwStyle (*b, KeyStyle::dark);
+        addAndMakeVisible (*b);
+    }
+    cratePrev.setTooltip ("Previous crate");
+    crateNext.setTooltip ("Next crate");
+    cratePrev.onClick = [this] { stepCrate (-1); };
+    crateNext.onClick = [this] { stepCrate (1); };
+
     freshButton.setTooltip ("Start fresh: work from a new folder, or clear the Catalog. Your files and your prep are kept.");
     freshButton.onClick = [this] { showFreshMenu(); };
     addAndMakeVisible (freshButton);
@@ -101,6 +115,7 @@ CatalogPanel::CatalogPanel (Session& s) : session (s), crate (s.library())
 
     crate.addChangeListener (this);
     setWantsKeyboardFocus (true);
+    updateCrateWindow();
     refreshRows();
 }
 
@@ -112,6 +127,7 @@ CatalogPanel::~CatalogPanel()
 void CatalogPanel::changeListenerCallback (juce::ChangeBroadcaster*)
 {
     refreshRows();
+    updateCrateWindow();
 }
 
 void CatalogPanel::refreshRows()
@@ -425,7 +441,9 @@ void CatalogPanel::showFoldersMenu()
        #else
         sub.addItem ("Show in Folder", dir.isDirectory(), false, [dir] { dir.revealToUser(); });
        #endif
-        sub.addItem ("Stop Watching", [this, folder] { crate.stopWatching (folder); });
+        sub.addItem ("Open as Crate", [this, folder] { table.deselectAllRows(); crate.openCrate (folder); });
+        sub.addItem ("Stop Watching (keep its tracks)", [this, folder] { crate.stopWatching (folder); });
+        sub.addItem ("Remove Folder (and its tracks from the Catalog)", [this, folder] { table.deselectAllRows(); crate.removeFolder (folder); });
         menu.addSubMenu (dir.isDirectory() ? folder : folder + "  (not connected)", sub);
     }
     menu.addSeparator();
@@ -439,11 +457,133 @@ void CatalogPanel::showFreshMenu()
     menu.addSectionHeader ("Your files and their cues, loops and notes are always kept");
     menu.addItem ("Work From a New Folder...", [this] { chooseFolderToWorkFrom(); });
     menu.addItem ("Clear the Catalog", ! rows.empty(), false, [this] { confirmClear(); });
-    const auto cleared = crate.clearedCount();
     menu.addSeparator();
-    menu.addItem (cleared > 0 ? "Bring Back Cleared Tracks (" + juce::String (cleared) + ")" : juce::String ("Bring Back Cleared Tracks"), cleared > 0, false,
-                  [this] { crate.bringBackCleared(); });
+    menu.addItem ("Show All Music (every crate)", [this] { table.deselectAllRows(); crate.openAllMusic(); });
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (freshButton));
+}
+
+juce::StringArray CatalogPanel::crateChoices() const
+{
+    juce::StringArray out { Crate::allMusic };
+    for (const auto& c : crate.crateList())
+        out.add (juce::String::fromUTF8 (c.path.c_str()));
+    return out;
+}
+
+void CatalogPanel::stepCrate (int delta)
+{
+    const auto choices = crateChoices();
+    auto i = choices.indexOf (crate.currentCrate());
+    i = i < 0 ? (delta > 0 ? 0 : choices.size() - 1) : (i + delta + choices.size()) % choices.size();
+    table.deselectAllRows();
+    if (choices[i] == Crate::allMusic)
+        crate.openAllMusic();
+    else
+        crate.openCrate (choices[i]);
+}
+
+void CatalogPanel::showCrateMenu()
+{
+    const auto now = crate.currentCrate();
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("Crates: the folders you work from");
+    menu.addItem ("All Music", true, now == Crate::allMusic, [this] { table.deselectAllRows(); crate.openAllMusic(); });
+    menu.addSeparator();
+    const auto list = crate.crateList();
+    if (list.empty())
+        menu.addItem ("No crates yet: Work From a New Folder makes one", false, false, [] {});
+    for (const auto& c : list)
+    {
+        const auto path = juce::String::fromUTF8 (c.path.c_str());
+        const auto name = juce::String::fromUTF8 (c.name.c_str());
+        const bool connected = juce::File (path).isDirectory();
+        menu.addItem (connected ? name : name + "  (not connected)", true, now == path, [this, path] {
+            table.deselectAllRows();
+            crate.openCrate (path);
+        });
+    }
+    menu.addSeparator();
+    menu.addItem ("Work From a New Folder...", [this] { chooseFolderToWorkFrom(); });
+    if (now.isNotEmpty() && now != Crate::allMusic)
+    {
+        juce::String name = juce::File (now).getFileName();
+        for (const auto& c : list)
+            if (juce::String::fromUTF8 (c.path.c_str()) == now)
+                name = juce::String::fromUTF8 (c.name.c_str());
+        menu.addItem ("Rename This Crate...", [this, now, name] { renameCrate (now, name); });
+        menu.addItem ("Remove This Crate", [this, now] { table.deselectAllRows(); crate.removeFolder (now); });
+    }
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (crateWindow));
+}
+
+void CatalogPanel::renameCrate (const juce::String& folder, const juce::String& currentName)
+{
+    auto* w = new juce::AlertWindow ("Rename crate", "A name for this crate (the folder keeps its name).", juce::MessageBoxIconType::NoIcon, this);
+    w->addTextEditor ("name", currentName);
+    w->addButton ("Rename", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    w->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+    w->enterModalState (true, juce::ModalCallbackFunction::create ([this, w, folder] (int result) {
+        const auto name = w->getTextEditorContents ("name").trim();
+        if (result == 1 && name.isNotEmpty())
+            crate.renameCrate (folder, name);
+    }), true);
+}
+
+void CatalogPanel::updateCrateWindow()
+{
+    const auto now = crate.currentCrate();
+    const auto list = crate.crateList();
+    const auto count = static_cast<int> (rows.size());
+    const auto tracks = juce::String (count) + (count == 1 ? " TRACK" : " TRACKS");
+    if (now == Crate::allMusic)
+    {
+        crateWindow.name = "ALL MUSIC";
+        crateWindow.detail = tracks + "  /  " + juce::String (list.size()) + (list.size() == 1 ? " CRATE" : " CRATES");
+    }
+    else if (now.isEmpty())
+    {
+        crateWindow.name = "NO CRATE";
+        crateWindow.detail = "CLICK TO PICK ONE";
+    }
+    else
+    {
+        crateWindow.name = juce::File (now).getFileName();
+        int index = 0;
+        for (std::size_t i = 0; i < list.size(); ++i)
+            if (juce::String::fromUTF8 (list[i].path.c_str()) == now)
+            {
+                crateWindow.name = juce::String::fromUTF8 (list[i].name.c_str());
+                index = static_cast<int> (i) + 1;
+            }
+        crateWindow.detail = tracks + (index > 0 ? "  /  CRATE " + juce::String (index) + " OF " + juce::String (list.size()) : juce::String());
+    }
+    crateWindow.name = crateWindow.name.toUpperCase();
+    const bool several = list.size() > 0;
+    cratePrev.setEnabled (several);
+    crateNext.setEnabled (several);
+    crateWindow.repaint();
+}
+
+void CatalogPanel::CrateWindow::paint (juce::Graphics& g)
+{
+    const auto b = getLocalBounds().toFloat();
+    hw::recess (g, b);
+    auto inner = b.reduced (12.0f, 4.0f);
+    const auto lit = hw::light();
+    g.setFont (hw::vfd (22.0f));
+    g.setColour (hw::colour::amber.withAlpha (lit));
+    auto top = inner.removeFromTop (inner.getHeight() * 0.6f);
+    g.drawText (name, top.withTrimmedRight (18.0f), juce::Justification::bottomLeft, true);
+    g.setFont (hw::vfd (13.0f));
+    g.setColour (hw::colour::amberMid.withAlpha (0.85f * lit));
+    g.drawText (detail, inner, juce::Justification::centredLeft, true);
+    // A small down-arrow: it opens a list.
+    juce::Path arrow;
+    const auto ax = b.getRight() - 18.0f, ay = b.getCentreY();
+    arrow.addTriangle (ax - 5.0f, ay - 3.0f, ax + 5.0f, ay - 3.0f, ax, ay + 3.0f);
+    g.setColour (hw::colour::amber.withAlpha (0.7f * lit));
+    g.fillPath (arrow);
+    hw::glass (g, b);
 }
 
 void CatalogPanel::chooseFolderToWorkFrom()
@@ -468,7 +608,7 @@ void CatalogPanel::confirmClear()
                              .withTitle ("Clear the Catalog?")
                              .withMessage ("Every track leaves the Catalog and DSS1 stops watching your folders. Nothing is deleted: "
                                            "your files stay where they are, and a track's cues, loops, grid and notes come back when "
-                                           "you add it again (or with Bring Back Cleared Tracks).")
+                                           "you add it again (or pick All Music in CRATE).")
                              .withButton ("Clear", 1)
                              .withButton ("Cancel", 0)
                              .withAssociatedComponent (this);
@@ -527,6 +667,7 @@ void CatalogPanel::paint (juce::Graphics& g)
 
     hw::silk (g, "LIBRARY", "CATALOG", addButton.getBounds().toFloat().withWidth (300).withHeight (16).translated (0, -22));
     hw::silk (g, "STATUS", {}, statusLabel.getBounds().toFloat().withHeight (16).translated (0, -22));
+    hw::silk (g, "CRATE", "< > TO STEP, CLICK FOR THE LIST", cratePrev.getBounds().toFloat().withWidth (360).withHeight (16).translated (0, -22));
     hw::recess (g, statusLabel.getBounds().toFloat());
     hw::recess (g, table.getBounds().toFloat());
 }
@@ -571,7 +712,13 @@ void CatalogPanel::resized()
         findButton.setBounds (top.removeFromLeft (180));
         top.removeFromLeft (8);
     }
-    top.removeFromLeft (24);
+    top.removeFromLeft (20);
+    cratePrev.setBounds (top.removeFromLeft (44));
+    top.removeFromLeft (4);
+    crateWindow.setBounds (top.removeFromLeft (300).reduced (0, 1));
+    top.removeFromLeft (4);
+    crateNext.setBounds (top.removeFromLeft (44));
+    top.removeFromLeft (16);
     statusLabel.setBounds (top.reduced (4, 3));
 
     area.removeFromTop (18);

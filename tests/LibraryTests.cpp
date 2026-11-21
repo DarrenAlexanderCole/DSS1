@@ -217,6 +217,60 @@ TEST_CASE ("Cleared tracks are set aside with their prep, and come back as they 
     }
 }
 
+TEST_CASE ("Crates: one folder at a time, removed crates stay hidden, prep is kept", "[library]")
+{
+    TempFile file;
+    auto store = LibraryStore::open (file.path.string());
+    store.save (makeTrack ("/Music/House/a.wav", "fp-a"));
+    store.save (makeTrack ("/Music/House/Sub/b.wav", "fp-b"));
+    store.save (makeTrack ("/Music/HouseParty/c.wav", "fp-c"));  // a sibling whose name starts the same
+    store.save (makeTrack ("/Music/Techno/d.wav", "fp-d"));
+    store.addCrate ("/Music/House/", "House");
+    store.addCrate ("/Music/Techno", "Techno");
+    store.addCrate ("/Music/HouseParty", "HouseParty");
+    REQUIRE (store.crates().size() == 3);
+    CHECK (store.crates()[0].name == "House");
+    CHECK (store.crates()[0].path == "/Music/House");
+
+    // Opening a crate shows its folder (and folders inside it) only.
+    CHECK (store.showOnly ("/Music/House") == 2);
+    CHECK (store.byPath ("/Music/House/Sub/b.wav"));
+    CHECK (store.isSetAside (store.byPath ("/Music/HouseParty/c.wav")->id));
+    CHECK (store.showOnly ("/Music/Techno") == 1);
+    CHECK (store.byPath ("/Music/House/a.wav")->record == makeTrack ("/Music/House/a.wav", "fp-a"));
+
+    // Removing a crate hides it from the list and from All Music; adding it again brings it back.
+    CHECK (store.removeCrate ("/Music/Techno"));
+    CHECK_FALSE (store.removeCrate ("/Music/Techno"));
+    CHECK (store.setAsideIn ("/Music/Techno") == 1);
+    CHECK (store.crates().size() == 2);
+    store.bringBackAllCrates();
+    CHECK (store.count() == 3);
+    CHECK (store.isSetAside (store.byPath ("/Music/Techno/d.wav")->id));
+    store.addCrate ("/Music/Techno", "Techno");
+    CHECK (store.crates().size() == 3);
+    store.renameCrate ("/Music/Techno", "Warehouse");
+    CHECK (store.crates()[2].name == "Warehouse");
+}
+
+TEST_CASE ("A schema 3 library turns its watched folders into crates", "[library]")
+{
+    TempFile file;
+    {
+        auto store = LibraryStore::open (file.path.string());
+        store.addWatchedFolder ("/Music/Old Crate");
+        sqlite3* raw = nullptr;
+        REQUIRE (sqlite3_open (file.path.string().c_str(), &raw) == SQLITE_OK);
+        // Undo version 4, as a beta.2 library would be.
+        REQUIRE (sqlite3_exec (raw, "DROP TABLE crates; PRAGMA user_version = 3;", nullptr, nullptr, nullptr) == SQLITE_OK);
+        sqlite3_close (raw);
+    }
+    auto store = LibraryStore::open (file.path.string());
+    REQUIRE (store.crates().size() == 1);
+    CHECK (store.crates()[0].path == "/Music/Old Crate");
+    CHECK (store.crates()[0].name == "Old Crate");
+}
+
 // --- Matching -------------------------------------------------------------------------------------------
 
 TEST_CASE ("looseKey ignores case and accents, composed or decomposed", "[matcher]")

@@ -21,6 +21,13 @@ struct StoredTrack
     TrackRecord record;
 };
 
+/// A crate: a folder of music you work from, named after the folder (you can rename it).
+struct CrateFolder
+{
+    std::string path, name;
+    std::int64_t lastUsed = 0;  ///< seconds since 1970
+};
+
 /// The library database: one SQLite file holding every track's record (grid, cues, loops) as JSON, found by
 /// path or by audio fingerprint. A file that moves keeps its data through `relink`.
 ///
@@ -29,7 +36,7 @@ struct StoredTrack
 class LibraryStore
 {
 public:
-    static constexpr int schemaVersion = 3;
+    static constexpr int schemaVersion = 4;
 
     /// Opens (creating if needed) the database at `file`.
     static LibraryStore open (const std::string& file);
@@ -61,6 +68,23 @@ public:
     std::size_t bringBackAll();
     bool isSetAside (std::int64_t id) const;
     std::size_t setAsideCount() const;
+    /// Sets aside every track that isn't inside `folder` and brings back every one that is. Returns how many are
+    /// in the Catalog afterwards.
+    std::size_t showOnly (const std::string& folder);
+    /// Sets aside the tracks inside `folder`. Returns how many.
+    std::size_t setAsideIn (const std::string& folder);
+
+    /// Crates: folders you've worked from. Adding one that exists (or was removed) makes it current and visible.
+    void addCrate (const std::string& path, const std::string& name);
+    /// Takes a crate off the list (its tracks are kept, set aside). Returns false if there was none.
+    bool removeCrate (const std::string& path);
+    void renameCrate (const std::string& path, const std::string& name);
+    /// Marks a crate as just used.
+    void touchCrate (const std::string& path);
+    /// The crates on the list, by name.
+    std::vector<CrateFolder> crates() const;
+    /// Brings back every set-aside track except those inside removed crates. Returns how many came back.
+    std::size_t bringBackAllCrates();
 
     /// The file moved: give the track its new path, keeping everything else. Throws if another track
     /// already has that path.

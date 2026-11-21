@@ -257,6 +257,12 @@ while `byId` / `byPath` / `byFingerprint` still find set-aside tracks. `Crate::c
 aside and forgets the watched folders; `Crate::workFrom` does that and then imports a folder. Importing (or a
 watched-folder scan) brings a set-aside track back with its prep instead of re-importing it.
 
+Crates (schema 4: `crates` table, path / name / last_used / removed) are the folders you work from; a schema 3
+library turns its watched folders into crates. `Crate::workFrom` (= `openCrate`) shows only that folder's
+tracks (`LibraryStore::showOnly`), watches only it, and imports anything new; `openAllMusic` brings back
+everything except tracks in removed crates and watches every crate; `removeFolder` unwatches, removes the crate
+and sets its tracks aside. The current crate is remembered in the setting `catalogCrate` ("*" = All Music).
+
 Track notes live in `TrackInfo::notes` (JSON "notes", omitted when empty). Only `Crate::setNotes` changes them:
 `Crate::save` keeps the stored notes, since a deck's copy of a record can be older than an edit in Catalog.
 Rekordbox export writes them as the TRACK's Comments attribute. The app icon is rendered by

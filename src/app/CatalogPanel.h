@@ -82,6 +82,28 @@ private:
     void chooseFolderToWorkFrom();
     void confirmClear();
     juce::TextButton findButton { "Find Missing..." };
+
+    /// The CRATE selector: < and > step through All Music and your crates; click the window for the list.
+    class CrateWindow : public juce::Component, public juce::SettableTooltipClient
+    {
+    public:
+        std::function<void()> onClick;
+        juce::String name, detail;
+        void paint (juce::Graphics&) override;
+        void mouseUp (const juce::MouseEvent& e) override
+        {
+            if (e.mouseWasClicked() && onClick)
+                onClick();
+        }
+    };
+    CrateWindow crateWindow;
+    juce::TextButton cratePrev { "<" }, crateNext { ">" };
+    /// All Music, then the crates by name (paths; Crate::allMusic for All Music).
+    juce::StringArray crateChoices() const;
+    void stepCrate (int delta);
+    void showCrateMenu();
+    void updateCrateWindow();
+    void renameCrate (const juce::String& folder, const juce::String& currentName);
     juce::Label statusLabel;
     std::unique_ptr<juce::FileChooser> chooser;
     juce::ScopedMessageBox messageBox;

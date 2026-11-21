@@ -52,8 +52,22 @@ public:
     /// Clears the Catalog: every track is set aside (its grid, cues, loops and notes are kept, and come back if
     /// its file is added again) and no folder is watched any more. The files aren't touched.
     void clearCatalog();
-    /// Clears the Catalog, then adds and watches `folder`: a fresh start from one folder.
+    /// Opens `folder` as a crate: the Catalog shows just its music (its tracks come back with their prep, new
+    /// files are added) and only it is watched. The folder becomes (or stays) a crate on the list.
     void workFrom (const juce::File& folder);
+    void openCrate (const juce::String& folder) { workFrom (juce::File (folder)); }
+    /// Shows every crate's music together (not removed crates) and watches all their folders.
+    void openAllMusic();
+    /// Removes a folder: it isn't watched or listed as a crate any more, and its tracks leave the Catalog (kept,
+    /// with their prep, in case it's added again).
+    void removeFolder (const juce::String& folder);
+    void renameCrate (const juce::String& folder, const juce::String& name);
+
+    /// The crates (folders worked from), by name.
+    std::vector<CrateFolder> crateList() const;
+    /// What the Catalog is showing: a crate's folder, allMusic, or empty after Clear.
+    juce::String currentCrate() const;
+    static constexpr const char* allMusic = "*";
     /// Brings every cleared track back into the Catalog.
     void bringBackCleared();
     /// How many tracks are set aside (cleared). Updated with the snapshot.
@@ -97,6 +111,9 @@ private:
     mutable std::mutex stateLock;
     std::vector<StoredTrack> snapshot;
     std::size_t cleared = 0;  // set-aside tracks, counted with the snapshot
+    std::vector<CrateFolder> crateFolders;  // with the snapshot
+    juce::String current;  // see currentCrate()
+    void setCurrent (const juce::String& c);
     std::set<std::int64_t> missingIds;
     juce::StringArray watched;
     juce::String statusText;

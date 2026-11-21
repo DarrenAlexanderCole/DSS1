@@ -57,13 +57,15 @@ DSS1 opens on **Catalog**.
    empty). Tracks you added in earlier test builds pick up their tags a moment after DSS1 opens.
 3. **Watched folders:** a folder you add is watched. Put a new track in it and DSS1 adds it within three
    minutes, or straight away with **Folders → Look for New Music Now**. **Folders** also lists them, and
-   **Stop Watching** forgets one (its tracks stay).
+   **Stop Watching** forgets one (its tracks stay); **Remove Folder** also takes its tracks out of the Catalog
+   (their prep is kept if you add the folder again).
 4. **Missing files:** move or rename a folder of tracks in Finder. Those tracks show as *Missing*. If they're in
    a watched folder DSS1 finds them by itself; otherwise click **Find Missing...** and pick where they are now.
-5. **Start fresh:** **START FRESH → Work From a New Folder...** clears the Catalog and shows just the music
-   in the folder you pick (and watches it). **Clear the Catalog** empties it. Nothing is deleted: your files stay
-   put, and a cleared track's cues, loops, grid and notes come back when you add it again, or with **Bring Back
-   Cleared Tracks**.
+5. **Crates:** every folder you work from is a crate, named after the folder. The **CRATE** window shows the one
+   you're in: **<** and **>** step through All Music and your crates, and clicking it lists them (with **Rename
+   This Crate** and **Remove This Crate**). Opening a crate shows just its music and watches just its folder.
+   **START FRESH → Work From a New Folder...** makes a new crate; **Clear the Catalog** empties the Catalog.
+   Nothing is deleted: your files stay put, and a track's cues, loops, grid and notes come back with its crate.
 5. **Remove:** select tracks (Shift or Command for several) and press Delete, or right-click → **Remove from
    DSS1**. Only DSS1's entry goes; the audio files stay. Right-click also has **Show in Finder**.
 6. **Analysis:** BPM, key (Camelot and name) and loudness fill in, a couple of seconds per track. DSS1 also

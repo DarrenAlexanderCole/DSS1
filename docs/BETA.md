@@ -23,8 +23,9 @@ slides themselves (DSS1-V2-Beta-Slides-9x16.zip and DSS1-V2-Beta-Slides-16x9.zip
 DSS1 opens under its glass dust cover: click it to lift it.
 
 - **Catalog:** drag in files, folders or record-pool zips. BPM, key, loudness and the beat grid are worked out
-  for you. Sort by anything, and keep your own **NOTES** on each track. **START FRESH** clears the Catalog or
-  switches it to a new folder; cleared tracks keep their prep and come back if you add them again.
+  for you. Sort by anything, and keep your own **NOTES** on each track. Every folder you work from becomes a
+  **crate**: step between crates with the **CRATE** selector, start a new one with **START FRESH**, and remove
+  folders you're done with. Tracks keep their prep when they leave the Catalog, and come back with their crate.
 - **Prep:** set hot cues A–H, memory cues and saved loops on a zoomable waveform, and fix the beat grid
   (including tracks whose tempo drifts).
 - **Listen / Design:** play the track through FILTER, ECHO, REVERB and an opto COMP with its own EQ, with

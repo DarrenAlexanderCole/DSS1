@@ -1,4 +1,5 @@
 #include "Crate.h"
+#include "Settings.h"
 
 #include "core/Analysis.h"
 #include "core/Hits.h"
@@ -119,6 +120,7 @@ Crate::Crate()
     }
     for (const auto& folder : store->watchedFolders())
         watched.add (juce::String::fromUTF8 (folder.c_str()));
+    current = appSettings().getValue ("catalogCrate", allMusic);
     refreshSnapshot();
     worker = std::thread ([this] { run(); });
     rescan();
@@ -301,6 +303,7 @@ void Crate::clearNow()
         const std::lock_guard lock (stateLock);
         watched.clear();
     }
+    setCurrent ({});
     refreshSnapshot();
     setStatus ("Cleared " + plural (n, "track", "tracks") + " from the Catalog. Your files weren't touched, and their cues, loops "
                "and notes come back if you add them again.");
@@ -311,11 +314,118 @@ void Crate::clearCatalog()
     post ([this] { clearNow(); });
 }
 
+void Crate::setCurrent (const juce::String& c)
+{
+    {
+        const std::lock_guard lock (stateLock);
+        current = c;
+    }
+    juce::MessageManager::callAsync ([c] { appSettings().setValue ("catalogCrate", c); });
+}
+
+juce::String Crate::currentCrate() const
+{
+    const std::lock_guard lock (stateLock);
+    return current;
+}
+
+std::vector<CrateFolder> Crate::crateList() const
+{
+    const std::lock_guard lock (stateLock);
+    return crateFolders;
+}
+
 void Crate::workFrom (const juce::File& folder)
 {
     post ([this, folder] {
-        clearNow();
+        const auto path = folder.getFullPathName();
+        std::size_t shown = 0;
+        {
+            const std::lock_guard lock (storeLock);
+            store->transaction ([&] {
+                for (const auto& w : store->watchedFolders())
+                    store->removeWatchedFolder (w);
+                store->addCrate (path.toStdString(), folder.getFileName().toStdString());
+                shown = store->showOnly (path.toStdString());
+            });
+        }
+        {
+            const std::lock_guard lock (stateLock);
+            watched.clear();
+        }
+        setCurrent (path);
+        refreshSnapshot();
+        if (! folder.isDirectory())
+        {
+            setStatus ("Crate " + folder.getFileName() + ": its folder isn't connected. " + plural (shown, "track", "tracks") + " shown.");
+            return;
+        }
+        // Watches it and adds anything new in it.
         importItems ({ folder });
+        setStatus ("Crate " + folder.getFileName() + ": " + plural (tracks().size(), "track.", "tracks."));
+    });
+}
+
+void Crate::openAllMusic()
+{
+    post ([this] {
+        std::size_t n = 0;
+        std::vector<CrateFolder> list;
+        {
+            const std::lock_guard lock (storeLock);
+            store->transaction ([&] {
+                store->bringBackAllCrates();
+                list = store->crates();
+                for (const auto& c : list)
+                    store->addWatchedFolder (c.path);
+            });
+            n = store->count();
+        }
+        {
+            const std::lock_guard lock (stateLock);
+            watched.clear();
+            for (const auto& c : list)
+                watched.add (juce::String::fromUTF8 (c.path.c_str()));
+        }
+        setCurrent (allMusic);
+        refreshSnapshot();
+        scanWatched (true);
+        setStatus ("All music: " + plural (n, "track", "tracks") + " from " + plural (list.size(), "crate.", "crates."));
+    });
+}
+
+void Crate::removeFolder (const juce::String& folder)
+{
+    post ([this, folder] {
+        std::size_t n = 0;
+        {
+            const std::lock_guard lock (storeLock);
+            store->transaction ([&] {
+                store->removeWatchedFolder (folder.toStdString());
+                store->removeCrate (folder.toStdString());
+                n = store->setAsideIn (folder.toStdString());
+            });
+        }
+        {
+            const std::lock_guard lock (stateLock);
+            watched.removeString (folder);
+        }
+        if (currentCrate() == folder)
+            setCurrent ({});
+        refreshSnapshot();
+        setStatus ("Removed " + juce::File (folder).getFileName() + ": " + plural (n, "track", "tracks")
+                   + " left the Catalog, prep kept. Files untouched.");
+    });
+}
+
+void Crate::renameCrate (const juce::String& folder, const juce::String& name)
+{
+    post ([this, folder, name] {
+        {
+            const std::lock_guard lock (storeLock);
+            store->renameCrate (folder.toStdString(), name.trim().toStdString());
+        }
+        refreshSnapshot();
     });
 }
 
@@ -327,6 +437,7 @@ void Crate::bringBackCleared()
             const std::lock_guard lock (storeLock);
             n = store->bringBackAll();
         }
+        setCurrent (allMusic);
         refreshSnapshot();
         checkMissing();
         setStatus ("Brought back " + plural (n, "track", "tracks") + ".");
@@ -398,15 +509,18 @@ void Crate::refreshSnapshot()
 {
     std::vector<StoredTrack> all;
     std::size_t aside = 0;
+    std::vector<CrateFolder> crateList;
     {
         const std::lock_guard lock (storeLock);
         all = store->all();
         aside = store->setAsideCount();
+        crateList = store->crates();
     }
     {
         const std::lock_guard lock (stateLock);
         snapshot = std::move (all);
         cleared = aside;
+        crateFolders = std::move (crateList);
         // Forget missing marks for tracks that are gone or relinked; checkMissing() sets new ones.
         std::set<std::int64_t> stillMissing;
         for (const auto& t : snapshot)
@@ -489,6 +603,7 @@ void Crate::importItems (const juce::Array<juce::File>& items)
             {
                 const std::lock_guard lock (storeLock);
                 store->addWatchedFolder (folder.toStdString());
+                store->addCrate (folder.toStdString(), item.getFileName().toStdString());
             }
             {
                 const std::lock_guard lock (stateLock);

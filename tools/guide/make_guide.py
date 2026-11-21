@@ -166,10 +166,12 @@ s += bullets([
     '<b>Sort</b> by clicking any column heading. Title, artist, album and genre come from the files\' tags.',
     '<b>NOTES:</b> double-click a track\'s note to type your own (Return saves). Notes sort like any column and go to '
     'Rekordbox as the track\'s Comments.',
-    '<b>Watched folders:</b> a folder you add is watched; new tracks appear on their own. <b>FOLDERS</b> lists them.',
-    '<b>START FRESH:</b> <i>Work From a New Folder</i> clears the Catalog and shows just the folder you pick; <i>Clear the '
-    'Catalog</i> empties it. Nothing is deleted, and cleared tracks keep their cues, loops and notes: add them again '
-    '(or use <i>Bring Back Cleared Tracks</i>) and they return as they were.',
+    '<b>Watched folders:</b> a folder you add is watched; new tracks appear on their own. <b>FOLDERS</b> lists them, '
+    'with <i>Stop Watching</i> and <i>Remove Folder</i> for ones you\'re done with.',
+    '<b>Crates:</b> every folder you work from is a crate. The <b>CRATE</b> window shows the one you\'re in; &lt; and '
+    '&gt; step through All Music and your crates, and clicking it lists them. <b>START FRESH</b> starts a new crate '
+    'from a folder or clears the Catalog. Nothing is deleted: tracks keep their cues, loops and notes and come back '
+    'with their crate.',
     '<b>Play:</b> double-click a track (or select it and press Return). Space plays and pauses on every screen.',
     'Right-click a track to <b>Show in Finder</b>, <b>Analyse Again</b>, <b>Export</b> it, or remove it from DSS1 '
     '(the file stays where it is).',
