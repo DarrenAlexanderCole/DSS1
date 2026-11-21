@@ -1,42 +1,64 @@
 # DSS1 V2: Digital Sample Station
 
-![Status: in development](https://img.shields.io/badge/status-in%20development-orange) ![Platform: macOS](https://img.shields.io/badge/platform-macOS-lightgrey) ![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue)
+![Status: Beta](https://img.shields.io/badge/status-beta-orange) ![Platform: macOS 13+](https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey) ![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue)
 
-**A DJ prep tool: get your music ready before the gig.**
+**Get your music ready for the show or the session.** Sort it, prep it, shape it, chop it, and deliver it to
+Rekordbox, Serato or your MPC, in one app built like a 60s–80s hi-fi with displays from now.
 
-> This is the `v2` branch, a new app built from scratch. It is in early development and not usable yet.
-> The DSS1 v1.5 beta (SwiftUI) lives on the [`main` branch](../../tree/main) and the [`v1.5` tag](../../releases/tag/v1.5).
+### [Download the V2 beta](https://github.com/DarrenAlexanderCole/DSS1/releases/latest)
 
-## The idea
+macOS 13 or later, Apple Silicon and Intel. The release also has the **[Beta Guide (PDF)](https://github.com/DarrenAlexanderCole/DSS1/raw/v2/docs/DSS1-V2-Beta-Guide.pdf)**
+and a short [slideshow video](https://github.com/DarrenAlexanderCole/DSS1/raw/v2/docs/media/DSS1-V2-Beta-Slides.mp4).
+Your music files are never changed: DSS1 only ever writes copies.
 
-DSS1 V2 is organised around four stages:
+![DSS1 Chop screen](docs/screenshots/05_chop.jpg)
 
-1. **Catalog** — bring music in (files, folders, record-pool zips) and keep it organised by BPM, key, loudness and tags.
-2. **Prep** — the heart of the app. Beat grids (constant or variable tempo), hot cues A–H, memory cues and saved loops,
-   set once and checked against what Rekordbox and Serato can hold.
-3. **Listen & Design** — a listening deck with real-time effects, a recorder, an XY performance pad and a pad sampler.
-4. **Deliver** — Rekordbox XML export and import, Serato-tagged copies, MPC projects and WAV slices.
+## Five screens
 
-Rekordbox, Serato and MPC are *export targets*, not separate modes: every track has one set of cues, loops and grid,
-and each export takes what its software supports.
+**Catalog: your music, sorted.** Drop in files, folders or record-pool zips. BPM, key, loudness and the beat grid
+are worked out for you, and you can keep your own notes on every track.
 
-## Roadmap
+![Catalog](docs/screenshots/02_catalog.jpg)
 
-| Phase | What | Status |
-|---|---|---|
-| 1 | Foundations: project, CI, test harness, app shell, beat-grid and track-record core | Done (signing and MP3 decoder still to do) |
-| 2 | Track data & formats: library store, Rekordbox XML, Serato tags, track matching | Done (core): library database, Rekordbox XML, Serato tags, track matching |
-| 3 | Audio engine + Catalog | Nearly done: import, tags, watched folders, missing-file relink, analysis (BPM, key, loudness, beats and bars), playback with key lock |
-| 4 | Prep | First version: waveform editor, hot cues A-H, memory cues, saved loops, grid tools, Rekordbox/Serato target |
-| 5 | Deliver | First version: Rekordbox XML of the library, tagged copies for Serato (originals never changed) |
-| 6 | Listen & Design | Effects (filter, echo, reverb, opto compressor with 3-band EQ), live spectrum, XY pad, recorder with live waveform and take playback, CHOP stage: MPC-style sampler (8 banks x 16 pads, zoomable slice editor, transients, pad settings) |
-| Later | Windows | |
+**Prep: cues, loops and the grid.** Hot cues A–H, memory cues and saved loops on a zoomable waveform. Loops
+resize live, and the grid tools handle downbeats, half/double tempo and tracks that drift.
 
-macOS comes first. The app is built on [JUCE](https://juce.com) so a Windows version can follow from the same code.
+![Prep](docs/screenshots/03_prep.jpg)
 
-## Building
+**Listen / Design: shape the sound.** Filter, echo (PING, TAPE, DUCK, FREEZE), reverb (GATE, HALO) and an opto
+compressor with EQ (DRIVE, PUNCH, SQUASH, CRUSH), with backlit monitors. Record what you hear and send it
+straight to Chop.
 
-You need macOS 13 or later, the Xcode command line tools and CMake 3.24+ (`brew install cmake`).
+![Listen / Design](docs/screenshots/04_listen.jpg)
+
+**Chop: slice anything onto 128 pads.** Eight banks of 16. Tap an empty pad to mark a slice, tap it again to
+play it. Each pad has gain, tune, attack, fade and reverse, and it all plays from the keyboard or a MIDI pad
+controller (Akai MPC, MPD, MPK). Banks save as WAVs.
+
+**Deliver: send it to your setup.** One Rekordbox XML with cues, loops, grids and notes, or tagged copies for
+Serato with your cues and loops inside.
+
+![Deliver](docs/screenshots/06_deliver.jpg)
+
+## Install
+
+1. Download the `.dmg` from the [latest release](https://github.com/DarrenAlexanderCole/DSS1/releases/latest) and open it.
+2. Drag **DSS1** onto **Applications**.
+3. The beta isn't notarised by Apple yet, so the first time you open it: on **macOS 15+**, open **System Settings →
+   Privacy & Security** and click **Open Anyway**; on **macOS 13–14**, right-click DSS1 and choose **Open**.
+
+Found a problem or have an idea? [Open an issue](https://github.com/DarrenAlexanderCole/DSS1/issues), ideally with a screenshot.
+
+**Looking for DSS1 1.5?** It's still available: [DSS1 1.5 (Beta)](https://github.com/DarrenAlexanderCole/DSS1/releases/tag/v1.5),
+with its code on the [`main` branch](https://github.com/DarrenAlexanderCole/DSS1/tree/main). Both install as
+"DSS1", so rename 1.5 first if you want to keep both.
+
+---
+
+## For developers
+
+DSS1 V2 is built from scratch in C++20 on [JUCE](https://juce.com), so a Windows version can follow from the same
+code. You need macOS 13 or later, the Xcode command line tools and CMake 3.24+ (`brew install cmake`).
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -48,30 +70,23 @@ open build/src/app/DSS1_artefacts/Release/DSS1.app
 The first configure downloads JUCE and the other libraries (Catch2, nlohmann/json, pugixml, dr_libs, minimp3,
 Signalsmith Stretch), so it takes a few minutes.
 
-Every push to `v2` is built and tested on GitHub Actions; the macOS app is attached to each run as `DSS1-macOS`.
-It isn't signed yet, so the first time you open a downloaded copy, right-click it and choose **Open**.
-
-**Test builds:** pushing to the `test-build` branch builds a `.dmg` and publishes it as a GitHub pre-release
-(`v2.0.0-test.<n>`), with the notes in [docs/TEST-BUILD.md](docs/TEST-BUILD.md). The build number shows in the
-window title.
-
-## Project layout
+- Every push to `v2` is built and tested on GitHub Actions.
+- Pushing to `test-build` publishes a numbered pre-release (`v2.0.0-test.<n>`) with [docs/TEST-BUILD.md](docs/TEST-BUILD.md).
+- Running **Release (macOS)** by hand with a label (e.g. `beta.2`) publishes `v2.0.0-<label>` as the latest
+  release with [docs/BETA.md](docs/BETA.md); **Release extras** then attaches the guide and media.
 
 ```
-src/core/    Track data, beat grids, file formats, analysis — plain C++20, no UI or audio, fully unit-tested
-src/io/      Audio decoding (bundled decoders, same samples on every platform)
-src/engine/  Playback decks with key lock (no JUCE; rendered offline in tests)
+src/core/    Track data, beat grids, file formats, analysis: plain C++20, no UI or audio, fully unit-tested
+src/io/      Audio decoding and tag reading
+src/engine/  Decks with key lock, effects, sampler (no JUCE; rendered offline in tests)
 src/app/     The JUCE desktop app
-tests/       Unit tests (Catch2) and test audio
-docs/        Architecture notes
+tests/       Unit tests (Catch2)
+tools/       Blender part renders, textures, the app icon, the beta guide and slides
+docs/        Architecture notes, release notes, screenshots
 ```
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design.
-
-## Contributing
-
-Ideas, bug reports and pull requests are welcome. Open an issue first for anything large, so we can agree on the
-approach before you start.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design. Ideas, bug reports and pull requests are welcome;
+open an issue first for anything large.
 
 ## License
 
