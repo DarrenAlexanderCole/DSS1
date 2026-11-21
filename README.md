@@ -1,5 +1,11 @@
 # DSS1 — Digital Sample Station 1
 
+> **New: DSS1 V2 beta.** A rebuilt DSS1 with a hi-fi look, beat-grid prep, effects and a recorder, a 128-pad
+> chopper and Rekordbox / Serato export. **[Download the V2 beta](https://github.com/DarrenAlexanderCole/DSS1/releases/latest)**
+> (macOS 13+, Apple Silicon and Intel). Its code is on the [`v2` branch](https://github.com/DarrenAlexanderCole/DSS1/tree/v2).
+>
+> The rest of this page is about **DSS1 1.5**, which you can still [download here](https://github.com/DarrenAlexanderCole/DSS1/releases/tag/v1.5).
+
 ![Status: Beta](https://img.shields.io/badge/status-beta-orange) ![Platform: macOS 14+](https://img.shields.io/badge/platform-macOS%2014%2B-lightgrey) ![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue)
 
 > **Beta.** DSS1 is under active development. It works, but expect rough edges and changes
