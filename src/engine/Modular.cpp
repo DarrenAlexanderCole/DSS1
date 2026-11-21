@@ -307,7 +307,7 @@ void Modular::runNoise (float* const* ch, int numChannels, int numFrames) noexce
                 r += (white - r) * rumbleTone;
                 n = n * (1.0f - 0.5f * noiseVinyl) + (t * 1.2f + r * 2.5f) * noiseVinyl;
             }
-            ch[k][i] += n * noiseLevel * 0.25f * (0.3f + 0.7f * duck);
+            ch[k][i] += n * noiseLevel * 0.9f * (0.45f + 0.55f * duck);
         }
     }
 }
