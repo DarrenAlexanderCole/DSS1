@@ -208,3 +208,50 @@ TEST_CASE ("Deluxe rack: DRIFT bends the pitch, and stays in range", "[modular]"
     }
     REQUIRE (diff > 0.1f);
 }
+
+TEST_CASE ("Deluxe rack: NOISE adds noise only when it's turned up", "[modular]")
+{
+    Modular m;
+    m.prepare (rate, 256);
+    m.controls[Modular::noise].on = true;  // on, but LEVEL at 0: passive
+    Stereo silent (24000);
+    run (m, silent);
+    REQUIRE (rms (silent.l, 0) == 0.0f);
+
+    m.controls[Modular::noise].b = 1.0f;
+    m.controls[Modular::noise].mode = true;  // VINYL too
+    for (float colour : { 0.0f, 0.5f, 1.0f })
+    {
+        m.controls[Modular::noise].a = colour;
+        Stereo s (48000);
+        run (m, s);
+        const auto level = rms (s.l, 24000);
+        REQUIRE (level > 0.005f);
+        REQUIRE (level < 0.5f);
+    }
+}
+
+TEST_CASE ("Deluxe rack: WAVETABLE ring-modulates, and FM bends the phase", "[modular]")
+{
+    for (bool fm : { false, true })
+    {
+        Modular m;
+        m.prepare (rate, 256);
+        m.rootHz = 220.0f;
+        auto& c = m.controls[Modular::wavetable];
+        c.a = 0.5f;
+        c.b = 1.0f;
+        c.mode = fm;
+        c.on = true;
+        auto s = sine (330.0f, 48000);
+        const auto dry = s.l;
+        run (m, s);
+        float diff = 0;
+        for (std::size_t i = 24000; i < s.l.size(); ++i)
+        {
+            REQUIRE (std::abs (s.l[i]) <= 1.0f);
+            diff = std::max (diff, std::abs (s.l[i] - dry[i]));
+        }
+        REQUIRE (diff > 0.1f);
+    }
+}

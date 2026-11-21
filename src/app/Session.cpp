@@ -182,6 +182,16 @@ void Session::syncModular()
     auto& rack = engine.modular();
     if (const auto bpm = playingBpm())
         rack.bpm = static_cast<float> (*bpm);
+    // WAVETABLE plays the track's key: its root, in the octave above C3, moved with the pitch.
+    if (current && ! current->record.info.key.empty())
+    {
+        static const char* names[] { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
+        static const char* flats[] { "C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B" };
+        const auto key = juce::String (current->record.info.key).upToFirstOccurrenceOf (" ", false, false).trim();
+        for (int n = 0; n < 12; ++n)
+            if (key.equalsIgnoreCase (names[n]) || key.equalsIgnoreCase (flats[n]))
+                rack.rootHz = static_cast<float> (130.81 * std::pow (2.0, n / 12.0) * engine.deck().tempo());
+    }
     if (! current || ! current->record.grid || current->record.grid->isEmpty())
     {
         rack.setSync (0, 0, 0, 4);

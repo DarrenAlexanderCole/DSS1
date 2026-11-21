@@ -21,6 +21,47 @@ void Modular::prepare (double sampleRate, int maxBlock)
         h.assign (static_cast<std::size_t> (sampleRate * 6.0), 0.0f);  // a 1/2-note slice at 40 BPM, and room
     for (auto& l : driftLine)
         l.assign (static_cast<std::size_t> (sampleRate * 0.1), 0.0f);
+    for (auto& l : fmLine)
+        l.assign (static_cast<std::size_t> (sampleRate * 0.02), 0.0f);
+    if (waves.empty())
+    {
+        // The table: sine → triangle → saw → square → thin pulse, each band-limited (40 harmonics), with the
+        // waves between them crossfaded.
+        const auto shape = [] (int kind, double x) {
+            constexpr double tau = 6.283185307179586;
+            double v = 0;
+            for (int n = 1; n <= 40; ++n)
+            {
+                const auto h = std::sin (tau * n * x);
+                switch (kind)
+                {
+                    case 0: v = std::sin (tau * x); return v;
+                    case 1: if (n % 2 == 1) v += h * (((n - 1) / 2) % 2 == 0 ? 1.0 : -1.0) / (n * n); break;
+                    case 2: v += h / n * 0.6; break;
+                    case 3: if (n % 2 == 1) v += h / n * 1.0; break;
+                    default: v += std::sin (tau * n * x) * std::cos (tau * n * 0.12) / 12.0; break;  // a narrow pulse
+                }
+            }
+            return v;
+        };
+        waves.assign (static_cast<std::size_t> (waveCount * waveSize), 0.0f);
+        for (int w = 0; w < waveCount; ++w)
+        {
+            const auto pos = static_cast<double> (w) / (waveCount - 1) * 4.0;
+            const auto a = std::min (3, static_cast<int> (pos));
+            const auto t = pos - a;
+            float peak = 0;
+            for (int i = 0; i < waveSize; ++i)
+            {
+                const auto x = static_cast<double> (i) / waveSize;
+                const auto v = static_cast<float> (shape (a, x) * (1.0 - t) + shape (a + 1, x) * t);
+                waves[static_cast<std::size_t> (w * waveSize + i)] = v;
+                peak = std::max (peak, std::abs (v));
+            }
+            for (int i = 0; i < waveSize; ++i)
+                waves[static_cast<std::size_t> (w * waveSize + i)] /= std::max (peak, 1.0e-3f);
+        }
+    }
     for (auto& l : tapLine)
         l.assign (static_cast<std::size_t> (sampleRate * 9.0), 0.0f);  // four taps 1 1/2 beats apart at 40 BPM
     beatBuffer.assign (static_cast<std::size_t> (std::max (maxBlock, 1) * 2), 0.0);
@@ -89,6 +130,8 @@ void Modular::process (float* const* channels, int numChannels, int numFrames, d
         {
             case stutter: runStutter (channels, numChannels, numFrames, beatBuffer.data()); break;
             case slicer:  runSlicer (channels, numChannels, numFrames, beatBuffer.data(), perBar); break;
+            case noise:     runNoise (channels, numChannels, numFrames); break;
+            case wavetable: runWavetable (channels, numChannels, numFrames); break;
             case drift:    runDrift (channels, numChannels, numFrames); break;
             case multitap: runMultiTap (channels, numChannels, numFrames); break;
             case ladder:   runLadder (channels, numChannels, numFrames); break;
@@ -198,6 +241,141 @@ void Modular::runSlicer (float* const* ch, int numChannels, int numFrames, const
         const auto gain = 1.0f - slicerDepth * (1.0f - gate);
         for (int k = 0; k < numChannels; ++k)
             ch[k][i] *= gain;
+    }
+}
+
+void Modular::runNoise (float* const* ch, int numChannels, int numFrames) noexcept
+{
+    // Noise under the music: brown, pink or white (and the shades between), ducking while the music is loud so
+    // it breathes in the gaps. VINYL adds crackle and a low rumble.
+    auto& c = controls[noise];
+    const auto levelTarget = c.on.load (std::memory_order_relaxed) ? std::clamp (c.b.load (std::memory_order_relaxed), 0.0f, 1.0f) : 0.0f;
+    if (levelTarget <= 0.0f && noiseLevel < 1.0e-5f)
+    {
+        noiseLevel = 0;
+        return;
+    }
+    const auto colourTarget = std::clamp (c.a.load (std::memory_order_relaxed), 0.0f, 1.0f);
+    const auto vinylTarget = c.mode.load (std::memory_order_relaxed) ? 1.0f : 0.0f;
+    const auto duckAttack = 1.0f - std::exp (-1.0f / static_cast<float> (rate * 0.005));
+    const auto duckRelease = 1.0f - std::exp (-1.0f / static_cast<float> (rate * 0.25));
+    const auto crackleCut = 1.0f - std::exp (-6.2831853f * 3000.0f / static_cast<float> (rate));
+    const auto rumbleTone = 1.0f - std::exp (-6.2831853f * 40.0f / static_cast<float> (rate));
+    const auto crackleChance = 9.0f / static_cast<float> (rate);  // about nine pops a second
+
+    for (int i = 0; i < numFrames; ++i)
+    {
+        noiseLevel += (levelTarget - noiseLevel) * 0.0015f;
+        noiseColour += (colourTarget - noiseColour) * 0.0015f;
+        noiseVinyl += (vinylTarget - noiseVinyl) * 0.0015f;
+        float loud = 0;
+        for (int k = 0; k < numChannels; ++k)
+            loud = std::max (loud, std::abs (ch[k][i]));
+        noiseDuck += (loud - noiseDuck) * (loud > noiseDuck ? duckAttack : duckRelease);
+        const auto duck = 1.0f / (1.0f + 4.0f * noiseDuck);
+
+        // A pop now and then, shared by both channels (it's the record), decaying fast.
+        if (noiseVinyl > 1.0e-3f && (random() * 0.5f + 0.5f) < crackleChance)
+            crackle = random() * (0.4f + 0.6f * std::abs (random()));
+        crackle *= 0.985f;
+
+        for (int k = 0; k < std::min (numChannels, 2); ++k)
+        {
+            const auto ks = static_cast<std::size_t> (k);
+            const auto white = random();
+            // Pink (Paul Kellet's filter) and brown (leaky integrator).
+            auto& p = pink[ks];
+            p[0] = 0.99886f * p[0] + white * 0.0555179f;
+            p[1] = 0.99332f * p[1] + white * 0.0750759f;
+            p[2] = 0.96900f * p[2] + white * 0.1538520f;
+            p[3] = 0.86650f * p[3] + white * 0.3104856f;
+            p[4] = 0.55000f * p[4] + white * 0.5329522f;
+            p[5] = -0.7616f * p[5] - white * 0.0168980f;
+            const auto pinkOut = (p[0] + p[1] + p[2] + p[3] + p[4] + p[5] + p[6] + white * 0.5362f) * 0.11f;
+            p[6] = white * 0.115926f;
+            auto& b = brown[ks];
+            b = (b + 0.02f * white) / 1.02f;
+            const auto brownOut = b * 3.5f;
+            const auto hue = noiseColour * 2.0f;
+            auto n = hue < 1.0f ? brownOut + (pinkOut - brownOut) * hue : pinkOut + (white * 0.5f - pinkOut) * (hue - 1.0f);
+
+            if (noiseVinyl > 1.0e-3f)
+            {
+                auto& t = this->crackleTone[ks];
+                t += (crackle - t) * crackleCut;
+                auto& r = rumble[ks];
+                r += (white - r) * rumbleTone;
+                n = n * (1.0f - 0.5f * noiseVinyl) + (t * 1.2f + r * 2.5f) * noiseVinyl;
+            }
+            ch[k][i] += n * noiseLevel * 0.25f * (0.3f + 0.7f * duck);
+        }
+    }
+}
+
+void Modular::runWavetable (float* const* ch, int numChannels, int numFrames) noexcept
+{
+    // A wave from the table at the track's root note, ring-modulating the music (the robot, the bell), or with
+    // FM bending the music's phase with it (metal, glassy sidebands). MORPH sweeps the table.
+    auto& c = controls[wavetable];
+    const auto mixTarget = c.on.load (std::memory_order_relaxed) ? std::clamp (c.b.load (std::memory_order_relaxed), 0.0f, 1.0f) : 0.0f;
+    const auto size = fmLine[0].size();
+    if (mixTarget <= 0.0f && waveMix < 1.0e-4f)
+    {
+        waveMix = 0;
+        // Keep the FM line filled, so switching to it doesn't start from silence.
+        for (int i = 0; i < numFrames; ++i)
+        {
+            for (int k = 0; k < std::min (numChannels, 2); ++k)
+                fmLine[static_cast<std::size_t> (k)][fmWrite] = ch[k][i];
+            fmWrite = (fmWrite + 1) % size;
+        }
+        return;
+    }
+    const auto morphTarget = std::clamp (c.a.load (std::memory_order_relaxed), 0.0f, 1.0f);
+    const auto fmTarget = c.mode.load (std::memory_order_relaxed) ? 1.0f : 0.0f;
+    const auto hzTarget = std::clamp (rootHz.load (std::memory_order_relaxed), 40.0f, 2000.0f);
+    const auto ms = static_cast<float> (rate / 1000.0);
+
+    for (int i = 0; i < numFrames; ++i)
+    {
+        waveMix += (mixTarget - waveMix) * 0.0015f;
+        waveMorph += (morphTarget - waveMorph) * 0.002f;
+        waveFm += (fmTarget - waveFm) * 0.0015f;
+        waveHz += (hzTarget - waveHz) * 0.0005f;
+
+        // The wave: between two neighbouring waves of the table, between two samples of each.
+        const auto w = waveMorph * (waveCount - 1);
+        const auto w0 = std::min (waveCount - 2, static_cast<int> (w));
+        const auto wt = w - static_cast<float> (w0);
+        const auto x = wavePhase * waveSize;
+        const auto s0 = static_cast<int> (x) % waveSize;
+        const auto s1 = (s0 + 1) % waveSize;
+        const auto st = static_cast<float> (x - std::floor (x));
+        const auto at = [this] (int wave, int s) { return waves[static_cast<std::size_t> (wave * waveSize + s)]; };
+        const auto a = at (w0, s0) + (at (w0, s1) - at (w0, s0)) * st;
+        const auto b = at (w0 + 1, s0) + (at (w0 + 1, s1) - at (w0 + 1, s0)) * st;
+        const auto osc = a + (b - a) * wt;
+        wavePhase += waveHz / rate;
+        if (wavePhase >= 1.0)
+            wavePhase -= 1.0;
+
+        // FM: read the music back through a line whose length the wave moves (up to ±0.6 ms).
+        const auto delay = (1.0f + 0.6f * osc) * ms;
+        const auto readPos = static_cast<double> (fmWrite) - static_cast<double> (delay) + static_cast<double> (size);
+        const auto i0 = static_cast<std::size_t> (readPos) % size;
+        const auto frac = static_cast<float> (readPos - std::floor (readPos));
+        for (int k = 0; k < std::min (numChannels, 2); ++k)
+        {
+            const auto ks = static_cast<std::size_t> (k);
+            const auto dry = ch[k][i];
+            fmLine[ks][fmWrite] = dry;
+            const auto& line = fmLine[ks];
+            const auto fm = line[i0] + (line[(i0 + 1) % size] - line[i0]) * frac;
+            const auto ring = dry * osc;
+            const auto wet = ring + (fm - ring) * waveFm;
+            ch[k][i] = dry + (wet - dry) * waveMix;
+        }
+        fmWrite = (fmWrite + 1) % size;
     }
 }
 

@@ -10,8 +10,7 @@ namespace dss1::engine
 /// The DELUXE rack's sound: eight slots of remix modules, run in slot order, in front of the classic effects.
 /// Every module starts off, and with every module off the audio passes through untouched.
 ///
-/// Built so far: STUTTER, SLICER, DRIFT, MULTI-TAP and LADDER. NOISE and WAVETABLE pass the sound through
-/// until they're built.
+/// The modules: STUTTER, SLICER, NOISE, WAVETABLE, DRIFT, MULTI-TAP, LADDER (and an empty slot).
 ///
 /// Both lock to the music's beat: the app tells the rack where the beats are in the playing track (setSync);
 /// with nothing playing (pads, a chop preview) the rack keeps its own beat at `bpm`.
@@ -26,6 +25,11 @@ public:
     /// as the rack shows them):
     /// - STUTTER: a = repeat length (0 … 4: 1/32, 1/16, 1/8, 1/4, 1/2 note), b = mix 0 … 1, mode = HOLD.
     /// - SLICER: a = pattern (0 … 7), b = depth 0 … 1, mode = TRIPLET.
+    /// - NOISE: a = colour 0 … 1 (brown, pink, white), b = level 0 … 1, mode = VINYL (crackle and rumble).
+    ///   It ducks under the music, so it fills the gaps.
+    /// - WAVETABLE: a = morph 0 … 1 (64 waves: sine, triangle, saw, square, thin pulse), b = mix 0 … 1,
+    ///   mode = FM (the wave bends the music's phase, instead of ring-modulating it). The wave plays the
+    ///   track's key (`rootHz`).
     /// - DRIFT: a = wow 0 … 1 (slow pitch drift), b = flutter 0 … 1 (fast wobble), mode = TAPE (saturation and a
     ///   darker top).
     /// - MULTI-TAP: a = tap spacing (0 … 4: 1/4, 1/2, 3/4, 1, 1 1/2 beats), b = amount 0 … 1 (the taps' level and
@@ -44,6 +48,8 @@ public:
     std::array<std::atomic<int>, slots> order { { { stutter }, { slicer }, { noise }, { wavetable }, { drift }, { multitap }, { ladder }, { empty } } };
     /// The tempo, for keeping the beat when there's no track playing.
     std::atomic<float> bpm { 120.0f };
+    /// The root of the track's key, Hz (C3 … B3), for WAVETABLE.
+    std::atomic<float> rootHz { 220.0f };
 
     /// Where the beats are: `anchorFrame` (a frame of the playing track) is on beat `beatInBar` (0-based) of a
     /// bar of `beatsPerBar`, and a beat lasts `beatFrames` frames there. Call often while a track plays (the
@@ -99,6 +105,20 @@ private:
     // SLICER: the gate's level.
     float gate = 1, slicerDepth = 0;
 
+    // NOISE: pink and brown filter states, the duck, the vinyl crackle.
+    std::array<std::array<float, 7>, 2> pink {};
+    std::array<float, 2> brown {}, crackleTone {}, rumble {};
+    float noiseLevel = 0, noiseColour = 0.5f, noiseVinyl = 0, noiseDuck = 0;
+    float crackle = 0;
+
+    // WAVETABLE: 64 waves of `waveSize` samples, the oscillator's phase, a short line for FM.
+    static constexpr int waveCount = 64, waveSize = 2048;
+    std::vector<float> waves;
+    double wavePhase = 0;
+    float waveMix = 0, waveMorph = 0, waveFm = 0, waveHz = 220;
+    std::array<std::vector<float>, 2> fmLine;
+    std::size_t fmWrite = 0;
+
     // DRIFT: a short modulated delay (the tape path), its LFOs, a slow random walk for the wow, the TAPE tone.
     std::array<std::vector<float>, 2> driftLine;
     std::size_t driftWrite = 0;
@@ -120,6 +140,8 @@ private:
 
     void runStutter (float* const* ch, int numChannels, int numFrames, const double* beats) noexcept;
     void runSlicer (float* const* ch, int numChannels, int numFrames, const double* beats, double beatsPerBar) noexcept;
+    void runNoise (float* const* ch, int numChannels, int numFrames) noexcept;
+    void runWavetable (float* const* ch, int numChannels, int numFrames) noexcept;
     void runDrift (float* const* ch, int numChannels, int numFrames) noexcept;
     void runMultiTap (float* const* ch, int numChannels, int numFrames) noexcept;
     void runLadder (float* const* ch, int numChannels, int numFrames) noexcept;
