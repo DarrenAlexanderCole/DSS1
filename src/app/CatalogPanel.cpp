@@ -43,7 +43,7 @@ CatalogPanel::CatalogPanel (Session& s) : session (s), crate (s.library())
     header.addColumn ("Genre", genre, 110, 50, -1, columnFlags);
     header.addColumn ("Time", time, 58, 50, 120, columnFlags);
     header.addColumn ("BPM", bpm, 70, 50, 120, columnFlags);
-    header.addColumn ("Key", key, 118, 60, 200, columnFlags);
+    header.addColumn ("Key", key, 136, 60, 200, columnFlags);
     header.addColumn ("Loudness", loudness, 100, 60, 160, columnFlags);
     header.addColumn ("Notes", notes, 220, 100, -1, columnFlags);
     header.setSortColumnId (title, true);
