@@ -76,6 +76,11 @@ private:
     juce::TableListBox table { "Crate", this };
     juce::TextButton addButton { "Add Music..." };
     juce::TextButton foldersButton { "Folders" };
+    /// START FRESH: work from a new folder, clear the Catalog, or bring cleared tracks back.
+    juce::TextButton freshButton { "START FRESH" };
+    void showFreshMenu();
+    void chooseFolderToWorkFrom();
+    void confirmClear();
     juce::TextButton findButton { "Find Missing..." };
     juce::Label statusLabel;
     std::unique_ptr<juce::FileChooser> chooser;

@@ -179,6 +179,44 @@ TEST_CASE ("Watched folders persist, and a schema 1 library upgrades without los
     }
 }
 
+TEST_CASE ("Cleared tracks are set aside with their prep, and come back as they were", "[library]")
+{
+    TempFile file;
+    {
+        auto store = LibraryStore::open (file.path.string());
+        store.save (makeTrack ("/Old/a.wav", "fp-a"));
+        store.save (makeTrack ("/Old/b.wav", "fp-b"));
+        CHECK (store.setAsideAll() == 2);
+        CHECK (store.count() == 0);
+        CHECK (store.all().empty());
+        CHECK (store.setAsideCount() == 2);
+        // Still findable, with their cues and loops.
+        const auto a = store.byPath ("/Old/a.wav");
+        REQUIRE (a);
+        CHECK (store.isSetAside (a->id));
+        CHECK (a->record == makeTrack ("/Old/a.wav", "fp-a"));
+        CHECK (store.byFingerprint ("fp-b").size() == 1);
+        // New music starts a fresh Catalog.
+        store.save (makeTrack ("/New/c.wav", "fp-c"));
+        CHECK (store.count() == 1);
+        // Saving a set-aside track (an analysis finishing, say) doesn't bring it back by itself.
+        store.save (makeTrack ("/Old/b.wav", "fp-b"));
+        CHECK (store.count() == 1);
+        // One track comes back when its file is added again.
+        store.setAside (a->id, false);
+        CHECK (store.count() == 2);
+        CHECK_FALSE (store.isSetAside (a->id));
+    }
+    {
+        // Set aside survives a relaunch, and Bring Back returns the rest.
+        auto store = LibraryStore::open (file.path.string());
+        CHECK (store.count() == 2);
+        CHECK (store.bringBackAll() == 1);
+        CHECK (store.count() == 3);
+        CHECK (store.setAsideCount() == 0);
+    }
+}
+
 // --- Matching -------------------------------------------------------------------------------------------
 
 TEST_CASE ("looseKey ignores case and accents, composed or decomposed", "[matcher]")

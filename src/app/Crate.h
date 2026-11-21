@@ -49,6 +49,16 @@ public:
 
     void stopWatching (const juce::String& folder);
 
+    /// Clears the Catalog: every track is set aside (its grid, cues, loops and notes are kept, and come back if
+    /// its file is added again) and no folder is watched any more. The files aren't touched.
+    void clearCatalog();
+    /// Clears the Catalog, then adds and watches `folder`: a fresh start from one folder.
+    void workFrom (const juce::File& folder);
+    /// Brings every cleared track back into the Catalog.
+    void bringBackCleared();
+    /// How many tracks are set aside (cleared). Updated with the snapshot.
+    std::size_t clearedCount() const;
+
     /// The tracks selected in Catalog (message thread only). Deliver can export just these.
     void setSelection (std::vector<std::int64_t> ids);
     const std::vector<std::int64_t>& selection() const noexcept { return selected; }
@@ -76,12 +86,17 @@ private:
     bool analyseNext();
     void setStatus (const juce::String& s);
     void refreshSnapshot();
+    /// Sets aside every track and stops watching every folder (on the worker thread).
+    void clearNow();
+    /// Of `files`, brings back the ones that were set aside; returns how many, and removes them from `files`.
+    int bringBackFrom (juce::Array<juce::File>& files);
 
     mutable std::mutex storeLock;   ///< SQLite connection: one thread at a time
     std::unique_ptr<LibraryStore> store;
 
     mutable std::mutex stateLock;
     std::vector<StoredTrack> snapshot;
+    std::size_t cleared = 0;  // set-aside tracks, counted with the snapshot
     std::set<std::int64_t> missingIds;
     juce::StringArray watched;
     juce::String statusText;

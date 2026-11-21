@@ -8,7 +8,7 @@ slides themselves (DSS1-V2-Beta-Slides-9x16.zip and DSS1-V2-Beta-Slides-16x9.zip
 
 ## Install
 
-1. Download **DSS1-v2.0.0-beta.1.dmg** below and open it.
+1. Download the **DSS1 .dmg** below and open it.
 2. Drag **DSS1** onto **Applications**. (Have DSS1 1.5 installed and want to keep it? See the end of these
    notes first.)
 3. Open DSS1 from Applications. The beta isn't notarised by Apple yet, so macOS blocks it the first time:
@@ -23,7 +23,8 @@ slides themselves (DSS1-V2-Beta-Slides-9x16.zip and DSS1-V2-Beta-Slides-16x9.zip
 DSS1 opens under its glass dust cover: click it to lift it.
 
 - **Catalog:** drag in files, folders or record-pool zips. BPM, key, loudness and the beat grid are worked out
-  for you. Sort by anything, and keep your own **NOTES** on each track.
+  for you. Sort by anything, and keep your own **NOTES** on each track. **START FRESH** clears the Catalog or
+  switches it to a new folder; cleared tracks keep their prep and come back if you add them again.
 - **Prep:** set hot cues A–H, memory cues and saved loops on a zoomable waveform, and fix the beat grid
   (including tracks whose tempo drifts).
 - **Listen / Design:** play the track through FILTER, ECHO, REVERB and an opto COMP with its own EQ, with

@@ -174,6 +174,16 @@ void LibraryStore::migrate()
             )SQL");
         });
     }
+    if (current < 3)
+    {
+        // 3: tracks can be set aside (cleared from the Catalog without losing their prep).
+        transaction ([this] {
+            exec (R"SQL(
+                ALTER TABLE tracks ADD COLUMN aside INTEGER NOT NULL DEFAULT 0;
+                PRAGMA user_version = 3;
+            )SQL");
+        });
+    }
     // Later schema versions add their upgrade steps here, one `if (current < N)` each.
 }
 
@@ -274,13 +284,49 @@ std::vector<StoredTrack> LibraryStore::byFingerprint (const std::string& fingerp
 
 std::vector<StoredTrack> LibraryStore::all() const
 {
-    Statement s (db_.get(), "SELECT id, record, path FROM tracks ORDER BY path");
+    Statement s (db_.get(), "SELECT id, record, path FROM tracks WHERE aside = 0 ORDER BY path");
     return readAll (s);
 }
 
 std::size_t LibraryStore::count() const
 {
-    Statement s (db_.get(), "SELECT COUNT(*) FROM tracks");
+    Statement s (db_.get(), "SELECT COUNT(*) FROM tracks WHERE aside = 0");
+    s.step();
+    return static_cast<std::size_t> (s.integer (0));
+}
+
+void LibraryStore::setAside (std::int64_t id, bool aside)
+{
+    Statement s (db_.get(), "UPDATE tracks SET aside = ?1 WHERE id = ?2");
+    s.bind (1, static_cast<std::int64_t> (aside ? 1 : 0));
+    s.bind (2, id);
+    s.step();
+}
+
+std::size_t LibraryStore::setAsideAll()
+{
+    const auto n = count();
+    exec ("UPDATE tracks SET aside = 1 WHERE aside = 0");
+    return n;
+}
+
+std::size_t LibraryStore::bringBackAll()
+{
+    const auto n = setAsideCount();
+    exec ("UPDATE tracks SET aside = 0 WHERE aside = 1");
+    return n;
+}
+
+bool LibraryStore::isSetAside (std::int64_t id) const
+{
+    Statement s (db_.get(), "SELECT aside FROM tracks WHERE id = ?1");
+    s.bind (1, id);
+    return s.step() && s.integer (0) != 0;
+}
+
+std::size_t LibraryStore::setAsideCount() const
+{
+    Statement s (db_.get(), "SELECT COUNT(*) FROM tracks WHERE aside = 1");
     s.step();
     return static_cast<std::size_t> (s.integer (0));
 }

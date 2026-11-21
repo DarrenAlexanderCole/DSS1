@@ -133,7 +133,7 @@ s.append(Paragraph('DSS1 is one place to get your music ready before the show or
                    '<b>Your music files are never changed:</b> DSS1 only ever writes copies.', body))
 s.append(Paragraph('Install', h2))
 s += bullets([
-    'Download <b>DSS1-v2.0.0-beta.1.dmg</b> from the Releases page on GitHub '
+    'Download the <b>DSS1 .dmg</b> from the latest release on GitHub '
     '(github.com/DarrenAlexanderCole/DSS1/releases) and open it.',
     'Drag <b>DSS1</b> onto <b>Applications</b>. If you have DSS1 1.5 and want to keep it, rename it first '
     '(for example <i>DSS1 1.5</i>), because both are called DSS1.',
@@ -167,6 +167,9 @@ s += bullets([
     '<b>NOTES:</b> double-click a track\'s note to type your own (Return saves). Notes sort like any column and go to '
     'Rekordbox as the track\'s Comments.',
     '<b>Watched folders:</b> a folder you add is watched; new tracks appear on their own. <b>FOLDERS</b> lists them.',
+    '<b>START FRESH:</b> <i>Work From a New Folder</i> clears the Catalog and shows just the folder you pick; <i>Clear the '
+    'Catalog</i> empties it. Nothing is deleted, and cleared tracks keep their cues, loops and notes: add them again '
+    '(or use <i>Bring Back Cleared Tracks</i>) and they return as they were.',
     '<b>Play:</b> double-click a track (or select it and press Return). Space plays and pauses on every screen.',
     'Right-click a track to <b>Show in Finder</b>, <b>Analyse Again</b>, <b>Export</b> it, or remove it from DSS1 '
     '(the file stays where it is).',

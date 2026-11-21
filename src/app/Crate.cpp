@@ -286,6 +286,73 @@ void Crate::stopWatching (const juce::String& folder)
     });
 }
 
+void Crate::clearNow()
+{
+    std::size_t n = 0;
+    {
+        const std::lock_guard lock (storeLock);
+        store->transaction ([&] {
+            n = store->setAsideAll();
+            for (const auto& folder : store->watchedFolders())
+                store->removeWatchedFolder (folder);
+        });
+    }
+    {
+        const std::lock_guard lock (stateLock);
+        watched.clear();
+    }
+    refreshSnapshot();
+    setStatus ("Cleared " + plural (n, "track", "tracks") + " from the Catalog. Your files weren't touched, and their cues, loops "
+               "and notes come back if you add them again.");
+}
+
+void Crate::clearCatalog()
+{
+    post ([this] { clearNow(); });
+}
+
+void Crate::workFrom (const juce::File& folder)
+{
+    post ([this, folder] {
+        clearNow();
+        importItems ({ folder });
+    });
+}
+
+void Crate::bringBackCleared()
+{
+    post ([this] {
+        std::size_t n = 0;
+        {
+            const std::lock_guard lock (storeLock);
+            n = store->bringBackAll();
+        }
+        refreshSnapshot();
+        checkMissing();
+        setStatus ("Brought back " + plural (n, "track", "tracks") + ".");
+    });
+}
+
+std::size_t Crate::clearedCount() const
+{
+    const std::lock_guard lock (stateLock);
+    return cleared;
+}
+
+int Crate::bringBackFrom (juce::Array<juce::File>& files)
+{
+    int n = 0;
+    const std::lock_guard lock (storeLock);
+    for (int i = files.size(); --i >= 0;)
+        if (const auto t = store->byPath (files.getReference (i).getFullPathName().toStdString()); t && store->isSetAside (t->id))
+        {
+            store->setAside (t->id, false);
+            files.remove (i);
+            ++n;
+        }
+    return n;
+}
+
 void Crate::setSelection (std::vector<std::int64_t> ids)
 {
     if (ids == selected)
@@ -330,13 +397,16 @@ void Crate::setStatus (const juce::String& s)
 void Crate::refreshSnapshot()
 {
     std::vector<StoredTrack> all;
+    std::size_t aside = 0;
     {
         const std::lock_guard lock (storeLock);
         all = store->all();
+        aside = store->setAsideCount();
     }
     {
         const std::lock_guard lock (stateLock);
         snapshot = std::move (all);
+        cleared = aside;
         // Forget missing marks for tracks that are gone or relinked; checkMissing() sets new ones.
         std::set<std::int64_t> stillMissing;
         for (const auto& t : snapshot)
@@ -444,6 +514,8 @@ void Crate::importItems (const juce::Array<juce::File>& items)
         }
     }
 
+    // Cleared tracks whose files are added again come back with their prep.
+    const auto restored = bringBackFrom (files);
     // Leave out what's already in the crate; files that are missing tracks moved somewhere new are relinked.
     juce::Array<juce::File> fresh;
     for (const auto& file : files)
@@ -468,7 +540,13 @@ void Crate::importItems (const juce::Array<juce::File>& items)
     }
     refreshSnapshot();
 
-    juce::String summary = "Added " + plural (static_cast<std::size_t> (added), "track.", "tracks.");
+    juce::String summary;
+    if (added > 0 || restored == 0)
+        summary << "Added " << plural (static_cast<std::size_t> (added), "track.", "tracks.");
+    if (restored > 0)
+        summary << " Brought back " << plural (static_cast<std::size_t> (restored), "track with its", "tracks with their")
+                << " cues, loops and notes.";
+    summary = summary.trim();
     if (relinked > 0)
         summary << " Found " << plural (static_cast<std::size_t> (relinked), "missing track.", "missing tracks.");
     if (failed > 0)
@@ -508,14 +586,16 @@ void Crate::scanWatched (bool quiet)
             if (! isAudioFile (entry.getFile()))
                 continue;
             const std::lock_guard lock (storeLock);
-            if (! store->byPath (entry.getFile().getFullPathName().toStdString()))
+            // New files, and cleared tracks whose files are in a watched folder (they come back).
+            if (const auto t = store->byPath (entry.getFile().getFullPathName().toStdString()); ! t || store->isSetAside (t->id))
                 fresh.add (entry.getFile());
         }
     }
 
+    const auto restoredHere = bringBackFrom (fresh);
     juce::Array<juce::File> unmatched;
     const auto relinked = relinkFrom (fresh, &unmatched);
-    int added = 0;
+    int added = restoredHere;
     for (const auto& file : unmatched)
         if (importFile (file))
             ++added;

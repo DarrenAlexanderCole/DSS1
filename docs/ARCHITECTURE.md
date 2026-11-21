@@ -252,6 +252,11 @@ In CHOP's MM (as in v1's `ChopSession.hitPad`), an empty pad is marked at the pl
 slice (see above); option-tap re-marks.
 `sliceEnd` lets a bank's last slice end at the next bank's first mark when they chop the same sound.
 
+Tracks can be set aside (schema 3: `tracks.aside`): `LibraryStore::all()` and `count()` only see the Catalog,
+while `byId` / `byPath` / `byFingerprint` still find set-aside tracks. `Crate::clearCatalog` sets every track
+aside and forgets the watched folders; `Crate::workFrom` does that and then imports a folder. Importing (or a
+watched-folder scan) brings a set-aside track back with its prep instead of re-importing it.
+
 Track notes live in `TrackInfo::notes` (JSON "notes", omitted when empty). Only `Crate::setNotes` changes them:
 `Crate::save` keeps the stored notes, since a deck's copy of a record can be older than an edit in Catalog.
 Rekordbox export writes them as the TRACK's Comments attribute. The app icon is rendered by

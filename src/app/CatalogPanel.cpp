@@ -72,6 +72,10 @@ CatalogPanel::CatalogPanel (Session& s) : session (s), crate (s.library())
     };
     addAndMakeVisible (addButton);
 
+    freshButton.setTooltip ("Start fresh: work from a new folder, or clear the Catalog. Your files and your prep are kept.");
+    freshButton.onClick = [this] { showFreshMenu(); };
+    addAndMakeVisible (freshButton);
+
     foldersButton.setTooltip ("Folders DSS1 watches for new music");
     foldersButton.onClick = [this] { showFoldersMenu(); };
     addAndMakeVisible (foldersButton);
@@ -429,6 +433,54 @@ void CatalogPanel::showFoldersMenu()
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (foldersButton));
 }
 
+void CatalogPanel::showFreshMenu()
+{
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("Your files and their cues, loops and notes are always kept");
+    menu.addItem ("Work From a New Folder...", [this] { chooseFolderToWorkFrom(); });
+    menu.addItem ("Clear the Catalog", ! rows.empty(), false, [this] { confirmClear(); });
+    const auto cleared = crate.clearedCount();
+    menu.addSeparator();
+    menu.addItem (cleared > 0 ? "Bring Back Cleared Tracks (" + juce::String (cleared) + ")" : juce::String ("Bring Back Cleared Tracks"), cleared > 0, false,
+                  [this] { crate.bringBackCleared(); });
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (freshButton));
+}
+
+void CatalogPanel::chooseFolderToWorkFrom()
+{
+    chooser = std::make_unique<juce::FileChooser> ("Work from this folder: the Catalog is cleared and shows just its music",
+                                                   juce::File::getSpecialLocation (juce::File::userMusicDirectory));
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
+                          [this] (const juce::FileChooser& fc) {
+                              const auto folder = fc.getResult();
+                              if (folder.isDirectory())
+                              {
+                                  table.deselectAllRows();
+                                  crate.workFrom (folder);
+                              }
+                          });
+}
+
+void CatalogPanel::confirmClear()
+{
+    const auto options = juce::MessageBoxOptions()
+                             .withIconType (juce::MessageBoxIconType::QuestionIcon)
+                             .withTitle ("Clear the Catalog?")
+                             .withMessage ("Every track leaves the Catalog and DSS1 stops watching your folders. Nothing is deleted: "
+                                           "your files stay where they are, and a track's cues, loops, grid and notes come back when "
+                                           "you add it again (or with Bring Back Cleared Tracks).")
+                             .withButton ("Clear", 1)
+                             .withButton ("Cancel", 0)
+                             .withAssociatedComponent (this);
+    messageBox = juce::AlertWindow::showScopedAsync (options, [weak = juce::WeakReference<CatalogPanel> (this)] (int result) {
+        if (result == 1 && weak != nullptr)
+        {
+            weak->table.deselectAllRows();
+            weak->crate.clearCatalog();
+        }
+    });
+}
+
 void CatalogPanel::chooseMissingFolder()
 {
     chooser = std::make_unique<juce::FileChooser> ("Where are the missing tracks now? Choose a folder or drive.",
@@ -511,6 +563,8 @@ void CatalogPanel::resized()
     addButton.setBounds (top.removeFromLeft (130));
     top.removeFromLeft (8);
     foldersButton.setBounds (top.removeFromLeft (110));
+    top.removeFromLeft (8);
+    freshButton.setBounds (top.removeFromLeft (140));
     top.removeFromLeft (8);
     if (findButton.isVisible())
     {

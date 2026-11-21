@@ -29,7 +29,7 @@ struct StoredTrack
 class LibraryStore
 {
 public:
-    static constexpr int schemaVersion = 2;
+    static constexpr int schemaVersion = 3;
 
     /// Opens (creating if needed) the database at `file`.
     static LibraryStore open (const std::string& file);
@@ -47,9 +47,20 @@ public:
     std::optional<StoredTrack> byPath (const std::string& path) const;
     /// Every track with this fingerprint (normally one; copies of the same audio share it).
     std::vector<StoredTrack> byFingerprint (const std::string& fingerprint) const;
-    /// Every track, ordered by path.
+    /// Every track in the Catalog (not the ones set aside), ordered by path.
     std::vector<StoredTrack> all() const;
+    /// How many tracks are in the Catalog (not counting the ones set aside).
     std::size_t count() const;
+
+    /// Sets tracks aside: they leave the Catalog but keep everything (grid, cues, loops, notes), so they come back
+    /// as they were when their files are added again. byId, byPath and byFingerprint still find them.
+    void setAside (std::int64_t id, bool aside);
+    /// Sets every track in the Catalog aside. Returns how many.
+    std::size_t setAsideAll();
+    /// Brings every set-aside track back. Returns how many.
+    std::size_t bringBackAll();
+    bool isSetAside (std::int64_t id) const;
+    std::size_t setAsideCount() const;
 
     /// The file moved: give the track its new path, keeping everything else. Throws if another track
     /// already has that path.
