@@ -320,7 +320,9 @@ float DeluxeRack::introProgress (double delayMs, double lengthMs) const
 namespace
 {
     // The intro's timing (ms): the bays lift out, then the modules slide in one after another, then the patch bar.
-    constexpr double liftLength = 750, firstModule = 520, moduleGap = 115, moduleLength = 620, barDelay = 1350, barLength = 600;
+    // The panel sinks into the case, then slides down into itself; the rails slide in; then the modules, one by one.
+    constexpr double recessLength = 450, slideStart = 500, slideLength = 650, railStart = 1050, railLength = 600,
+                     firstModule = 1550, moduleGap = 110, moduleLength = 600, barDelay = 2350, barLength = 600;
     constexpr double introLength = firstModule + 7 * moduleGap + moduleLength + 80;
 }
 
@@ -470,32 +472,46 @@ void DeluxeRack::paint (juce::Graphics& g)
     // The case: a black well with a rail along the top and bottom, the modules screwed to the rails.
     const auto well = row.toFloat();
     hw::recess (g, well, 3.0f);
-    for (const auto rail : { well.withHeight (17.0f), well.withTop (well.getBottom() - 17.0f) })
     {
-        hw::faceplate (g, rail, false);
-        g.setColour (juce::Colours::black.withAlpha (0.35f));
-        g.fillRect (rail.withTop (rail.getBottom() - 1.0f));
-        // The threaded strip the screws run along.
-        g.setColour (juce::Colours::black.withAlpha (0.55f));
-        g.fillRoundedRectangle (rail.reduced (4.0f, 6.0f), 2.0f);
-        g.setColour (juce::Colours::white.withAlpha (0.18f));
-        g.fillRect (rail.reduced (4.0f, 6.0f).withTop (rail.getBottom() - 6.0f).withHeight (1.0f));
+        juce::Graphics::ScopedSaveState clip (g);
+        g.reduceClipRegion (row);
+        const auto rails = easeInOut (introProgress (railStart, railLength));
+        const auto top = well.withHeight (17.0f).translated (-(1.0f - rails) * well.getWidth(), 0);
+        const auto bottom = well.withTop (well.getBottom() - 17.0f).translated ((1.0f - rails) * well.getWidth(), 0);
+        for (const auto rail : { top, bottom })
+        {
+            hw::faceplate (g, rail, false);
+            g.setColour (juce::Colours::black.withAlpha (0.35f));
+            g.fillRect (rail.withTop (rail.getBottom() - 1.0f));
+            // The threaded strip the screws run along.
+            g.setColour (juce::Colours::black.withAlpha (0.55f));
+            g.fillRoundedRectangle (rail.reduced (4.0f, 6.0f), 2.0f);
+            g.setColour (juce::Colours::white.withAlpha (0.18f));
+            g.fillRect (rail.reduced (4.0f, 6.0f).withTop (rail.getBottom() - 6.0f).withHeight (1.0f));
+        }
     }
 
-    // The classic bays lifting out of the case.
+    // The classic panel: it sinks into the case, then slides down into itself and out of sight.
     if (introRunning && classic.isValid())
     {
-        const auto p = introProgress (0, liftLength);
-        if (p < 1.0f)
+        const auto sink = easeInOut (introProgress (0, recessLength));
+        const auto slide = easeInOut (introProgress (slideStart, slideLength));
+        if (slide < 1.0f)
         {
-            const auto e = easeInOut (p);
-            const auto dest = classicArea.toFloat().translated (0, e * 18.0f);
-            // Its shadow on the case as it lifts.
-            g.setColour (juce::Colours::black.withAlpha (0.35f * (1.0f - e)));
-            g.fillRoundedRectangle (dest.translated (0, 6.0f + 10.0f * e).reduced (6.0f, 0), 6.0f);
-            g.setOpacity (1.0f - e);
-            g.drawImage (classic, dest, juce::RectanglePlacement::stretchToFit);
-            g.setOpacity (1.0f);
+            juce::Graphics::ScopedSaveState clip (g);
+            g.reduceClipRegion (classicArea);
+            const auto full = classicArea.toFloat();
+            const auto panel = full.withSizeKeepingCentre (full.getWidth() * (1.0f - 0.025f * sink), full.getHeight() * (1.0f - 0.05f * sink))
+                                   .translated (0, slide * full.getHeight());
+            g.drawImage (classic, panel, juce::RectanglePlacement::stretchToFit);
+            // Sunk below the faceplate: less light reaches it, and the opening's edge throws a shadow onto it.
+            g.setColour (juce::Colours::black.withAlpha (0.32f * sink + 0.25f * slide));
+            g.fillRect (panel);
+            const auto edge = 10.0f * sink;
+            g.setGradientFill (juce::ColourGradient (juce::Colours::black.withAlpha (0.7f * sink), 0, full.getY(), juce::Colours::transparentBlack, 0, full.getY() + edge, false));
+            g.fillRect (full.withHeight (edge));
+            g.setColour (juce::Colours::black.withAlpha (0.6f * sink));
+            g.drawRect (full, 2.0f);
         }
     }
 }

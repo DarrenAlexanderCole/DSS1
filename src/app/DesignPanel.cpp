@@ -328,7 +328,9 @@ void DesignPanel::toggleDeluxe()
     if (deluxeKey.getToggleState())
     {
         const auto scale = juce::jmax (1.0f, static_cast<float> (juce::Desktop::getInstance().getDisplays().getDisplayForRect (getScreenBounds())->scale));
+        deluxeKey.setVisible (false);  // its glow reaches into the bays: keep it out of the picture
         auto picture = createComponentSnapshot (bayRow.expanded (2), true, scale);
+        deluxeKey.setVisible (true);
         deluxe.setBounds (effectsUnit);
         deluxe.open (picture, bayRow.expanded (2) - effectsUnit.getPosition(), ! introPlayed);
         introPlayed = true;
