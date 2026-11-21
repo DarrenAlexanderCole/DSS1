@@ -2,7 +2,7 @@
 and shape it, chop it onto pads, and send it to Rekordbox, Serato or your MPC. It runs on Apple Silicon and
 Intel Macs with macOS 13 or later. Your music files are never changed.
 
-The **DSS1 Beta Guide** (PDF) below walks through every screen.
+The **[DSS1 V2 Beta Guide (PDF)](https://github.com/DarrenAlexanderCole/DSS1/raw/v2/docs/DSS1-V2-Beta-Guide.pdf)** walks through every screen.
 
 ## Install
 
