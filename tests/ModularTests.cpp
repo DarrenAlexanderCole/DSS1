@@ -114,3 +114,97 @@ TEST_CASE ("Deluxe rack: the slot order decides which module runs first", "[modu
     for (auto v : s.l)
         REQUIRE (std::abs (v) <= 1.0f);
 }
+
+namespace
+{
+    Stereo sine (float hz, std::size_t n, float level = 0.5f)
+    {
+        Stereo s (n);
+        for (std::size_t i = 0; i < n; ++i)
+            s.l[i] = s.r[i] = level * std::sin (6.2831853f * hz * static_cast<float> (i) / static_cast<float> (rate));
+        return s;
+    }
+
+    float rms (const std::vector<float>& v, std::size_t from)
+    {
+        double sum = 0;
+        for (auto i = from; i < v.size(); ++i)
+            sum += static_cast<double> (v[i]) * v[i];
+        return static_cast<float> (std::sqrt (sum / static_cast<double> (v.size() - from)));
+    }
+}
+
+TEST_CASE ("Deluxe rack: LADDER filters, and steps aside when it's open", "[modular]")
+{
+    SECTION ("open with no resonance: untouched")
+    {
+        Modular m;
+        m.prepare (rate, 256);
+        m.controls[Modular::ladder].on = true;
+        m.controls[Modular::ladder].a = 1.0f;
+        auto s = sine (5000.0f, 24000);
+        const auto before = s.l;
+        run (m, s);
+        REQUIRE (s.l == before);
+    }
+    SECTION ("closed down low: highs gone, lows through")
+    {
+        Modular m;
+        m.prepare (rate, 256);
+        m.controls[Modular::ladder].on = true;
+        m.controls[Modular::ladder].a = 0.4f;  // about 320 Hz
+        auto high = sine (6000.0f, 48000);
+        run (m, high);
+        REQUIRE (rms (high.l, 24000) < 0.01f);
+
+        Modular m2;
+        m2.prepare (rate, 256);
+        m2.controls[Modular::ladder].on = true;
+        m2.controls[Modular::ladder].a = 0.4f;
+        auto low = sine (60.0f, 48000);
+        run (m2, low);
+        REQUIRE (rms (low.l, 24000) > 0.25f);
+    }
+}
+
+TEST_CASE ("Deluxe rack: MULTI-TAP echoes on the beat", "[modular]")
+{
+    Modular m;
+    m.prepare (rate, 256);
+    m.bpm = 120.0f;
+    auto& c = m.controls[Modular::multitap];
+    c.a = 1.0f;  // half a beat
+    c.b = 1.0f;
+    c.on = true;
+    // Let the amount come up, then a click.
+    Stereo s (beatsToFrames (6, 120));
+    const auto click = beatsToFrames (1, 120);
+    s.l[click] = s.r[click] = 1.0f;
+    run (m, s);
+    const auto half = beatsToFrames (0.5, 120);
+    for (std::size_t t = 1; t <= 4; ++t)
+        REQUIRE (std::abs (s.l[click + t * half]) + std::abs (s.l[click + t * half + 1]) > 0.1f);
+    // And quiet between the taps.
+    REQUIRE (std::abs (s.l[click + half + half / 2]) < 0.01f);
+}
+
+TEST_CASE ("Deluxe rack: DRIFT bends the pitch, and stays in range", "[modular]")
+{
+    Modular m;
+    m.prepare (rate, 256);
+    auto& c = m.controls[Modular::drift];
+    c.a = 1.0f;
+    c.b = 1.0f;
+    c.mode = true;
+    c.on = true;
+    auto s = sine (440.0f, 96000);
+    const auto dry = s.l;
+    run (m, s);
+    float diff = 0;
+    for (std::size_t i = 48000; i < s.l.size(); ++i)
+    {
+        REQUIRE (std::abs (s.l[i]) <= 1.0f);
+        diff = std::max (diff, std::abs (s.l[i] - dry[i]));
+    }
+    REQUIRE (diff > 0.1f);
+}

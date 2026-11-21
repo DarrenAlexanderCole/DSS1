@@ -54,11 +54,11 @@ namespace
             { "DRIFT", "DRIFT: wow and flutter, pitch drifting like worn tape", "TAPE", "TAPE: saturation and a darker top",
               { "WOW", 0, 1, 0.01, 0, "0|||||10", percent },
               { "FLUTTER", 0, 1, 0.01, 0, "0|||||10", percent } },
-            { "MULTI-TAP", "MULTI-TAP: a four-tap delay for rhythmic echoes", "SPREAD", "SPREAD: the taps across the stereo field",
-              { "TIME", 0, 4, 1, 2, "1/8|||||1", [] (double v) {
-                    const char* names[] { "1/8", "1/4", "1/2", "3/4", "1" };
-                    return juce::String (names[juce::jlimit (0, 4, juce::roundToInt (v))]) + " BEAT"; } },
-              { "FEEDBACK", 0, 0.95, 0.01, 0, "0|||||MAX", percent } },
+            { "MULTI-TAP", "MULTI-TAP: four echoes spaced on the beat, each quieter than the last (AMOUNT: their level and feedback)", "SPREAD", "SPREAD: the taps across the stereo field",
+              { "TIME", 0, 4, 1, 1, "1/4|||||1.5", [] (double v) {
+                    const char* names[] { "1/4 BEAT", "1/2 BEAT", "3/4 BEAT", "1 BEAT", "1.5 BEAT" };
+                    return juce::String (names[juce::jlimit (0, 4, juce::roundToInt (v))]); } },
+              { "AMOUNT", 0, 1, 0.01, 0, "0|||||10", percent } },
             { "LADDER", "LADDER: a 24 dB resonant ladder filter", "DRIVE", "DRIVE: push the ladder into growl",
               { "CUTOFF", 0, 1, 0.005, 1, "20|||||OPEN", [] (double v) {
                     if (v > 0.99)

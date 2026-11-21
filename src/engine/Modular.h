@@ -10,7 +10,8 @@ namespace dss1::engine
 /// The DELUXE rack's sound: eight slots of remix modules, run in slot order, in front of the classic effects.
 /// Every module starts off, and with every module off the audio passes through untouched.
 ///
-/// Built so far: STUTTER and SLICER. The others pass the sound through until they're built.
+/// Built so far: STUTTER, SLICER, DRIFT, MULTI-TAP and LADDER. NOISE and WAVETABLE pass the sound through
+/// until they're built.
 ///
 /// Both lock to the music's beat: the app tells the rack where the beats are in the playing track (setSync);
 /// with nothing playing (pads, a chop preview) the rack keeps its own beat at `bpm`.
@@ -25,6 +26,11 @@ public:
     /// as the rack shows them):
     /// - STUTTER: a = repeat length (0 … 4: 1/32, 1/16, 1/8, 1/4, 1/2 note), b = mix 0 … 1, mode = HOLD.
     /// - SLICER: a = pattern (0 … 7), b = depth 0 … 1, mode = TRIPLET.
+    /// - DRIFT: a = wow 0 … 1 (slow pitch drift), b = flutter 0 … 1 (fast wobble), mode = TAPE (saturation and a
+    ///   darker top).
+    /// - MULTI-TAP: a = tap spacing (0 … 4: 1/4, 1/2, 3/4, 1, 1 1/2 beats), b = amount 0 … 1 (the taps' level and
+    ///   how much feeds back), mode = SPREAD (taps alternate left and right).
+    /// - LADDER: a = cutoff 0 … 1 (20 Hz … 20 kHz; 1 is open), b = resonance 0 … 1, mode = DRIVE.
     struct Controls
     {
         std::atomic<bool> on { false }, mode { false };
@@ -65,6 +71,8 @@ public:
     };
     /// STUTTER's repeat lengths, in beats (1/32, 1/16, 1/8, 1/4, 1/2 notes).
     static constexpr std::array<double, 5> stutterBeats { 0.125, 0.25, 0.5, 1.0, 2.0 };
+    /// MULTI-TAP's tap spacings, in beats.
+    static constexpr std::array<double, 5> tapBeats { 0.25, 0.5, 0.75, 1.0, 1.5 };
 
 private:
     struct Sync
@@ -91,8 +99,31 @@ private:
     // SLICER: the gate's level.
     float gate = 1, slicerDepth = 0;
 
+    // DRIFT: a short modulated delay (the tape path), its LFOs, a slow random walk for the wow, the TAPE tone.
+    std::array<std::vector<float>, 2> driftLine;
+    std::size_t driftWrite = 0;
+    double wowPhase = 0, flutterPhase = 0;
+    float wander = 0, wanderTarget = 0;
+    unsigned noiseSeed = 22222u;
+    std::array<float, 2> driftTone {};
+    float driftAmount = 0, driftWow = 0, driftFlutter = 0, driftTape = 0;
+
+    // MULTI-TAP: the delay line, the taps' level, the feedback tone.
+    std::array<std::vector<float>, 2> tapLine;
+    std::size_t tapWrite = 0;
+    float tapAmount = 0, tapSpacing = 0, tapSpread = 0;
+    std::array<float, 2> tapTone {};
+
+    // LADDER: four one-pole stages per channel, the smoothed cutoff, resonance and drive.
+    std::array<std::array<float, 4>, 2> ladderStage {};
+    float ladderAmount = 0, ladderCut = 1, ladderRes = 0, ladderDrive = 0;
+
     void runStutter (float* const* ch, int numChannels, int numFrames, const double* beats) noexcept;
     void runSlicer (float* const* ch, int numChannels, int numFrames, const double* beats, double beatsPerBar) noexcept;
+    void runDrift (float* const* ch, int numChannels, int numFrames) noexcept;
+    void runMultiTap (float* const* ch, int numChannels, int numFrames) noexcept;
+    void runLadder (float* const* ch, int numChannels, int numFrames) noexcept;
+    float random() noexcept;
     std::vector<double> beatBuffer;
 };
 

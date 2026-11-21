@@ -30,7 +30,7 @@ private:
 /// can be moved along the chain. The first time it opens in a session, the classic bays lift out and fade, and
 /// the modules slide in one after another; after that it opens straight away.
 ///
-/// STUTTER and SLICER make sound; the other modules pass the sound through until they're built.
+/// NOISE and WAVETABLE pass the sound through until they're built; the rest make sound.
 class DeluxeRack : public juce::Component, private juce::Timer
 {
 public:

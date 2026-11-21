@@ -19,6 +19,10 @@ void Modular::prepare (double sampleRate, int maxBlock)
     rate = sampleRate;
     for (auto& h : history)
         h.assign (static_cast<std::size_t> (sampleRate * 6.0), 0.0f);  // a 1/2-note slice at 40 BPM, and room
+    for (auto& l : driftLine)
+        l.assign (static_cast<std::size_t> (sampleRate * 0.1), 0.0f);
+    for (auto& l : tapLine)
+        l.assign (static_cast<std::size_t> (sampleRate * 9.0), 0.0f);  // four taps 1 1/2 beats apart at 40 BPM
     beatBuffer.assign (static_cast<std::size_t> (std::max (maxBlock, 1) * 2), 0.0);
     reset();
 }
@@ -34,6 +38,21 @@ void Modular::reset() noexcept
     stutterMix = 0;
     gate = 1;
     slicerDepth = 0;
+    for (auto& l : driftLine)
+        std::fill (l.begin(), l.end(), 0.0f);
+    for (auto& l : tapLine)
+        std::fill (l.begin(), l.end(), 0.0f);
+    driftWrite = tapWrite = 0;
+    driftTone = tapTone = {};
+    driftAmount = tapAmount = ladderAmount = 0;
+    for (auto& c : ladderStage)
+        c = {};
+}
+
+float Modular::random() noexcept
+{
+    noiseSeed = noiseSeed * 1664525u + 1013904223u;
+    return static_cast<float> (noiseSeed >> 8) / static_cast<float> (1u << 24) * 2.0f - 1.0f;
 }
 
 void Modular::process (float* const* channels, int numChannels, int numFrames, double trackFrame, bool trackPlaying) noexcept
@@ -70,6 +89,9 @@ void Modular::process (float* const* channels, int numChannels, int numFrames, d
         {
             case stutter: runStutter (channels, numChannels, numFrames, beatBuffer.data()); break;
             case slicer:  runSlicer (channels, numChannels, numFrames, beatBuffer.data(), perBar); break;
+            case drift:    runDrift (channels, numChannels, numFrames); break;
+            case multitap: runMultiTap (channels, numChannels, numFrames); break;
+            case ladder:   runLadder (channels, numChannels, numFrames); break;
             default: break;  // not built yet: the sound passes through
         }
     }
@@ -176,6 +198,175 @@ void Modular::runSlicer (float* const* ch, int numChannels, int numFrames, const
         const auto gain = 1.0f - slicerDepth * (1.0f - gate);
         for (int k = 0; k < numChannels; ++k)
             ch[k][i] *= gain;
+    }
+}
+
+void Modular::runDrift (float* const* ch, int numChannels, int numFrames) noexcept
+{
+    // Tape: the sound runs through a short delay whose length wanders, so the pitch drifts (wow: slow, with a
+    // random walk so it never repeats exactly) and wobbles (flutter: fast). TAPE adds saturation and a darker top.
+    auto& c = controls[drift];
+    const auto on = c.on.load (std::memory_order_relaxed);
+    const auto amountTarget = on ? 1.0f : 0.0f;
+    if (! on && driftAmount < 1.0e-4f)
+    {
+        driftAmount = 0;
+        return;
+    }
+    const auto wowTarget = std::clamp (c.a.load (std::memory_order_relaxed), 0.0f, 1.0f);
+    const auto flutterTarget = std::clamp (c.b.load (std::memory_order_relaxed), 0.0f, 1.0f);
+    const auto tapeTarget = c.mode.load (std::memory_order_relaxed) ? 1.0f : 0.0f;
+    const auto size = driftLine[0].size();
+    const auto ms = static_cast<float> (rate / 1000.0);
+    const auto wowStep = 0.55 / rate, flutterStep = 7.3 / rate;
+    const auto tone = 1.0f - std::exp (-6.2831853f * 5200.0f / static_cast<float> (rate));
+    constexpr float smooth = 0.0015f;
+
+    for (int i = 0; i < numFrames; ++i)
+    {
+        driftAmount += (amountTarget - driftAmount) * smooth;
+        driftWow += (wowTarget - driftWow) * smooth;
+        driftFlutter += (flutterTarget - driftFlutter) * smooth;
+        driftTape += (tapeTarget - driftTape) * smooth;
+        if ((driftWrite & 1023u) == 0)
+            wanderTarget = random();
+        wander += (wanderTarget - wander) * 0.00002f;
+
+        wowPhase += wowStep * (1.0 + 0.3 * wander);
+        flutterPhase += flutterStep;
+        if (wowPhase >= 1.0) wowPhase -= 1.0;
+        if (flutterPhase >= 1.0) flutterPhase -= 1.0;
+        const auto wow = static_cast<float> (std::sin (6.283185307 * wowPhase)) * 0.7f + wander * 0.3f;
+        const auto flutter = static_cast<float> (std::sin (6.283185307 * flutterPhase));
+        // Up to ±6 ms of wow (about ±40 cents) and ±0.4 ms of flutter, round a 10 ms centre.
+        const auto delay = (10.0f + wow * 6.0f * driftWow * driftWow + flutter * 0.4f * driftFlutter) * ms;
+
+        for (int k = 0; k < numChannels; ++k)
+            driftLine[static_cast<std::size_t> (k)][driftWrite] = ch[k][i];
+        const auto readPos = static_cast<double> (driftWrite) - static_cast<double> (delay) + static_cast<double> (size);
+        const auto i0 = static_cast<std::size_t> (readPos) % size;
+        const auto frac = static_cast<float> (readPos - std::floor (readPos));
+        for (int k = 0; k < numChannels; ++k)
+        {
+            const auto& line = driftLine[static_cast<std::size_t> (k)];
+            auto wet = line[i0] + (line[(i0 + 1) % size] - line[i0]) * frac;
+            if (driftTape > 1.0e-4f)
+            {
+                auto& t = driftTone[static_cast<std::size_t> (k)];
+                t += (wet - t) * tone;
+                const auto taped = std::tanh (t * 1.6f) / 1.3f;
+                wet += (taped - wet) * driftTape;
+            }
+            ch[k][i] += (wet - ch[k][i]) * driftAmount;
+        }
+        driftWrite = (driftWrite + 1) % size;
+    }
+}
+
+void Modular::runMultiTap (float* const* ch, int numChannels, int numFrames) noexcept
+{
+    // Four taps, evenly spaced in beats, each quieter than the last; the last feeds back. SPREAD sends them
+    // left, right, left, right.
+    auto& c = controls[multitap];
+    const auto amountTarget = c.on.load (std::memory_order_relaxed) ? std::clamp (c.b.load (std::memory_order_relaxed), 0.0f, 1.0f) : 0.0f;
+    const auto size = tapLine[0].size();
+    const auto spacingIndex = std::clamp (static_cast<int> (std::lround (c.a.load (std::memory_order_relaxed))), 0, 4);
+    const auto perBeat = 60.0 / std::max (20.0f, bpm.load (std::memory_order_relaxed)) * rate;
+    const auto spacingTarget = static_cast<float> (std::min (tapBeats[static_cast<std::size_t> (spacingIndex)] * perBeat,
+                                                             static_cast<double> (size - 4) / 4.0));
+    const auto spreadTarget = c.mode.load (std::memory_order_relaxed) ? 1.0f : 0.0f;
+    const bool idle = amountTarget <= 0.0f && tapAmount < 1.0e-4f;
+    if (tapSpacing <= 0.0f)
+        tapSpacing = spacingTarget;
+    const auto tone = 1.0f - std::exp (-6.2831853f * 4500.0f / static_cast<float> (rate));
+    constexpr std::array<float, 4> levels { 0.8f, 0.6f, 0.45f, 0.33f };
+
+    for (int i = 0; i < numFrames; ++i)
+    {
+        tapAmount += (amountTarget - tapAmount) * 0.0015f;
+        tapSpacing += (spacingTarget - tapSpacing) * 0.0004f;  // a slow glide when the time changes (no zipper)
+        tapSpread += (spreadTarget - tapSpread) * 0.0015f;
+        const auto feedback = 0.7f * tapAmount;
+
+        std::array<float, 2> wet {};
+        float last = 0;
+        if (! idle)
+        {
+            for (std::size_t t = 0; t < 4; ++t)
+            {
+                const auto readPos = static_cast<double> (tapWrite) - static_cast<double> (tapSpacing) * static_cast<double> (t + 1)
+                                     + static_cast<double> (size) * 4.0;
+                const auto i0 = static_cast<std::size_t> (readPos) % size;
+                const auto frac = static_cast<float> (readPos - std::floor (readPos));
+                for (std::size_t k = 0; k < 2; ++k)
+                {
+                    const auto& line = tapLine[k];
+                    const auto v = (line[i0] + (line[(i0 + 1) % size] - line[i0]) * frac) * levels[t];
+                    // SPREAD: even taps lean left, odd taps lean right.
+                    const auto side = (t % 2 == 0) == (k == 0) ? 1.0f : 1.0f - tapSpread;
+                    wet[k] += v * side;
+                    if (t == 3 && k == 0)
+                        last = v;
+                }
+            }
+        }
+        for (std::size_t k = 0; k < 2; ++k)
+        {
+            const auto in = ch[std::min<int> (static_cast<int> (k), numChannels - 1)][i];
+            auto& t = tapTone[k];
+            t += (last / levels[3] - t) * tone;  // the feedback gets darker each time round
+            tapLine[k][tapWrite] = in + t * feedback;
+        }
+        if (! idle)
+            for (int k = 0; k < numChannels; ++k)
+                ch[k][i] += wet[static_cast<std::size_t> (k)] * tapAmount;
+        tapWrite = (tapWrite + 1) % size;
+    }
+}
+
+void Modular::runLadder (float* const* ch, int numChannels, int numFrames) noexcept
+{
+    // A 24 dB ladder: four saturating one-pole stages with the last fed back (Huovilainen's model). At its
+    // cutoff's top with no resonance it steps out of the way.
+    auto& c = controls[ladder];
+    const auto on = c.on.load (std::memory_order_relaxed);
+    const auto cutTarget = std::clamp (c.a.load (std::memory_order_relaxed), 0.0f, 1.0f);
+    const auto resTarget = std::clamp (c.b.load (std::memory_order_relaxed), 0.0f, 1.0f);
+    const auto driveTarget = c.mode.load (std::memory_order_relaxed) ? 1.0f : 0.0f;
+    const bool engaged = on && (cutTarget < 0.995f || resTarget > 0.0f || driveTarget > 0.0f);
+    const auto amountTarget = engaged ? 1.0f : 0.0f;
+    if (! engaged && ladderAmount < 1.0e-4f)
+    {
+        ladderAmount = 0;
+        for (auto& s : ladderStage)
+            s = {};
+        ladderCut = cutTarget;
+        return;
+    }
+    const auto nyquistSafe = static_cast<float> (rate * 0.45);
+    for (int i = 0; i < numFrames; ++i)
+    {
+        ladderAmount += (amountTarget - ladderAmount) * 0.0015f;
+        ladderCut += (cutTarget - ladderCut) * 0.002f;
+        ladderRes += (resTarget - ladderRes) * 0.002f;
+        ladderDrive += (driveTarget - ladderDrive) * 0.002f;
+        const auto hz = std::min (nyquistSafe, 20.0f * std::pow (1000.0f, ladderCut));
+        const auto g = 1.0f - std::exp (-6.2831853f * hz / static_cast<float> (rate));
+        const auto k = 3.9f * ladderRes;
+        const auto gain = 1.0f + 3.0f * ladderDrive;
+        for (int ci = 0; ci < numChannels; ++ci)
+        {
+            auto& s = ladderStage[static_cast<std::size_t> (ci)];
+            const auto dry = ch[ci][i];
+            // Resonance thins the low end; give some of it back.
+            const auto x = std::tanh ((dry * gain - k * s[3]) * 0.8f) / 0.8f;
+            s[0] += g * (std::tanh (x) - std::tanh (s[0]));
+            s[1] += g * (std::tanh (s[0]) - std::tanh (s[1]));
+            s[2] += g * (std::tanh (s[1]) - std::tanh (s[2]));
+            s[3] += g * (std::tanh (s[2]) - std::tanh (s[3]));
+            const auto wet = s[3] * (1.0f + 0.5f * k) / (1.0f + 0.6f * ladderDrive);
+            ch[ci][i] = dry + (wet - dry) * ladderAmount;
+        }
     }
 }
 
