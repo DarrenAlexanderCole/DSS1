@@ -50,7 +50,7 @@ Serato with your cues and loops inside.
 Found a problem or have an idea? [Open an issue](https://github.com/DarrenAlexanderCole/DSS1/issues), ideally with a screenshot.
 
 **Looking for DSS1 1.5?** It's still available: [DSS1 1.5 (Beta)](https://github.com/DarrenAlexanderCole/DSS1/releases/tag/v1.5),
-with its code on the [`main` branch](https://github.com/DarrenAlexanderCole/DSS1/tree/main). Both install as
+with its code on the [`v1` branch](https://github.com/DarrenAlexanderCole/DSS1/tree/v1). Both install as
 "DSS1", so rename 1.5 first if you want to keep both.
 
 ---
