@@ -340,6 +340,7 @@ void Crate::workFrom (const juce::File& folder)
     post ([this, folder] {
         const auto path = folder.getFullPathName();
         std::size_t shown = 0;
+        auto name = folder.getFileName();
         {
             const std::lock_guard lock (storeLock);
             store->transaction ([&] {
@@ -347,6 +348,9 @@ void Crate::workFrom (const juce::File& folder)
                     store->removeWatchedFolder (w);
                 store->addCrate (path.toStdString(), folder.getFileName().toStdString());
                 shown = store->showOnly (path.toStdString());
+                for (const auto& c : store->crates())
+                    if (juce::String::fromUTF8 (c.path.c_str()) == path)
+                        name = juce::String::fromUTF8 (c.name.c_str());  // its own name, if renamed
             });
         }
         {
@@ -357,12 +361,12 @@ void Crate::workFrom (const juce::File& folder)
         refreshSnapshot();
         if (! folder.isDirectory())
         {
-            setStatus ("Crate " + folder.getFileName() + ": its folder isn't connected. " + plural (shown, "track", "tracks") + " shown.");
+            setStatus ("Crate " + name + ": its folder isn't connected. " + plural (shown, "track", "tracks") + " shown.");
             return;
         }
         // Watches it and adds anything new in it.
         importItems ({ folder });
-        setStatus ("Crate " + folder.getFileName() + ": " + plural (tracks().size(), "track.", "tracks."));
+        setStatus ("Crate " + name + ": " + plural (tracks().size(), "track.", "tracks."));
     });
 }
 
