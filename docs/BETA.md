@@ -3,7 +3,7 @@ and shape it, chop it onto pads, and send it to Rekordbox, Serato or your MPC. I
 Intel Macs with macOS 13 or later. Your music files are never changed.
 
 The **DSS1 V2 Beta Guide** (DSS1-V2-Beta-Guide.pdf, below) walks through every screen. For a quick look, there's a
-28-second vertical tour (DSS1-V2-Beta-Slides.mp4) and the slides themselves (DSS1-V2-Beta-Slides-9x16.zip).
+32-second vertical tour (DSS1-V2-Beta-Slides.mp4) and the slides themselves (DSS1-V2-Beta-Slides-9x16.zip).
 
 ## Install
 
