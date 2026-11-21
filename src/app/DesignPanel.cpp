@@ -313,8 +313,29 @@ DesignPanel::DesignPanel (Session& s, Crate& c) : session (s), crate (c), fx (s.
     };
     addAndMakeVisible (revealButton);
 
+    addChildComponent (deluxe);
+    deluxeKey.onClick = [this] { toggleDeluxe(); };
+    addAndMakeVisible (deluxeKey);
+
     updateRecorderKeys();
     startTimerHz (30);
+}
+
+void DesignPanel::toggleDeluxe()
+{
+    // The intro plays the first time DELUXE opens in a session; after that it flips straight over.
+    static bool introPlayed = false;
+    if (deluxeKey.getToggleState())
+    {
+        const auto scale = juce::jmax (1.0f, static_cast<float> (juce::Desktop::getInstance().getDisplays().getDisplayForRect (getScreenBounds())->scale));
+        auto picture = createComponentSnapshot (bayRow.expanded (2), true, scale);
+        deluxe.setBounds (effectsUnit);
+        deluxe.open (picture, bayRow.expanded (2) - effectsUnit.getPosition(), ! introPlayed);
+        introPlayed = true;
+        deluxeKey.toFront (false);
+    }
+    else
+        deluxe.close();
 }
 
 DesignPanel::~DesignPanel()
@@ -838,6 +859,9 @@ void DesignPanel::resized()
     reverbArea = area.removeFromLeft (slot * 2);
     area.removeFromLeft (gap);
     compArea = area;
+    bayRow = filterArea.getUnion (compArea);
+    deluxe.setBounds (effectsUnit);
+    deluxeKey.setBounds (effectsUnit.getRight() - hw::RackUnit::earWidth - 30 - 200 + 8, effectsUnit.getY() + 3, 200, 42);
 
     const auto layBay = [&] (juce::Rectangle<int> bay, juce::ToggleButton& on, std::initializer_list<int> knobIndices,
                              std::initializer_list<juce::ToggleButton*> switches = {}) {

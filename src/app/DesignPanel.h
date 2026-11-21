@@ -2,6 +2,7 @@
 
 #include "Crate.h"
 #include "BeatScope.h"
+#include "DeluxeRack.h"
 #include "Session.h"
 
 #include <juce_data_structures/juce_data_structures.h>
@@ -108,6 +109,12 @@ private:
     void paintCompMonitors (juce::Graphics&);
     std::array<juce::Rectangle<int>, 4> compMonitors;
     juce::Rectangle<int> filterArea, echoArea, reverbArea, compArea, effectsUnit, lowerUnit, padArea, recorderArea, timeArea, takeArea;
+
+    /// DELUXE: the modular rack over the effects unit, and the key that flips to it.
+    DeluxeRack deluxe;
+    DeluxeKey deluxeKey;
+    juce::Rectangle<int> bayRow;  // the classic bays, together
+    void toggleDeluxe();
 
     XyPad pad;
     juce::ToggleButton holdButton { "HOLD" };

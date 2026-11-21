@@ -53,6 +53,7 @@ endif()
 target_sources(DSS1 PRIVATE
     AudioEngine.cpp
     CatalogPanel.cpp
+    DeluxeRack.cpp
     DesignPanel.cpp
     DeliverPanel.cpp
     Crate.cpp
