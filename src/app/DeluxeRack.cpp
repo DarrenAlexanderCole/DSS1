@@ -257,8 +257,11 @@ struct DeluxeRack::Module : public juce::Component
     std::array<double, 2> startValues {};
     juce::TextButton left { "<" }, right { ">" }, add { "+ ADD" };
     int slot = 0;
-    float shownX = 0;
+    float shownX = 0, fromX = 0;
     int targetX = 0;
+    double glideStartMs = 0;  // when it set off for its new slot (0: it's there)
+    bool mover = false;       // the one being moved: it lifts off the rails and passes in front
+    float lift = 0;
 };
 
 // --- The rack -----------------------------------------------------------------------------------------------
@@ -294,6 +297,7 @@ void DeluxeRack::open (juce::Image classicBays, juce::Rectangle<int> area, bool 
     classic = std::move (classicBays);
     classicArea = area;
     introRunning = animate;
+    showedSwap = showedSwapBack = ! animate;
     introStartMs = juce::Time::getMillisecondCounterHiRes();
     layoutModules (true);
     setVisible (true);
@@ -323,7 +327,12 @@ namespace
     // The panel sinks into the case, then slides down into itself; the rails slide in; then the modules, one by one.
     constexpr double recessLength = 450, slideStart = 500, slideLength = 650, railStart = 1050, railLength = 600,
                      firstModule = 1550, moduleGap = 110, moduleLength = 600, barDelay = 2350, barLength = 600;
-    constexpr double introLength = firstModule + 7 * moduleGap + moduleLength + 80;
+    constexpr double modulesIn = firstModule + 7 * moduleGap + moduleLength;
+    // Then the show: the first module swaps along the chain and back, a light sweeps the rack,
+    // and DELUXE comes up in the patch window for a moment.
+    constexpr double swapAt = modulesIn + 250, swapBackAt = swapAt + 700, shineStart = swapBackAt + 650, shineLength = 1000,
+                     wordStart = shineStart + 250, wordLength = 1600;
+    constexpr double introLength = wordStart + wordLength + 100;
 }
 
 void DeluxeRack::timerCallback()
@@ -343,7 +352,18 @@ void DeluxeRack::timerCallback()
         for (auto* k : { &savePatch, &patches, &zero })
             k->setAlpha (bar);
         repaint (getLocalBounds().withBottom (row.getBottom() + 2));
-        if (juce::Time::getMillisecondCounterHiRes() - introStartMs > juce::jmax (introLength, barDelay + barLength))
+        const auto elapsed = juce::Time::getMillisecondCounterHiRes() - introStartMs;
+        if (! showedSwap && elapsed > swapAt)
+        {
+            showedSwap = true;
+            move (0, 1);
+        }
+        if (! showedSwapBack && elapsed > swapBackAt)
+        {
+            showedSwapBack = true;
+            move (1, -1);
+        }
+        if (elapsed > introLength)
         {
             introRunning = false;
             classic = {};
@@ -360,22 +380,38 @@ void DeluxeRack::timerCallback()
     else
     {
         for (auto& m : modules)
-        {
             m->setAlpha (1.0f);
-            m->setTransform ({});
-        }
     }
-    // Modules gliding to their new slots.
+    // Modules gliding to their new slots (by the clock, so it's the same speed however busy the machine is).
+    const auto now = juce::Time::getMillisecondCounterHiRes();
     for (auto& m : modules)
     {
-        const auto gap = static_cast<float> (m->targetX) - m->shownX;
-        if (std::abs (gap) > 0.5f)
+        if (m->glideStartMs > 0)
         {
-            m->shownX += gap * 0.2f;
-            busy = true;
+            const auto p = static_cast<float> (juce::jlimit (0.0, 1.0, (now - m->glideStartMs) / 420.0));
+            m->shownX = m->fromX + (static_cast<float> (m->targetX) - m->fromX) * easeInOut (p);
+            m->lift = m->mover ? std::sin (juce::MathConstants<float>::pi * p) : 0.0f;
+            if (p >= 1.0f)
+            {
+                m->glideStartMs = 0;
+                m->lift = 0;
+            }
+            else
+                busy = true;
+            repaint (row.expanded (12));
         }
         else
+        {
             m->shownX = static_cast<float> (m->targetX);
+            m->lift = 0;
+        }
+        if (m->lift > 0)
+        {
+            const auto grow = 1.0f + 0.035f * m->lift;
+            m->setTransform (juce::AffineTransform::scale (grow, grow, m->getWidth() * 0.5f, m->getHeight() * 0.5f));
+        }
+        else if (! introRunning || juce::Time::getMillisecondCounterHiRes() - introStartMs > modulesIn)
+            m->setTransform ({});
         m->setTopLeftPosition (juce::roundToInt (m->shownX), row.getY());
     }
     if (! busy)
@@ -390,9 +426,18 @@ void DeluxeRack::layoutModules (bool immediately)
     {
         auto& m = *modules[static_cast<std::size_t> (order[s])];
         m.slot = static_cast<int> (s);
-        m.targetX = row.getX() + static_cast<int> (s) * (slotW + gap);
+        const auto target = row.getX() + static_cast<int> (s) * (slotW + gap);
         if (immediately)
-            m.shownX = static_cast<float> (m.targetX);
+        {
+            m.shownX = static_cast<float> (target);
+            m.glideStartMs = 0;
+        }
+        else if (target != m.targetX)
+        {
+            m.fromX = m.shownX;
+            m.glideStartMs = juce::Time::getMillisecondCounterHiRes();
+        }
+        m.targetX = target;
         m.setBounds (juce::roundToInt (m.shownX), row.getY(), slotW, row.getHeight());
         m.left.setEnabled (s > 0);
         m.right.setEnabled (s + 1 < order.size());
@@ -405,6 +450,12 @@ void DeluxeRack::move (int slot, int by)
     const auto other = slot + by;
     if (other < 0 || other >= static_cast<int> (order.size()))
         return;
+    // The one being moved lifts and passes in front of the one making way.
+    for (auto& m : modules)
+        m->mover = false;
+    auto& moving = *modules[static_cast<std::size_t> (order[static_cast<std::size_t> (slot)])];
+    moving.mover = true;
+    moving.toFront (false);
     std::swap (order[static_cast<std::size_t> (slot)], order[static_cast<std::size_t> (other)]);
     layoutModules (false);
     startTimerHz (60);
@@ -463,8 +514,21 @@ void DeluxeRack::paint (juce::Graphics& g)
         g.beginTransparencyLayer (a);
         const auto w = patchWindow.toFloat();
         hw::recess (g, w, 3.0f);
-        hw::glowText (g, "PATCH 00   INIT", w.reduced (10.0f, 0), hw::vfd (18.0f), hw::colour::amber);
-        hw::glowText (g, "PASSIVE", w.reduced (10.0f, 0), hw::vfd (16.0f), hw::colour::amberMid, juce::Justification::centredRight);
+        // For a moment at the end of the intro the window says DELUXE, brightening in and fading out.
+        const auto word = introProgress (wordStart, wordLength);
+        const auto wordShown = word > 0.0f && word < 1.0f;
+        if (wordShown)
+        {
+            const auto level = juce::jmin (1.0f, word * 6.0f, (1.0f - word) * 5.0f);
+            hw::glowText (g, "D E L U X E", w, hw::vfd (20.0f),
+                          hw::colour::amberMid.interpolatedWith (hw::colour::amber, level).withAlpha (0.35f + 0.65f * level),
+                          juce::Justification::centred);
+        }
+        else
+        {
+            hw::glowText (g, "PATCH 00   INIT", w.reduced (10.0f, 0), hw::vfd (18.0f), hw::colour::amber);
+            hw::glowText (g, "PASSIVE", w.reduced (10.0f, 0), hw::vfd (16.0f), hw::colour::amberMid, juce::Justification::centredRight);
+        }
         hw::glass (g, w, 3.0f);
         g.endTransparencyLayer();
     }
@@ -491,6 +555,14 @@ void DeluxeRack::paint (juce::Graphics& g)
         }
     }
 
+    // The shadow of a module lifted off the rails while it moves.
+    for (auto& m : modules)
+        if (m->lift > 0)
+        {
+            g.setColour (juce::Colours::black.withAlpha (0.5f * m->lift));
+            g.fillRoundedRectangle (m->getBounds().toFloat().translated (0, 3.0f + 7.0f * m->lift).expanded (5.0f * m->lift), 5.0f);
+        }
+
     // The classic panel: it sinks into the case, then slides down into itself and out of sight.
     if (introRunning && classic.isValid())
     {
@@ -514,6 +586,26 @@ void DeluxeRack::paint (juce::Graphics& g)
             g.drawRect (full, 2.0f);
         }
     }
+}
+
+void DeluxeRack::paintOverChildren (juce::Graphics& g)
+{
+    // The ready shine: a soft band of light sweeping across the modules, left to right.
+    const auto p = introProgress (shineStart, shineLength);
+    if (! introRunning || p <= 0.0f || p >= 1.0f)
+        return;
+    const auto area = row.toFloat();
+    const auto band = 220.0f;
+    const auto x = area.getX() - band + easeInOut (p) * (area.getWidth() + 2.0f * band);
+    juce::ColourGradient light (juce::Colours::transparentWhite, x - band, area.getY(),
+                                juce::Colours::transparentWhite, x + band * 0.4f, area.getBottom(), false);
+    light.addColour (0.40, juce::Colours::white.withAlpha (0.14f));
+    light.addColour (0.5, juce::Colour (0xfffff3dc).withAlpha (0.5f));
+    light.addColour (0.60, juce::Colours::white.withAlpha (0.14f));
+    juce::Graphics::ScopedSaveState clip (g);
+    g.reduceClipRegion (row);
+    g.setGradientFill (light);
+    g.fillRect (area);
 }
 
 } // namespace dss1::ui

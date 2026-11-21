@@ -41,6 +41,7 @@ public:
     void close();
 
     void paint (juce::Graphics&) override;
+    void paintOverChildren (juce::Graphics&) override;
     void resized() override;
 
     struct Module;
@@ -61,6 +62,7 @@ private:
     juce::Rectangle<int> classicArea;
     bool introRunning = false;
     double introStartMs = 0;
+    bool showedSwap = false, showedSwapBack = false;
 };
 
 } // namespace dss1::ui
