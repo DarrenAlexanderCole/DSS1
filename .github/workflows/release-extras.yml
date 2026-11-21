@@ -1,0 +1,28 @@
+name: Release extras
+
+# Attaches the beta guide (and any other files in docs/release-extras.txt's list) to a release and refreshes its
+# notes from docs/BETA.md. Run by hand with the release tag.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, e.g. v2.0.0-beta.1"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  extras:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Attach the guide and refresh the notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag }}
+        run: |
+          gh release upload "$TAG" docs/DSS1-V2-Beta-Guide.pdf --clobber
+          for f in docs/media/*; do [ -f "$f" ] && gh release upload "$TAG" "$f" --clobber; done
+          gh release edit "$TAG" --notes-file docs/BETA.md
