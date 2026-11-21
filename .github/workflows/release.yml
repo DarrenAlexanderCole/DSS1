@@ -2,11 +2,18 @@ name: Release (macOS)
 
 # Pushing to the test-build branch builds the app, packages it as a disk image and publishes it as a
 # GitHub pre-release (tagged v2.0.0-test.<run number>), so testers can download it without a GitHub account.
+# Running it by hand with a label (e.g. beta.1) publishes a beta instead: tagged v2.0.0-<label>, with the beta
+# notes (docs/BETA.md), and marked as the repository's latest release so it's the one people find.
 
 on:
   push:
     branches: [test-build]
   workflow_dispatch:
+    inputs:
+      label:
+        description: "Release label, e.g. beta.1 (empty: a numbered test build)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -18,12 +25,13 @@ jobs:
     # universal app.
     runs-on: macos-15-intel
     env:
-      TAG: v2.0.0-test.${{ github.run_number }}
+      LABEL: ${{ github.event.inputs.label || format('test.{0}', github.run_number) }}
+      TAG: v2.0.0-${{ github.event.inputs.label || format('test.{0}', github.run_number) }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DDSS1_BUILD_LABEL="test.${{ github.run_number }}"
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DDSS1_BUILD_LABEL="${LABEL}"
 
       - name: Build
         run: cmake --build build --parallel
@@ -42,12 +50,20 @@ jobs:
           ln -s /Applications dmg/Applications
           hdiutil create -volname "DSS1" -srcfolder dmg -ov -format UDZO "DSS1-${TAG}.dmg"
 
-      - name: Publish pre-release
+      - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$TAG" "DSS1-${TAG}.dmg" \
-            --target "$GITHUB_SHA" \
-            --prerelease \
-            --title "DSS1 V2 test build ${TAG}" \
-            --notes-file docs/TEST-BUILD.md
+          if [ -n "${{ github.event.inputs.label }}" ]; then
+            gh release create "$TAG" "DSS1-${TAG}.dmg" \
+              --target "$GITHUB_SHA" \
+              --latest \
+              --title "DSS1 V2 ${LABEL}" \
+              --notes-file docs/BETA.md
+          else
+            gh release create "$TAG" "DSS1-${TAG}.dmg" \
+              --target "$GITHUB_SHA" \
+              --prerelease \
+              --title "DSS1 V2 test build ${TAG}" \
+              --notes-file docs/TEST-BUILD.md
+          fi
