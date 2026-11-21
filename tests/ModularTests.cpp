@@ -255,3 +255,46 @@ TEST_CASE ("Deluxe rack: WAVETABLE ring-modulates, and FM bends the phase", "[mo
         REQUIRE (diff > 0.1f);
     }
 }
+
+TEST_CASE ("Deluxe rack: MOD moves another module's knob in time", "[modular]")
+{
+    // MOD sweeping LADDER's cutoff (set half way) a full range, once a beat: a steady bright tone gets louder
+    // and quieter with it.
+    Modular m;
+    m.prepare (rate, 256);
+    m.bpm = 120.0f;
+    m.controls[Modular::ladder].on = true;
+    m.controls[Modular::ladder].a = 0.55f;
+    m.controls[Modular::mod].on = true;
+    m.controls[Modular::mod].a = 3.0f;  // 1/4 note: one cycle a beat
+    m.controls[Modular::mod].b = 1.0f;
+    m.modTarget = Modular::ladder * 2;
+    auto s = sine (2000.0f, beatsToFrames (4, 120));
+    run (m, s);
+
+    // The level, beat-sixteenth by beat-sixteenth through the last beat: it swings a long way.
+    const auto beat = beatsToFrames (1, 120);
+    float lo = 1, hi = 0;
+    for (std::size_t q = 0; q < 16; ++q)
+    {
+        const auto from = 3 * beat + q * beat / 16;
+        double sum = 0;
+        for (auto i = from; i < from + beat / 16; ++i)
+            sum += static_cast<double> (s.l[i]) * s.l[i];
+        const auto level = static_cast<float> (std::sqrt (sum / static_cast<double> (beat / 16)));
+        lo = std::min (lo, level);
+        hi = std::max (hi, level);
+    }
+    REQUIRE (hi > 4.0f * lo);
+
+    // Depth 0: nothing moves.
+    m.controls[Modular::mod].b = 0.0f;
+    Modular still;
+    still.prepare (rate, 256);
+    still.controls[Modular::mod].on = true;
+    still.controls[Modular::mod].b = 0.0f;
+    auto quiet = ramp (24000);
+    const auto before = quiet.l;
+    run (still, quiet);
+    REQUIRE (quiet.l == before);
+}

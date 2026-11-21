@@ -30,7 +30,8 @@ private:
 /// can be moved along the chain. The first time it opens in a session, the classic bays lift out and fade, and
 /// the modules slide in one after another; after that it opens straight away.
 ///
-/// NOISE and WAVETABLE pass the sound through until they're built; the rest make sound.
+/// The eighth module, MOD, moves a knob of another module in time with the music. Modules can be moved with
+/// their < > keys or carried by the grip at their top right.
 class DeluxeRack : public juce::Component, private juce::Timer
 {
 public:
@@ -53,6 +54,12 @@ private:
     void layoutModules (bool immediately);
     void move (int slot, int by);
     void allToZero();
+    // Carrying a module by its grip.
+    void grab (Module&, float x);
+    void carry (Module&, float x);
+    void drop (Module&);
+    Module* carried = nullptr;
+    float carryOffset = 0;
     float introProgress (double delayMs, double lengthMs) const;
 
     engine::Modular& sound;

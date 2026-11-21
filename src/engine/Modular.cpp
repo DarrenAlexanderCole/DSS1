@@ -90,6 +90,56 @@ void Modular::reset() noexcept
         c = {};
 }
 
+float Modular::knob (Kind kind, int which) const noexcept
+{
+    const auto& c = controls[static_cast<std::size_t> (kind)];
+    const auto base = which == 0 ? c.a.load (std::memory_order_relaxed) : c.b.load (std::memory_order_relaxed);
+    return base + modOffset[static_cast<std::size_t> (kind)][static_cast<std::size_t> (which)];
+}
+
+void Modular::runMod (double barBeat, double beatsPerBar) noexcept
+{
+    // Counting bars, so the slow rates (up to four bars) stay in time.
+    if (barBeat < modLastBeat - beatsPerBar * 0.5)
+        ++modBars;
+    modLastBeat = barBeat;
+    for (auto& o : modOffset)
+        o = {};
+
+    auto& c = controls[mod];
+    const auto rateIndex = std::clamp (static_cast<int> (std::lround (c.a.load (std::memory_order_relaxed))), 0, 7);
+    const auto period = modBeats[static_cast<std::size_t> (rateIndex)];
+    const auto beat = static_cast<double> (modBars % 1024) * beatsPerBar + barBeat;
+    const auto cycle = beat / period;
+    const auto phase = static_cast<float> (cycle - std::floor (cycle));
+    float wave = 0;
+    switch (static_cast<Shape> (std::clamp (modShape.load (std::memory_order_relaxed), 0, 3)))
+    {
+        case Shape::sine:     wave = std::sin (6.2831853f * phase); break;
+        case Shape::triangle: wave = phase < 0.5f ? phase * 4.0f - 1.0f : 3.0f - phase * 4.0f; break;
+        case Shape::square:   wave = phase < 0.5f ? 1.0f : -1.0f; break;
+        case Shape::random:
+        {
+            const auto whole = static_cast<long long> (std::floor (cycle));
+            if (whole != modLastCycle)
+                modHeld = random();
+            modLastCycle = whole;
+            wave = modHeld;
+            break;
+        }
+    }
+    // A little smoothing, so square and random steps don't click.
+    modValue += (wave - modValue) * 0.5f;
+    modNow.store (modValue, std::memory_order_relaxed);
+
+    const auto depth = c.on.load (std::memory_order_relaxed) ? std::clamp (c.b.load (std::memory_order_relaxed), 0.0f, 1.0f) : 0.0f;
+    const auto target = modTarget.load (std::memory_order_relaxed);
+    if (depth <= 0.0f || target < 0 || target >= mod * 2)
+        return;
+    const auto kind = static_cast<std::size_t> (target / 2), which = static_cast<std::size_t> (target % 2);
+    modOffset[kind][which] = modValue * depth * knobRange[kind][which];
+}
+
 float Modular::random() noexcept
 {
     noiseSeed = noiseSeed * 1664525u + 1013904223u;
@@ -123,6 +173,9 @@ void Modular::process (float* const* channels, int numChannels, int numFrames, d
     }
     ownBeat = std::fmod (beat + perSample * numFrames, perBar);
 
+    // MOD first: it moves the other modules' knobs for this block.
+    runMod (beatBuffer[0], perBar);
+
     // The modules, in slot order.
     for (const auto& slot : order)
     {
@@ -144,9 +197,9 @@ void Modular::runStutter (float* const* ch, int numChannels, int numFrames, cons
 {
     auto& c = controls[stutter];
     const auto on = c.on.load (std::memory_order_relaxed);
-    const auto mixTarget = on ? std::clamp (c.b.load (std::memory_order_relaxed), 0.0f, 1.0f) : 0.0f;
+    const auto mixTarget = on ? std::clamp (knob (stutter, 1), 0.0f, 1.0f) : 0.0f;
     const auto hold = c.mode.load (std::memory_order_relaxed);
-    const auto lengthIndex = std::clamp (static_cast<int> (std::lround (c.a.load (std::memory_order_relaxed))), 0, 4);
+    const auto lengthIndex = std::clamp (static_cast<int> (std::lround (knob (stutter, 0))), 0, 4);
     const auto lengthBeats = stutterBeats[static_cast<std::size_t> (lengthIndex)];
     const auto periodBeats = std::max (1.0, lengthBeats);  // a fresh slice every beat (or every slice, if longer)
     const auto size = history[0].size();
@@ -217,14 +270,14 @@ void Modular::runStutter (float* const* ch, int numChannels, int numFrames, cons
 void Modular::runSlicer (float* const* ch, int numChannels, int numFrames, const double* beats, double beatsPerBar) noexcept
 {
     auto& c = controls[slicer];
-    const auto depthTarget = c.on.load (std::memory_order_relaxed) ? std::clamp (c.b.load (std::memory_order_relaxed), 0.0f, 1.0f) : 0.0f;
+    const auto depthTarget = c.on.load (std::memory_order_relaxed) ? std::clamp (knob (slicer, 1), 0.0f, 1.0f) : 0.0f;
     if (depthTarget <= 0.0f && slicerDepth < 1.0e-4f)
     {
         slicerDepth = 0;
         gate = 1;
         return;
     }
-    const auto pattern = slicerPatterns[static_cast<std::size_t> (std::clamp (static_cast<int> (std::lround (c.a.load (std::memory_order_relaxed))), 0, 7))];
+    const auto pattern = slicerPatterns[static_cast<std::size_t> (std::clamp (static_cast<int> (std::lround (knob (slicer, 0))), 0, 7))];
     const auto triplet = c.mode.load (std::memory_order_relaxed);
     const auto stepsPerBeat = triplet ? 3.0 : 4.0;
     const auto steps = static_cast<int> (std::lround (beatsPerBar * stepsPerBeat));
@@ -249,13 +302,13 @@ void Modular::runNoise (float* const* ch, int numChannels, int numFrames) noexce
     // Noise under the music: brown, pink or white (and the shades between), ducking while the music is loud so
     // it breathes in the gaps. VINYL adds crackle and a low rumble.
     auto& c = controls[noise];
-    const auto levelTarget = c.on.load (std::memory_order_relaxed) ? std::clamp (c.b.load (std::memory_order_relaxed), 0.0f, 1.0f) : 0.0f;
+    const auto levelTarget = c.on.load (std::memory_order_relaxed) ? std::clamp (knob (noise, 1), 0.0f, 1.0f) : 0.0f;
     if (levelTarget <= 0.0f && noiseLevel < 1.0e-5f)
     {
         noiseLevel = 0;
         return;
     }
-    const auto colourTarget = std::clamp (c.a.load (std::memory_order_relaxed), 0.0f, 1.0f);
+    const auto colourTarget = std::clamp (knob (noise, 0), 0.0f, 1.0f);
     const auto vinylTarget = c.mode.load (std::memory_order_relaxed) ? 1.0f : 0.0f;
     const auto duckAttack = 1.0f - std::exp (-1.0f / static_cast<float> (rate * 0.005));
     const auto duckRelease = 1.0f - std::exp (-1.0f / static_cast<float> (rate * 0.25));
@@ -317,7 +370,7 @@ void Modular::runWavetable (float* const* ch, int numChannels, int numFrames) no
     // A wave from the table at the track's root note, ring-modulating the music (the robot, the bell), or with
     // FM bending the music's phase with it (metal, glassy sidebands). MORPH sweeps the table.
     auto& c = controls[wavetable];
-    const auto mixTarget = c.on.load (std::memory_order_relaxed) ? std::clamp (c.b.load (std::memory_order_relaxed), 0.0f, 1.0f) : 0.0f;
+    const auto mixTarget = c.on.load (std::memory_order_relaxed) ? std::clamp (knob (wavetable, 1), 0.0f, 1.0f) : 0.0f;
     const auto size = fmLine[0].size();
     if (mixTarget <= 0.0f && waveMix < 1.0e-4f)
     {
@@ -331,7 +384,7 @@ void Modular::runWavetable (float* const* ch, int numChannels, int numFrames) no
         }
         return;
     }
-    const auto morphTarget = std::clamp (c.a.load (std::memory_order_relaxed), 0.0f, 1.0f);
+    const auto morphTarget = std::clamp (knob (wavetable, 0), 0.0f, 1.0f);
     const auto fmTarget = c.mode.load (std::memory_order_relaxed) ? 1.0f : 0.0f;
     const auto hzTarget = std::clamp (rootHz.load (std::memory_order_relaxed), 40.0f, 2000.0f);
     const auto ms = static_cast<float> (rate / 1000.0);
@@ -391,8 +444,8 @@ void Modular::runDrift (float* const* ch, int numChannels, int numFrames) noexce
         driftAmount = 0;
         return;
     }
-    const auto wowTarget = std::clamp (c.a.load (std::memory_order_relaxed), 0.0f, 1.0f);
-    const auto flutterTarget = std::clamp (c.b.load (std::memory_order_relaxed), 0.0f, 1.0f);
+    const auto wowTarget = std::clamp (knob (drift, 0), 0.0f, 1.0f);
+    const auto flutterTarget = std::clamp (knob (drift, 1), 0.0f, 1.0f);
     const auto tapeTarget = c.mode.load (std::memory_order_relaxed) ? 1.0f : 0.0f;
     const auto size = driftLine[0].size();
     const auto ms = static_cast<float> (rate / 1000.0);
@@ -446,9 +499,9 @@ void Modular::runMultiTap (float* const* ch, int numChannels, int numFrames) noe
     // Four taps, evenly spaced in beats, each quieter than the last; the last feeds back. SPREAD sends them
     // left, right, left, right.
     auto& c = controls[multitap];
-    const auto amountTarget = c.on.load (std::memory_order_relaxed) ? std::clamp (c.b.load (std::memory_order_relaxed), 0.0f, 1.0f) : 0.0f;
+    const auto amountTarget = c.on.load (std::memory_order_relaxed) ? std::clamp (knob (multitap, 1), 0.0f, 1.0f) : 0.0f;
     const auto size = tapLine[0].size();
-    const auto spacingIndex = std::clamp (static_cast<int> (std::lround (c.a.load (std::memory_order_relaxed))), 0, 4);
+    const auto spacingIndex = std::clamp (static_cast<int> (std::lround (knob (multitap, 0))), 0, 4);
     const auto perBeat = 60.0 / std::max (20.0f, bpm.load (std::memory_order_relaxed)) * rate;
     const auto spacingTarget = static_cast<float> (std::min (tapBeats[static_cast<std::size_t> (spacingIndex)] * perBeat,
                                                              static_cast<double> (size - 4) / 4.0));
@@ -508,8 +561,8 @@ void Modular::runLadder (float* const* ch, int numChannels, int numFrames) noexc
     // cutoff's top with no resonance it steps out of the way.
     auto& c = controls[ladder];
     const auto on = c.on.load (std::memory_order_relaxed);
-    const auto cutTarget = std::clamp (c.a.load (std::memory_order_relaxed), 0.0f, 1.0f);
-    const auto resTarget = std::clamp (c.b.load (std::memory_order_relaxed), 0.0f, 1.0f);
+    const auto cutTarget = std::clamp (knob (ladder, 0), 0.0f, 1.0f);
+    const auto resTarget = std::clamp (knob (ladder, 1), 0.0f, 1.0f);
     const auto driveTarget = c.mode.load (std::memory_order_relaxed) ? 1.0f : 0.0f;
     const bool engaged = on && (cutTarget < 0.995f || resTarget > 0.0f || driveTarget > 0.0f);
     const auto amountTarget = engaged ? 1.0f : 0.0f;

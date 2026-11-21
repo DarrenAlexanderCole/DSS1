@@ -29,7 +29,7 @@ namespace
         const char* mode;
         const char* modeTip;
         Knob a, b;
-        bool blank = false;
+        bool mod = false;
     };
 
     std::vector<Def> defs()
@@ -66,7 +66,11 @@ namespace
                     const auto hz = 20.0 * std::pow (1000.0, v);
                     return hz >= 1000 ? juce::String (hz / 1000.0, 1) + "K" : juce::String (juce::roundToInt (hz)); } },
               { "RESO", 0, 1, 0.01, 0, "0|||||10", percent } },
-            { "EMPTY", "A free slot", "", "", {}, {}, true },
+            { "MOD", "MOD: an LFO in time with the music, moving one knob of another module (pick it under the switch)", "", "",
+              { "RATE", 0, 7, 1, 3, "1/32|||||4 BAR", [] (double v) {
+                    const char* names[] { "1/32", "1/16", "1/8", "1/4", "1/2", "1 BAR", "2 BAR", "4 BAR" };
+                    return juce::String (names[juce::jlimit (0, 7, juce::roundToInt (v))]); } },
+              { "DEPTH", 0, 1, 0.01, 0, "0|||||10", percent }, true },
         };
     }
 }
@@ -128,64 +132,93 @@ void DeluxeKey::paintButton (juce::Graphics& g, bool over, bool down)
 
 // --- A module -----------------------------------------------------------------------------------------------
 
-struct DeluxeRack::Module : public juce::Component
+/// The indent at a module's top right: grab it to carry the module along the rack.
+struct Grip : public juce::Component, public juce::SettableTooltipClient
 {
-    Module (const Def& d, engine::Modular::Controls* sound) : blank (d.blank), controls (sound)
+    Grip()
     {
-        if (blank)
+        setMouseCursor (juce::MouseCursor::DraggingHandCursor);
+        setTooltip ("Drag to move this module along the chain");
+    }
+    void paint (juce::Graphics& g) override
+    {
+        const auto b = getLocalBounds().toFloat().reduced (1.0f);
+        hw::recess (g, b, 3.0f);
+        // Ridges to put a finger on.
+        for (int i = 0; i < 4; ++i)
         {
-            hwStyle (add, KeyStyle::cream);
-            add.setTooltip ("Add a module (the classic FILTER, ECHO, REVERB and COMP will live here too)");
-            addAndMakeVisible (add);
+            const auto y = b.getY() + 5.0f + static_cast<float> (i) * (b.getHeight() - 10.0f) / 3.0f;
+            g.setColour (juce::Colours::black.withAlpha (0.7f));
+            g.fillRect (juce::Rectangle<float> (b.getX() + 4.0f, y - 0.5f, b.getWidth() - 8.0f, 1.0f));
+            g.setColour (juce::Colours::white.withAlpha (0.22f));
+            g.fillRect (juce::Rectangle<float> (b.getX() + 4.0f, y + 0.5f, b.getWidth() - 8.0f, 1.0f));
+        }
+    }
+    void mouseDown (const juce::MouseEvent& e) override { if (onGrab) onGrab (e); }
+    void mouseDrag (const juce::MouseEvent& e) override { if (onDrag) onDrag (e); }
+    void mouseUp (const juce::MouseEvent& e) override { if (onDrop) onDrop (e); }
+    std::function<void (const juce::MouseEvent&)> onGrab, onDrag, onDrop;
+};
+
+struct DeluxeRack::Module : public juce::Component, private juce::Timer
+{
+    Module (const Def& d, engine::Modular& s, int kindIndex) : isMod (d.mod), kind (kindIndex), sound (s), controls (&s.controls[static_cast<std::size_t> (kindIndex)])
+    {
+        power.setButtonText (d.name);
+        power.setTooltip (d.tip);
+        for (auto* t : { &power, &mode })
+        {
+            t->getProperties().set ("onText", "ON");
+            t->getProperties().set ("offText", "OFF");
+        }
+        addAndMakeVisible (power);
+        if (isMod)
+        {
+            hwStyle (target, KeyStyle::dark);
+            target.setTooltip ("What MOD moves, and the shape it moves it in");
+            target.onClick = [this] { showTargetMenu(); };
+            addAndMakeVisible (target);
+            updateTarget();
         }
         else
         {
-            power.setButtonText (d.name);
-            power.setTooltip (d.tip);
             mode.setButtonText (d.mode);
             mode.setTooltip (d.modeTip);
-            for (auto* t : { &power, &mode })
-            {
-                t->getProperties().set ("onText", "ON");
-                t->getProperties().set ("offText", "OFF");
-                addAndMakeVisible (*t);
-            }
-            const Knob* ks[] { &d.a, &d.b };
-            for (std::size_t i = 0; i < 2; ++i)
-            {
-                auto& s = knobs[i];
-                s.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
-                s.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
-                s.setRange (ks[i]->min, ks[i]->max, ks[i]->step);
-                s.setValue (ks[i]->value, juce::dontSendNotification);
-                s.setDoubleClickReturnValue (true, ks[i]->value);
-                hwScale (s, ks[i]->scale);
-                s.onValueChange = [this] { send(); repaint(); };
-                names[i] = ks[i]->name;
-                readouts[i] = ks[i]->readout;
-                startValues[i] = ks[i]->value;
-                addAndMakeVisible (s);
-            }
+            addAndMakeVisible (mode);
+        }
+        const Knob* ks[] { &d.a, &d.b };
+        for (std::size_t i = 0; i < 2; ++i)
+        {
+            auto& k = knobs[i];
+            k.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+            k.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+            k.setRange (ks[i]->min, ks[i]->max, ks[i]->step);
+            k.setValue (ks[i]->value, juce::dontSendNotification);
+            k.setDoubleClickReturnValue (true, ks[i]->value);
+            hwScale (k, ks[i]->scale);
+            k.onValueChange = [this] { send(); repaint(); };
+            names[i] = ks[i]->name;
+            readouts[i] = ks[i]->readout;
+            startValues[i] = ks[i]->value;
+            addAndMakeVisible (k);
         }
         for (auto* k : { &left, &right })
         {
             hwStyle (*k, KeyStyle::dark);
             addAndMakeVisible (*k);
         }
-        if (! blank)
-        {
-            power.onClick = [this] { send(); };
-            mode.onClick = [this] { send(); };
-        }
+        addAndMakeVisible (grip);
+        power.onClick = [this] { send(); };
+        mode.onClick = [this] { send(); };
         send();
         left.setTooltip ("Move this module earlier in the chain");
         right.setTooltip ("Move this module later in the chain");
+        if (isMod)
+            startTimerHz (30);
     }
 
     void toZero()
     {
-        if (blank)
-            return;
         power.setToggleState (false, juce::dontSendNotification);
         mode.setToggleState (false, juce::dontSendNotification);
         for (std::size_t i = 0; i < 2; ++i)
@@ -197,12 +230,74 @@ struct DeluxeRack::Module : public juce::Component
     /// The switches and knobs, to the sound.
     void send()
     {
-        if (blank || controls == nullptr)
-            return;
         controls->on = power.getToggleState();
         controls->mode = mode.getToggleState();
         controls->a = static_cast<float> (knobs[0].getValue());
         controls->b = static_cast<float> (knobs[1].getValue());
+    }
+
+    // --- MOD: its target and shape ---
+
+    static juce::String targetName (int t)
+    {
+        if (t < 0)
+            return "NONE";
+        const auto all = defs();
+        const auto& d = all[static_cast<std::size_t> (t / 2)];
+        return juce::String (d.name) + " " + (t % 2 == 0 ? d.a.name : d.b.name);
+    }
+
+    void updateTarget()
+    {
+        target.setButtonText (targetName (sound.modTarget.load()));
+        repaint();
+    }
+
+    void showTargetMenu()
+    {
+        juce::PopupMenu menu;
+        menu.addSectionHeader ("MOD MOVES");
+        const auto now = sound.modTarget.load();
+        const auto all = defs();
+        for (int k = 0; k < engine::Modular::mod; ++k)
+        {
+            juce::PopupMenu knobsOf;
+            for (int w = 0; w < 2; ++w)
+                knobsOf.addItem (1 + k * 2 + w, w == 0 ? all[static_cast<std::size_t> (k)].a.name : all[static_cast<std::size_t> (k)].b.name, true, now == k * 2 + w);
+            menu.addSubMenu (all[static_cast<std::size_t> (k)].name, knobsOf, true, nullptr, now / 2 == k && now >= 0);
+        }
+        menu.addItem (100, "Nothing", true, now < 0);
+        menu.addSectionHeader ("SHAPE");
+        const char* shapes[] { "Sine", "Triangle", "Square", "Random (steps)" };
+        for (int i = 0; i < 4; ++i)
+            menu.addItem (200 + i, shapes[i], true, sound.modShape.load() == i);
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&target), [safe = juce::Component::SafePointer<Module> (this)] (int r) {
+            if (safe == nullptr || r == 0)
+                return;
+            if (r >= 200)
+                safe->sound.modShape = r - 200;
+            else if (r == 100)
+                safe->sound.modTarget = -1;
+            else
+                safe->sound.modTarget = r - 1;
+            safe->updateTarget();
+        });
+    }
+
+    void timerCallback() override
+    {
+        // MOD's light follows the LFO.
+        const auto v = sound.modNow.load();
+        if (std::abs (v - shownMod) > 0.02f)
+        {
+            shownMod = v;
+            repaint (lightArea().toNearestInt().expanded (4));
+        }
+    }
+
+    juce::Rectangle<float> lightArea() const
+    {
+        return { static_cast<float> (getWidth()) - 34.0f, static_cast<float> (target.getY() + 9), 10.0f, 10.0f };
     }
 
     void paint (juce::Graphics& g) override
@@ -221,18 +316,12 @@ struct DeluxeRack::Module : public juce::Component
         hw::silk (g, juce::String (slot + 1).paddedLeft ('0', 2), {}, juce::Rectangle<float> (b.getCentreX() - 14.0f, left.getY() + 0.0f, 28.0f, 20.0f),
                   juce::Justification::centred, 11.0f);
 
-        if (blank)
+        if (isMod)
         {
-            hw::silk (g, "FREE SLOT", {}, b.withY (b.getY() + 30.0f).withHeight (16.0f), juce::Justification::centred, 12.0f);
-            hw::bay (g, b.reduced (14.0f, 54.0f).withTrimmedBottom (-14.0f).translated (0, 10.0f));
-            const char* lines[] { "LIBRARY", "FILTER   ECHO", "REVERB   COMP" };
-            auto y = add.getBottom() + 12.0f;
-            for (auto* line : lines)
-            {
-                hw::silk (g, line, {}, b.withY (y).withHeight (14.0f), juce::Justification::centred, 10.5f);
-                y += 15.0f;
-            }
-            return;
+            // The light: brighter as the LFO swings up.
+            const auto on = power.getToggleState();
+            const auto level = on ? 0.5f + 0.5f * shownMod : 0.0f;
+            hw::led (g, lightArea().getCentre(), 4.0f, hw::colour::amber.withMultipliedBrightness (0.4f + 0.6f * level), on && level > 0.05f);
         }
         for (std::size_t i = 0; i < 2; ++i)
         {
@@ -246,40 +335,44 @@ struct DeluxeRack::Module : public juce::Component
     {
         auto r = getLocalBounds().reduced (8, 0);
         r.removeFromTop (18);
+        grip.setBounds (getWidth() - 30, 20, 20, 28);
         const auto bottom = getLocalBounds().removeFromBottom (27).withTrimmedBottom (5);
         left.setBounds (bottom.getCentreX() - 44, bottom.getY(), 24, bottom.getHeight());
         right.setBounds (bottom.getCentreX() + 20, bottom.getY(), 24, bottom.getHeight());
-        if (blank)
-        {
-            add.setBounds (r.withSizeKeepingCentre (juce::jmin (r.getWidth() - 24, 96), 28).withY (r.getY() + 50));
-            return;
-        }
-        power.setBounds (r.removeFromTop (32));
-        mode.setBounds (r.removeFromTop (32));
+        power.setBounds (r.removeFromTop (32).withTrimmedRight (26));
+        auto second = r.removeFromTop (32);
+        mode.setBounds (second.withTrimmedRight (26));
+        target.setBounds (second.reduced (2, 4).withTrimmedRight (30));
         r.removeFromTop (18);
         auto knobRow = r.removeFromTop (48);
         const auto w = knobRow.getWidth() / 2;
-        for (auto& s : knobs)
+        for (auto& k : knobs)
         {
             const auto cell = knobRow.removeFromLeft (w);
             const auto size = juce::jmin (cell.getWidth() - 4, cell.getHeight());
-            s.setBounds (cell.withSizeKeepingCentre (size, size));
+            k.setBounds (cell.withSizeKeepingCentre (size, size));
         }
     }
 
-    const bool blank;
+    const bool isMod;
+    const int kind;
+    engine::Modular& sound;
     engine::Modular::Controls* controls;
     juce::ToggleButton power, mode;
+    juce::TextButton target;
+    Grip grip;
+    float shownMod = 0;
     std::array<juce::Slider, 2> knobs;
     std::array<juce::String, 2> names;
     std::array<std::function<juce::String (double)>, 2> readouts;
     std::array<double, 2> startValues {};
-    juce::TextButton left { "<" }, right { ">" }, add { "+ ADD" };
+    juce::TextButton left { "<" }, right { ">" };
     int slot = 0;
     float shownX = 0, fromX = 0;
     int targetX = 0;
     double glideStartMs = 0;  // when it set off for its new slot (0: it's there)
     bool mover = false;       // the one being moved: it lifts off the rails and passes in front
+    bool settling = false;    // just dropped: coming back down onto the rails
     float lift = 0;
 };
 
@@ -292,7 +385,11 @@ DeluxeRack::DeluxeRack (engine::Modular& s) : sound (s)
     for (const auto& d : defs())
     {
         // The modules are listed in the sound's Kind order.
-        auto m = std::make_unique<Module> (d, d.blank ? nullptr : &sound.controls[static_cast<std::size_t> (i)]);
+        auto m = std::make_unique<Module> (d, sound, i);
+        auto* raw = m.get();
+        m->grip.onGrab = [this, raw] (const juce::MouseEvent& e) { grab (*raw, e.getEventRelativeTo (this).position.x); };
+        m->grip.onDrag = [this, raw] (const juce::MouseEvent& e) { carry (*raw, e.getEventRelativeTo (this).position.x); };
+        m->grip.onDrop = [this, raw] (const juce::MouseEvent&) { drop (*raw); };
         m->left.onClick = [this, raw = m.get()] { move (raw->slot, -1); };
         m->right.onClick = [this, raw = m.get()] { move (raw->slot, 1); };
         addAndMakeVisible (*m);
@@ -410,14 +507,20 @@ void DeluxeRack::timerCallback()
         {
             const auto p = static_cast<float> (juce::jlimit (0.0, 1.0, (now - m->glideStartMs) / 420.0));
             m->shownX = m->fromX + (static_cast<float> (m->targetX) - m->fromX) * easeInOut (p);
-            m->lift = m->mover ? std::sin (juce::MathConstants<float>::pi * p) : 0.0f;
+            m->lift = m->mover ? std::sin (juce::MathConstants<float>::pi * p) : (m->settling ? 1.0f - easeInOut (p) : 0.0f);
             if (p >= 1.0f)
             {
                 m->glideStartMs = 0;
                 m->lift = 0;
+                m->settling = false;
             }
             else
                 busy = true;
+            repaint (row.expanded (12));
+        }
+        else if (m.get() == carried)
+        {
+            busy = true;  // it's in the hand: it stays where it's held, lifted
             repaint (row.expanded (12));
         }
         else
@@ -428,7 +531,9 @@ void DeluxeRack::timerCallback()
         if (m->lift > 0)
         {
             const auto grow = 1.0f + 0.035f * m->lift;
-            m->setTransform (juce::AffineTransform::scale (grow, grow, m->getWidth() * 0.5f, m->getHeight() * 0.5f));
+            // (A component's transform works in its parent's space: scale it round its own middle.)
+            m->setTransform (juce::AffineTransform::scale (grow, grow, m->shownX + static_cast<float> (m->getWidth()) * 0.5f,
+                                                           static_cast<float> (row.getY() + m->getHeight() / 2)));
         }
         else if (! introRunning || juce::Time::getMillisecondCounterHiRes() - introStartMs > modulesIn)
             m->setTransform ({});
@@ -447,6 +552,16 @@ void DeluxeRack::layoutModules (bool immediately)
         auto& m = *modules[static_cast<std::size_t> (order[s])];
         m.slot = static_cast<int> (s);
         const auto target = row.getX() + static_cast<int> (s) * (slotW + gap);
+        sound.order[s] = order[s];
+        if (&m == carried)
+        {
+            // In the hand: it goes where the mouse takes it, and lands in this slot when it's let go.
+            m.targetX = target;
+            m.left.setEnabled (s > 0);
+            m.right.setEnabled (s + 1 < order.size());
+            m.repaint();
+            continue;
+        }
         if (immediately)
         {
             m.shownX = static_cast<float> (target);
@@ -459,7 +574,6 @@ void DeluxeRack::layoutModules (bool immediately)
         }
         m.targetX = target;
         m.setBounds (juce::roundToInt (m.shownX), row.getY(), slotW, row.getHeight());
-        sound.order[s] = order[s];
         m.left.setEnabled (s > 0);
         m.right.setEnabled (s + 1 < order.size());
         m.repaint();
@@ -479,6 +593,60 @@ void DeluxeRack::move (int slot, int by)
     moving.toFront (false);
     std::swap (order[static_cast<std::size_t> (slot)], order[static_cast<std::size_t> (other)]);
     layoutModules (false);
+    startTimerHz (60);
+}
+
+void DeluxeRack::grab (Module& m, float x)
+{
+    if (introRunning)
+        return;
+    carried = &m;
+    carryOffset = x - m.shownX;
+    m.glideStartMs = 0;
+    m.mover = false;
+    m.settling = false;
+    m.lift = 1.0f;
+    m.toFront (false);
+    const auto grow = 1.035f;
+    m.setTransform (juce::AffineTransform::scale (grow, grow, m.shownX + static_cast<float> (m.getWidth()) * 0.5f,
+                                                  static_cast<float> (row.getY() + m.getHeight() / 2)));
+    startTimerHz (60);
+    repaint (row.expanded (12));
+}
+
+void DeluxeRack::carry (Module& m, float x)
+{
+    if (carried != &m)
+        return;
+    const auto slotW = static_cast<float> (m.getWidth());
+    m.shownX = juce::jlimit (static_cast<float> (row.getX()), static_cast<float> (row.getRight()) - slotW, x - carryOffset);
+    m.setTopLeftPosition (juce::roundToInt (m.shownX), row.getY());
+    const auto grow = 1.035f;
+    m.setTransform (juce::AffineTransform::scale (grow, grow, m.shownX + slotW * 0.5f, static_cast<float> (row.getY() + m.getHeight() / 2)));
+    // The slot under its middle: the others make way as it passes over them.
+    const auto pitch = slotW + 5.0f;
+    const auto slot = juce::jlimit (0, static_cast<int> (order.size()) - 1,
+                                    static_cast<int> (std::floor ((m.shownX + slotW * 0.5f - static_cast<float> (row.getX())) / pitch)));
+    if (slot != m.slot)
+    {
+        const auto kindHere = order[static_cast<std::size_t> (m.slot)];
+        order.erase (order.begin() + m.slot);
+        order.insert (order.begin() + slot, kindHere);
+        layoutModules (false);
+        startTimerHz (60);
+    }
+    repaint (row.expanded (12));
+}
+
+void DeluxeRack::drop (Module& m)
+{
+    if (carried != &m)
+        return;
+    carried = nullptr;
+    // Down onto the rails in its new slot.
+    m.fromX = m.shownX;
+    m.glideStartMs = juce::Time::getMillisecondCounterHiRes();
+    m.settling = true;
     startTimerHz (60);
 }
 
