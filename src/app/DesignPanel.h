@@ -111,7 +111,7 @@ private:
     juce::Rectangle<int> filterArea, echoArea, reverbArea, compArea, effectsUnit, lowerUnit, padArea, recorderArea, timeArea, takeArea;
 
     /// DELUXE: the modular rack over the effects unit, and the key that flips to it.
-    DeluxeRack deluxe;
+    DeluxeRack deluxe { session.modular() };
     DeluxeKey deluxeKey;
     juce::Rectangle<int> bayRow;  // the classic bays, together
     void toggleDeluxe();

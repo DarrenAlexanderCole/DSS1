@@ -76,6 +76,9 @@ public:
 
     float outputLevel (int channel) const noexcept { return engine.level (channel); }
     engine::Effects& effects() noexcept { return engine.effects(); }
+    engine::Modular& modular() noexcept { return engine.modular(); }
+    /// Tells the DELUXE rack the tempo and where the beats are in the playing track (call often).
+    void syncModular();
     AudioEngine& output() noexcept { return engine; }
 
     /// "Artist  |  128.0 BPM  |  8A F minor" for the loaded track.

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "engine/Modular.h"
+
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <array>
@@ -28,11 +30,11 @@ private:
 /// can be moved along the chain. The first time it opens in a session, the classic bays lift out and fade, and
 /// the modules slide in one after another; after that it opens straight away.
 ///
-/// (A mockup of the layout and the animation: the modules don't touch the sound yet.)
+/// STUTTER and SLICER make sound; the other modules pass the sound through until they're built.
 class DeluxeRack : public juce::Component, private juce::Timer
 {
 public:
-    DeluxeRack();
+    explicit DeluxeRack (engine::Modular& sound);
     ~DeluxeRack() override;
 
     /// Shows the rack over the effects unit. classicBays is a picture of the classic bays, and where they were
@@ -53,6 +55,7 @@ private:
     void allToZero();
     float introProgress (double delayMs, double lengthMs) const;
 
+    engine::Modular& sound;
     std::vector<std::unique_ptr<Module>> modules;
     std::vector<int> order;  // module index in each slot
     juce::TextButton savePatch { "SAVE PATCH" }, patches { "PATCHES" }, zero { "ALL TO ZERO" };

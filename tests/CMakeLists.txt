@@ -4,6 +4,7 @@ add_executable(dss1_tests
     BeatGridTests.cpp
     DeliverTests.cpp
     EffectsTests.cpp
+    ModularTests.cpp
     DeckTests.cpp
     LibraryTests.cpp
     RekordboxTests.cpp

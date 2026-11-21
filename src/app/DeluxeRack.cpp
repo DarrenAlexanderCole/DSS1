@@ -130,7 +130,7 @@ void DeluxeKey::paintButton (juce::Graphics& g, bool over, bool down)
 
 struct DeluxeRack::Module : public juce::Component
 {
-    explicit Module (const Def& d) : blank (d.blank)
+    Module (const Def& d, engine::Modular::Controls* sound) : blank (d.blank), controls (sound)
     {
         if (blank)
         {
@@ -160,7 +160,7 @@ struct DeluxeRack::Module : public juce::Component
                 s.setValue (ks[i]->value, juce::dontSendNotification);
                 s.setDoubleClickReturnValue (true, ks[i]->value);
                 hwScale (s, ks[i]->scale);
-                s.onValueChange = [this] { repaint(); };
+                s.onValueChange = [this] { send(); repaint(); };
                 names[i] = ks[i]->name;
                 readouts[i] = ks[i]->readout;
                 startValues[i] = ks[i]->value;
@@ -172,6 +172,12 @@ struct DeluxeRack::Module : public juce::Component
             hwStyle (*k, KeyStyle::dark);
             addAndMakeVisible (*k);
         }
+        if (! blank)
+        {
+            power.onClick = [this] { send(); };
+            mode.onClick = [this] { send(); };
+        }
+        send();
         left.setTooltip ("Move this module earlier in the chain");
         right.setTooltip ("Move this module later in the chain");
     }
@@ -184,7 +190,19 @@ struct DeluxeRack::Module : public juce::Component
         mode.setToggleState (false, juce::dontSendNotification);
         for (std::size_t i = 0; i < 2; ++i)
             knobs[i].setValue (startValues[i], juce::dontSendNotification);
+        send();
         repaint();
+    }
+
+    /// The switches and knobs, to the sound.
+    void send()
+    {
+        if (blank || controls == nullptr)
+            return;
+        controls->on = power.getToggleState();
+        controls->mode = mode.getToggleState();
+        controls->a = static_cast<float> (knobs[0].getValue());
+        controls->b = static_cast<float> (knobs[1].getValue());
     }
 
     void paint (juce::Graphics& g) override
@@ -250,6 +268,7 @@ struct DeluxeRack::Module : public juce::Component
     }
 
     const bool blank;
+    engine::Modular::Controls* controls;
     juce::ToggleButton power, mode;
     std::array<juce::Slider, 2> knobs;
     std::array<juce::String, 2> names;
@@ -266,13 +285,14 @@ struct DeluxeRack::Module : public juce::Component
 
 // --- The rack -----------------------------------------------------------------------------------------------
 
-DeluxeRack::DeluxeRack()
+DeluxeRack::DeluxeRack (engine::Modular& s) : sound (s)
 {
     setOpaque (true);
     int i = 0;
     for (const auto& d : defs())
     {
-        auto m = std::make_unique<Module> (d);
+        // The modules are listed in the sound's Kind order.
+        auto m = std::make_unique<Module> (d, d.blank ? nullptr : &sound.controls[static_cast<std::size_t> (i)]);
         m->left.onClick = [this, raw = m.get()] { move (raw->slot, -1); };
         m->right.onClick = [this, raw = m.get()] { move (raw->slot, 1); };
         addAndMakeVisible (*m);
@@ -439,6 +459,7 @@ void DeluxeRack::layoutModules (bool immediately)
         }
         m.targetX = target;
         m.setBounds (juce::roundToInt (m.shownX), row.getY(), slotW, row.getHeight());
+        sound.order[s] = order[s];
         m.left.setEnabled (s > 0);
         m.right.setEnabled (s + 1 < order.size());
         m.repaint();

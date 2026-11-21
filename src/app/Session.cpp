@@ -177,6 +177,25 @@ juce::String Session::barText() const
     return juce::String (bar + 1).paddedLeft ('0', 3) + "." + juce::String (inBar + 1);
 }
 
+void Session::syncModular()
+{
+    auto& rack = engine.modular();
+    if (const auto bpm = playingBpm())
+        rack.bpm = static_cast<float> (*bpm);
+    if (! current || ! current->record.grid || current->record.grid->isEmpty())
+    {
+        rack.setSync (0, 0, 0, 4);
+        return;
+    }
+    const auto& grid = *current->record.grid;
+    const auto pos = engine.deck().position();
+    const auto beat = std::floor (grid.beatAt (pos));
+    const auto perBar = juce::jmax (1, grid.beatsPerBarAt (pos));
+    const auto index = static_cast<long long> (beat);
+    const auto inBar = static_cast<int> (((index % perBar) + perBar) % perBar);
+    rack.setSync (grid.frameAt (beat), grid.frameAt (beat + 1) - grid.frameAt (beat), inBar, perBar);
+}
+
 std::optional<double> Session::playingBpm() const
 {
     if (! current)
