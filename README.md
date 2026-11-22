@@ -5,7 +5,7 @@
 **Get your music ready for the show or the session.** Sort it, prep it, shape it, chop it, and deliver it to
 Rekordbox, Serato or your MPC, in one app built like a 60s–80s hi-fi with displays from now.
 
-### [Download the V2 beta](https://github.com/DarrenAlexanderCole/DSS1/releases/latest)
+### [Download the V2.1 beta](https://github.com/DarrenAlexanderCole/DSS1/releases/latest)
 
 macOS 13 or later, Apple Silicon and Intel. The release also has the **[Beta Guide (PDF)](https://github.com/DarrenAlexanderCole/DSS1/raw/v2/docs/DSS1-V2-Beta-Guide.pdf)**
 and a short [slideshow video](https://github.com/DarrenAlexanderCole/DSS1/raw/v2/docs/media/DSS1-V2-Beta-Slides.mp4).
@@ -30,6 +30,17 @@ compressor with EQ (DRIVE, PUNCH, SQUASH, CRUSH), with backlit monitors. Record 
 straight to Chop.
 
 ![Listen / Design](docs/screenshots/04_listen.jpg)
+
+**New in 2.1: DELUXE, a modular remix rack.** One press flips the effects into a case of eight modules: STUTTER,
+SLICER, NOISE, WAVETABLE, DRIFT, MULTI-TAP, LADDER and MOD (an LFO that moves any module's knob in time with the
+music). Everything starts turned down. Reorder the chain by dragging a module's grip, and save patches.
+
+![DELUXE](docs/screenshots/07_deluxe.jpg)
+
+**New in 2.1: FTWRK!, the sample snatcher.** GRAB 1, 2 or 4 beats of what's playing, then play the slices from a
+16-step sequencer in time with the track, with its own gate, note repeat and space echo.
+
+![FTWRK!](docs/screenshots/08_ftwrk.jpg)
 
 **Chop: slice anything onto 128 pads.** Eight banks of 16. Tap an empty pad to mark a slice, tap it again to
 play it. Each pad has gain, tune, attack, fade and reverse, and it all plays from the keyboard or a MIDI pad
@@ -71,8 +82,8 @@ The first configure downloads JUCE and the other libraries (Catch2, nlohmann/jso
 Signalsmith Stretch), so it takes a few minutes.
 
 - Every push to `v2` is built and tested on GitHub Actions.
-- Pushing to `test-build` publishes a numbered pre-release (`v2.0.0-test.<n>`) with [docs/TEST-BUILD.md](docs/TEST-BUILD.md).
-- Running **Release (macOS)** by hand with a label (e.g. `beta.2`) publishes `v2.0.0-<label>` as the latest
+- Pushing to `test-build` publishes a numbered pre-release (`v2.1.0-test.<n>`) with [docs/TEST-BUILD.md](docs/TEST-BUILD.md).
+- Running **Release (macOS)** by hand with a label (e.g. `beta.2`) publishes `v2.1.0-<label>` as the latest
   release with [docs/BETA.md](docs/BETA.md); **Release extras** then attaches the guide and media.
 
 ```

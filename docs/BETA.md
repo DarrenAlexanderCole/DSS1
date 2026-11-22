@@ -1,10 +1,23 @@
-**DSS1 V2 beta.** A place to get your music ready before the show or the session: sort it, prep it, listen
+**DSS1 V2.1 beta.** A place to get your music ready before the show or the session: sort it, prep it, listen
 and shape it, chop it onto pads, and send it to Rekordbox, Serato or your MPC. It runs on Apple Silicon and
 Intel Macs with macOS 13 or later. Your music files are never changed.
 
 The **DSS1 V2 Beta Guide** (DSS1-V2-Beta-Guide.pdf, below) walks through every screen. For a quick look, there's a
 32-second tour in vertical (DSS1-V2-Beta-Slides.mp4) and widescreen (DSS1-V2-Beta-Slides-16x9.mp4), and the
 slides themselves (DSS1-V2-Beta-Slides-9x16.zip and DSS1-V2-Beta-Slides-16x9.zip).
+
+## New in 2.1
+
+- **DELUXE** (top right of the effects): the rack flips into a modular case of eight remix modules: STUTTER,
+  SLICER, NOISE, WAVETABLE, DRIFT, MULTI-TAP, LADDER and MOD, an LFO that moves any module's knob in time with
+  the music. Everything starts off and turned down. Change the order by dragging a module's grip (or its < > keys),
+  and keep your settings as patches (SAVE PATCH, PATCHES, ALL TO ZERO).
+- **FTWRK!** (top left of the effects): STEP, the sample snatcher. Press GRAB to take the next 1, 2 or 4 beats of
+  what's playing, then RUN plays its slices from a 16-step sequencer in time with the track. Click a step to switch
+  it on or off, drag it to pick its slice. The steps have their own GATE (length, decay, reverse), NOTE REPEAT and
+  SPACE ECHO.
+
+The guide (below) has a page on each. The slides and videos are from 2.0 and don't show them yet.
 
 ## Install
 

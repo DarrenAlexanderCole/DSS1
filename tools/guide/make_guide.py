@@ -56,7 +56,7 @@ def page_bg(c, doc):
     c.rect(0, 0, 0.18 * inch, H, stroke=0, fill=1)
     c.setFont('Brand', 8)
     c.setFillColor(SOFT)
-    c.drawString(M, 0.45 * inch, 'DSS1  V2 BETA GUIDE')
+    c.drawString(M, 0.45 * inch, 'DSS1  V2.1 BETA GUIDE')
     c.drawRightString(W - M, 0.45 * inch, str(doc.page))
     c.setStrokeColor(RULE)
     c.setLineWidth(0.6)
@@ -79,7 +79,7 @@ def cover_bg(c, doc):
     c.drawString(M, 2.9 * inch, 'DSS1')
     c.setFont('TextBold', 13)
     c.setFillColor(AMBER)
-    c.drawString(M, 2.45 * inch, 'DIGITAL SAMPLE STATION  ·  V2 BETA')
+    c.drawString(M, 2.45 * inch, 'DIGITAL SAMPLE STATION  ·  V2.1 BETA')
     c.setFont('Text', 15)
     c.setFillColor(colors.HexColor('#d9d0c4'))
     c.drawString(M, 1.95 * inch, 'The guide: install it, then sort, prep, shape, chop and deliver your music.')
@@ -118,7 +118,7 @@ def section(title, sub):
 
 
 doc = BaseDocTemplate(OUT, pagesize=letter, leftMargin=M, rightMargin=M, topMargin=M, bottomMargin=0.85 * inch,
-                      title='DSS1 V2 Beta Guide', author='DSS1', subject='How to install and use DSS1 V2')
+                      title='DSS1 V2.1 Beta Guide', author='DSS1', subject='How to install and use DSS1 V2.1')
 frame = Frame(M, 0.85 * inch, W - 2 * M, H - M - 0.85 * inch, id='f', leftPadding=0, rightPadding=0)
 doc.addPageTemplates([PageTemplate(id='cover', frames=[frame], onPage=cover_bg),
                       PageTemplate(id='page', frames=[frame], onPage=page_bg)])
@@ -218,6 +218,50 @@ s += bullets([
     'and into the Catalog) or <b>DISCARD</b> it. <b>TO CHOP</b> saves it and opens it on the Chop screen.',
     '<b>-10 / -20 / -50</b> lower what the recorder takes in; turn <b>MONITOR</b> on to hear exactly what\'s going onto the take.',
     'The <b>XY pad</b> sweeps the filter (left/right) and adds echo (up) while you hold it.',
+])
+s.append(PageBreak())
+
+# --- DELUXE -------------------------------------------------------------------------------------------------------
+s += section('DELUXE', 'A modular remix rack, for those who know what they\'re doing')
+s.append(shot('deluxe_rack.jpg', FULL, folder=CROPS))
+s.append(Paragraph('Press <b>DELUXE</b> (top right of the effects) and the rack flips into a case of eight modules. '
+                   'Everything starts off and turned down (PASSIVE): nothing changes the sound until you turn it up. '
+                   'Press it again to flip back; your settings stay.', caption))
+s.append(table([
+    ('STUTTER', 'Beat-locked repeats. RATE sets the slice (1/32 to 1/2 note), MIX blends it in; a fresh slice every beat, '
+                'or <b>HOLD</b> keeps the one it has.'),
+    ('SLICER', 'A trance gate across the bar: eight PATTERNs, DEPTH, and <b>TRIPLET</b>.'),
+    ('NOISE', 'Dirt and air under the music, ducking in the gaps: COLOUR (brown, pink, white), LEVEL, and <b>VINYL</b> crackle.'),
+    ('WAVETABLE', 'An oscillator in the track\'s key: MORPH through 64 waves, MIX; ring modulation, or <b>FM</b>.'),
+    ('DRIFT', 'Worn tape: WOW (slow drift) and FLUTTER (fast wobble); <b>TAPE</b> adds saturation and a darker top.'),
+    ('MULTI-TAP', 'Four echoes spaced on the beat (TIME), AMOUNT for their level and feedback; <b>SPREAD</b> bounces them.'),
+    ('LADDER', 'A 24 dB resonant filter: CUTOFF (starts OPEN), RESO, and <b>DRIVE</b>.'),
+    ('MOD', 'An LFO in time with the music: RATE (1/32 to 4 bars) and DEPTH. The key under its switch picks the knob it '
+            'moves (any module\'s) and its shape: sine, triangle, square or random steps.'),
+], [0.95 * inch, FULL - 0.95 * inch]))
+s.append(Spacer(1, 8))
+s += bullets([
+    '<b>The chain runs left to right.</b> Change the order with a module\'s <b>&lt; &gt;</b> keys, or grab the ridged '
+    '<b>grip</b> at its top right and carry it where you want it; the others make way.',
+    '<b>Patches:</b> SAVE PATCH keeps the order and every switch and knob under a name; PATCHES loads or deletes them; '
+    'ALL TO ZERO goes back to INIT.',
+])
+s.append(PageBreak())
+
+# --- FTWRK! / STEP -------------------------------------------------------------------------------------------------
+s += section('FTWRK!', 'STEP: grab a beat, play it in 16 steps')
+s.append(shot('step_rack.jpg', FULL, folder=CROPS))
+s.append(Paragraph('Press <b>FTWRK!</b> (top left of the effects) for STEP, the sample snatcher.', caption))
+s += bullets([
+    '<b>Grab:</b> play a track, choose <b>1</b>, <b>2</b> or <b>4</b> beats and press <b>GRAB</b>. It waits for the next '
+    'beat and takes exactly that much, cut into sixteenths (4, 8 or 16 slices). <b>CLEAR</b> throws it away to grab again.',
+    '<b>Steps:</b> <b>RUN</b> plays the 16 steps in time with the track. Click a step to switch it on or off; drag it up or '
+    'down (or scroll) to pick the slice it plays. <b>RESET</b> puts every step back on, in order.',
+    '<b>REPLACE</b> quietens the track while the steps run. <b>LEVEL</b> and <b>SWING</b> set how loud and how loose.',
+    '<b>The steps\' own effects</b> (they never touch the track): <b>GATE</b> LENGTH and DECAY for short, percussive hits, '
+    'and <b>REVERSE</b>; <b>NOTE REPEAT</b> rolls each step (1/32 to 1/128); <b>SPACE ECHO</b> is a wobbly tape echo in '
+    'time with the music.',
+    'STEP plays in front of the DELUXE modules, so you can stutter, filter or wobble the pattern too.',
 ])
 s.append(PageBreak())
 

@@ -1,8 +1,8 @@
 name: Release (macOS)
 
 # Pushing to the test-build branch builds the app, packages it as a disk image and publishes it as a
-# GitHub pre-release (tagged v2.0.0-test.<run number>), so testers can download it without a GitHub account.
-# Running it by hand with a label (e.g. beta.1) publishes a beta instead: tagged v2.0.0-<label>, with the beta
+# GitHub pre-release (tagged v2.1.0-test.<run number>), so testers can download it without a GitHub account.
+# Running it by hand with a label (e.g. beta.1) publishes a beta instead: tagged v2.1.0-<label>, with the beta
 # notes (docs/BETA.md), and marked as the repository's latest release so it's the one people find.
 
 on:
@@ -26,7 +26,7 @@ jobs:
     runs-on: macos-15-intel
     env:
       LABEL: ${{ github.event.inputs.label || format('test.{0}', github.run_number) }}
-      TAG: v2.0.0-${{ github.event.inputs.label || format('test.{0}', github.run_number) }}
+      TAG: v2.1.0-${{ github.event.inputs.label || format('test.{0}', github.run_number) }}
     steps:
       - uses: actions/checkout@v4
 

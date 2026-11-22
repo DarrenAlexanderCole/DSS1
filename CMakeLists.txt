@@ -5,7 +5,7 @@ set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "Minimum macOS version")
 # One app for both Apple Silicon and Intel Macs.
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Mac architectures to build")
 
-project(DSS1 VERSION 2.0.0 LANGUAGES C CXX)
+project(DSS1 VERSION 2.1.0 LANGUAGES C CXX)
 if(APPLE)
     enable_language(OBJCXX)  # trackpad haptics (src/app/HapticsMac.mm)
 endif()
