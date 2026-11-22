@@ -41,6 +41,12 @@ MainComponent::MainComponent()
         addChildComponent (*s);
 
     header.onStage = [this] (int i) { showStage (i); };
+    // 20BAND$: the EQ's panel lives on LISTEN / DESIGN; open it there.
+    header.onEq = [this, d = static_cast<DesignPanel*> (stages[2].get())] (bool show) {
+        if (show)
+            showStage (2);
+        d->showEq (show);
+    };
     addAndMakeVisible (header);
     addAndMakeVisible (transport);
     showStage (0);

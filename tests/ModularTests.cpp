@@ -409,3 +409,113 @@ TEST_CASE ("Deluxe rack: STEP's gate, repeat, reverse and space echo", "[modular
             REQUIRE (std::abs (v) <= 2.0f);
     }
 }
+
+TEST_CASE ("Deluxe rack: STEP survives a new GRAB while it plays (the crash in test 48)", "[modular]")
+{
+    // Four beats grabbed, step 16 playing slice 16; then GRAB one beat (4 slices) while it runs. The voice used to
+    // keep reading slice 16 of a 4-slice sample, far past the end of the buffer.
+    Modular m;
+    m.prepare (rate, 512);
+    m.bpm = 120.0f;
+    m.step.beats = 4;
+    m.step.grab = true;
+    auto s = ramp (beatsToFrames (6, 120));
+    run (m, s, 512);
+    REQUIRE (m.step.state.load() == Modular::Step::ready);
+    m.step.running = true;
+    for (int i = 0; i < 16; ++i)
+        m.step.slice[static_cast<std::size_t> (i)] = 15;
+    m.step.repeat = 4;
+    m.step.reverse = true;
+    for (int round = 0; round < 6; ++round)
+    {
+        m.step.beats = round % 2 == 0 ? 1 : 4;
+        m.step.grab = true;
+        auto more = ramp (beatsToFrames (3.3, 120));
+        run (m, more, 480);
+        for (auto v : more.l)
+            REQUIRE (std::isfinite (v));
+    }
+    // And CLEAR while it runs.
+    m.step.clear = true;
+    auto last = ramp (beatsToFrames (1, 120));
+    run (m, last);
+    REQUIRE (m.step.state.load() == Modular::Step::empty);
+}
+
+TEST_CASE ("Deluxe rack: STEP at its own tempo, and its EQ", "[modular]")
+{
+    Modular m;
+    m.prepare (rate, 256);
+    m.bpm = 120.0f;
+    m.step.beats = 1;
+    m.step.grab = true;
+    m.step.level = 1.0f;
+    auto s = sine (3000.0f, beatsToFrames (3, 120));
+    run (m, s);
+    REQUIRE (m.step.state.load() == Modular::Step::ready);
+    m.step.running = true;
+    m.step.replace = true;
+
+    // Its own tempo, twice the track's: the steps move twice as fast.
+    m.step.follow = false;
+    m.step.tempo = 240.0f;
+    int changes = 0, last = -1;
+    for (int b = 0; b < 200; ++b)
+    {
+        Stereo block (static_cast<std::size_t> (rate * 0.01));
+        run (m, block);
+        const auto now = m.step.playing.load();
+        if (now != last)
+            ++changes;
+        last = now;
+    }
+    // Two seconds at 240 BPM: 8 beats, 32 sixteenths (counted once per 10 ms: about that).
+    REQUIRE (changes > 26);
+    REQUIRE (changes < 36);
+
+    // HIGH down 12 dB: the 3 kHz sample comes out quieter.
+    m.step.follow = true;
+    Stereo flat (beatsToFrames (2, 120));
+    run (m, flat);
+    const auto before = rms (flat.l, 0);
+    m.step.high = -12.0f;
+    Stereo cut (beatsToFrames (2, 120));
+    run (m, cut);
+    REQUIRE (rms (cut.l, 0) < before * 0.75f);  // 3 kHz sits on the shelf's slope: about -3 dB
+}
+
+#include "engine/GraphicEq.h"
+
+TEST_CASE ("20BAND$: flat is untouched; a band lifts its frequency", "[eq]")
+{
+    GraphicEq eq;
+    eq.prepare (rate);
+    auto s = sine (1000.0f, 24000);
+    const auto dry = s.l;
+    const auto runEq = [&eq] (Stereo& st) {
+        for (std::size_t start = 0; start < st.l.size(); start += 256)
+        {
+            const auto n = static_cast<int> (std::min<std::size_t> (256, st.l.size() - start));
+            float* ch[2] { st.l.data() + start, st.r.data() + start };
+            eq.process (ch, 2, n);
+        }
+    };
+    runEq (s);
+    REQUIRE (s.l == dry);
+
+    // +12 dB at 1.13 kHz (the band nearest 1 kHz): about +10 dB at 1 kHz.
+    eq.gainDb[11] = 12.0f;
+    auto boosted = sine (1000.0f, 48000);
+    runEq (boosted);
+    const auto gain = rms (boosted.l, 24000) / rms (dry, 0);
+    REQUIRE (gain > 2.5f);
+    REQUIRE (eq.responseDb (1130.0) == Catch::Approx (12.0).margin (0.5));
+
+    // Switched off: back to the dry sound (after the crossfade).
+    eq.on = false;
+    auto off = sine (1000.0f, 48000);
+    const auto offDry = off.l;
+    runEq (off);
+    REQUIRE (off.l[40000] == Catch::Approx (offDry[40000]).margin (1.0e-3));
+}

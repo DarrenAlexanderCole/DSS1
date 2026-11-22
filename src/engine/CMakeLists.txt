@@ -4,6 +4,7 @@ add_library(dss1_engine STATIC
     Deck.cpp
     Effects.cpp
     Modular.cpp
+    GraphicEq.cpp
     Sampler.cpp
     TakePlayer.cpp
     Slicing.cpp)

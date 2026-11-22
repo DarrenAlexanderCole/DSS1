@@ -317,11 +317,20 @@ DesignPanel::DesignPanel (Session& s, Crate& c) : session (s), crate (c), fx (s.
     deluxeKey.onClick = [this] { toggleDeluxe(); };
     addAndMakeVisible (deluxeKey);
     addChildComponent (stepRack);
+    addChildComponent (eqRack);
     stepKey.onClick = [this] { toggleStep(); };
     addAndMakeVisible (stepKey);
 
     updateRecorderKeys();
     startTimerHz (30);
+}
+
+void DesignPanel::showEq (bool show)
+{
+    eqRack.setBounds (lowerUnit);
+    eqRack.setVisible (show);
+    if (show)
+        eqRack.toFront (false);
 }
 
 juce::Image DesignPanel::bayPicture()
@@ -370,6 +379,7 @@ void DesignPanel::toggleStep()
             deluxeKey.setToggleState (false, juce::dontSendNotification);
         }
         stepRack.setBounds (effectsUnit);
+    eqRack.setBounds (lowerUnit);
         stepRack.open (picture, bayRow.expanded (2) - effectsUnit.getPosition(), ! introPlayed);
         introPlayed = true;
         deluxeKey.toFront (false);

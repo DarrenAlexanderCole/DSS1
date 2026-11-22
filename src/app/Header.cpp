@@ -41,6 +41,16 @@ Header::Header (Session& s) : session (s)
     }
     setStage (0);
 
+    eqKey.setClickingTogglesState (false);
+    eqKey.setTooltip ("20BAND$: the 20-band graphic EQ, at the start of the chain (before STEP, DELUXE and the effects)");
+    eqKey.onClick = [this] {
+        const auto show = ! eqKey.getToggleState();
+        eqKey.setToggleState (show, juce::dontSendNotification);
+        if (onEq)
+            onEq (show);
+    };
+    addAndMakeVisible (eqKey);
+
     startKey.setTooltip ("Back to the start (Home)");
     startKey.onClick = [this] { session.deck().seek (0); };
     backKey.setTooltip ("Beat jump back ([)");
@@ -133,6 +143,7 @@ void Header::paint (juce::Graphics& g)
     hw::silk (g, "OUTPUT", "LEVEL", meterArea.toFloat().withHeight (16).translated (0, -20));
     hw::silk (g, "TRACK", "NOW LOADED", displayArea.toFloat().withHeight (16).translated (0, -20));
     hw::silk (g, "STAGE", "SELECT", stageArea.toFloat().withHeight (16).translated (0, -20));
+    hw::silk (g, "EQ", "20 BANDS", eqArea.toFloat().withHeight (16).translated (0, -20));
     hw::silk (g, "TRANSPORT", "BEAT JUMP " + juce::String (session.jumpSize), transportArea.toFloat().withHeight (16).translated (0, -20));
 
     // The display.
@@ -207,6 +218,12 @@ void Header::resized()
             k.setBounds (s.removeFromLeft (keyWidth));
             s.removeFromLeft (6);
         }
+    }
+    // 20BAND$, between the stages and the transport.
+    {
+        auto gap = row;  // what's left between the stage keys and the transport
+        eqArea = gap.withSizeKeepingCentre (juce::jmin (keyWidth, gap.getWidth() - 12), row.getHeight());
+        eqKey.setBounds (eqArea);
     }
     {
         auto t = transportArea;

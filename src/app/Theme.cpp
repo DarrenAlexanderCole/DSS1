@@ -447,6 +447,38 @@ void Theme::drawRotarySlider (juce::Graphics& g, int x, int y, int w, int h, flo
 void Theme::drawLinearSlider (juce::Graphics& g, int x, int y, int w, int h, float pos, float, float,
                               juce::Slider::SliderStyle style, juce::Slider& s)
 {
+    if (style == juce::Slider::LinearVertical)
+    {
+        // An upright fader (20BAND$): a black slot, ticks either side, a chrome cap with a red line.
+        const auto b = juce::Rectangle<float> (static_cast<float> (x), static_cast<float> (y), static_cast<float> (w), static_cast<float> (h));
+        const auto cx = b.getCentreX();
+        g.setColour (hw::colour::ink.withAlpha (0.8f));
+        for (int i = 0; i <= 8; ++i)
+        {
+            const auto ty = b.getY() + b.getHeight() * static_cast<float> (i) / 8.0f;
+            const auto len = (i % 4 == 0) ? 6.0f : 3.0f;
+            g.drawLine (cx - 7 - len, ty, cx - 7, ty, i == 4 ? 2.0f : 1.0f);
+            g.drawLine (cx + 7, ty, cx + 7 + len, ty, i == 4 ? 2.0f : 1.0f);
+        }
+        const auto slot = juce::Rectangle<float> (cx - 2.5f, b.getY(), 5.0f, b.getHeight());
+        g.setColour (juce::Colours::black);
+        g.fillRoundedRectangle (slot, 2.5f);
+        g.setColour (juce::Colours::white.withAlpha (0.12f));
+        g.drawLine (slot.getRight() + 0.5f, slot.getY() + 3, slot.getRight() + 0.5f, slot.getBottom() - 3, 1.0f);
+        const auto cap = juce::Rectangle<float> (juce::jmin (26.0f, b.getWidth() - 4.0f), 13.0f).withCentre ({ cx, pos });
+        g.setColour (juce::Colours::black.withAlpha (0.6f));
+        g.fillRoundedRectangle (cap.translated (1, 3), 2);
+        juce::ColourGradient chrome (juce::Colour (0xfff0efea), cap.getX(), cap.getY(), juce::Colour (0xff8f8e89), cap.getX(), cap.getBottom(), false);
+        chrome.addColour (0.5, juce::Colour (0xffbab9b3));
+        g.setGradientFill (chrome);
+        g.fillRoundedRectangle (cap, 2);
+        g.setColour (juce::Colours::black.withAlpha (0.45f));
+        for (int i = -1; i <= 1; i += 2)
+            g.drawLine (cap.getX() + 3, cap.getCentreY() + i * 3.5f, cap.getRight() - 3, cap.getCentreY() + i * 3.5f, 0.8f);
+        g.setColour (hw::colour::red);
+        g.drawLine (cap.getX() + 2, cap.getCentreY(), cap.getRight() - 2, cap.getCentreY(), 2.0f);
+        return;
+    }
     if (style != juce::Slider::LinearHorizontal)
     {
         LookAndFeel_V4::drawLinearSlider (g, x, y, w, h, pos, 0, 0, style, s);

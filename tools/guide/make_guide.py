@@ -261,7 +261,23 @@ s += bullets([
     '<b>The steps\' own effects</b> (they never touch the track): <b>GATE</b> LENGTH and DECAY for short, percussive hits, '
     'and <b>REVERSE</b>; <b>NOTE REPEAT</b> rolls each step (1/32 to 1/128); <b>SPACE ECHO</b> is a wobbly tape echo in '
     'time with the music.',
+    '<b>Tempo:</b> <b>SYNC</b> keeps the steps in time with the track. Switch it off and they run at their own BPM: '
+    'drag the BPM window, or use <b>-1</b> / <b>+1</b>.',
+    '<b>VOLUME</b> and a 3-band <b>EQ</b> (LOW, MID, HIGH) shape the steps alone: they have their own sample engine.',
     'STEP plays in front of the DELUXE modules, so you can stutter, filter or wobble the pattern too.',
+])
+s.append(PageBreak())
+
+# --- 20BAND$ -------------------------------------------------------------------------------------------------------
+s += section('20BAND$', 'A graphic EQ at the start of the chain')
+s.append(shot('eq_rack.jpg', FULL, folder=CROPS))
+s.append(Paragraph('Press <b>20BAND$</b> (between DELIVER and the transport) and the EQ opens over the recorder.', caption))
+s += bullets([
+    '<b>The start of the chain:</b> everything you hear goes through it first, then FTWRK!, the DELUXE rack and the effects.',
+    '<b>Twenty faders</b>, half an octave apart from 25 Hz to 18 kHz, each up to 12 dB up or down. Double-click one for 0.',
+    'The amber screen draws the curve they make. <b>OUTPUT</b> sets the level after it; <b>EQ ON / OFF</b> takes it in or '
+    'out; <b>FLAT</b> puts every band back to 0.',
+    'Press <b>20BAND$</b> again to put the recorder back.',
 ])
 s.append(PageBreak())
 

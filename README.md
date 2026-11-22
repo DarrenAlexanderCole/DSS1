@@ -42,6 +42,11 @@ music). Everything starts turned down. Reorder the chain by dragging a module's 
 
 ![FTWRK!](docs/screenshots/08_ftwrk.jpg)
 
+**New in 2.1: 20BAND$, a graphic EQ at the start of the chain.** Twenty faders, half an octave apart, shaping the
+sound before FTWRK!, DELUXE and the effects (shown here under FTWRK!, which now has its own BPM, volume and EQ).
+
+![20BAND$](docs/screenshots/09_eq.jpg)
+
 **Chop: slice anything onto 128 pads.** Eight banks of 16. Tap an empty pad to mark a slice, tap it again to
 play it. Each pad has gain, tune, attack, fade and reverse, and it all plays from the keyboard or a MIDI pad
 controller (Akai MPC, MPD, MPK). Banks save as WAVs.

@@ -4,6 +4,7 @@
 #include "BeatScope.h"
 #include "DeluxeRack.h"
 #include "StepRack.h"
+#include "EqRack.h"
 #include "Session.h"
 
 #include <juce_data_structures/juce_data_structures.h>
@@ -56,6 +57,9 @@ private:
 class DesignPanel : public juce::Component, private juce::Timer
 {
 public:
+    /// Shows or hides 20BAND$, the graphic EQ (over the recorder).
+    void showEq (bool show);
+    bool eqShown() const { return eqRack.isVisible(); }
     DesignPanel (Session& session, Crate& crate);
     ~DesignPanel() override;
 
@@ -118,6 +122,8 @@ private:
     StepRack stepRack { session.modular() };
     DeluxeKey stepKey { "FTWRK!", "FTWRK!: flip the effects into STEP, the sample snatcher: grab 1, 2 or 4 beats and play them in 16 steps" };
     juce::Rectangle<int> bayRow;  // the classic bays, together
+    /// 20BAND$: the graphic EQ's panel, over the lower unit.
+    EqRack eqRack { session.graphicEq() };
     void toggleDeluxe();
     void toggleStep();
     /// A picture of what's showing over the bays now (classic, DELUXE or STEP), without the keys' glow.

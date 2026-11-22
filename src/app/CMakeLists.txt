@@ -55,6 +55,7 @@ target_sources(DSS1 PRIVATE
     CatalogPanel.cpp
     DeluxeRack.cpp
     StepRack.cpp
+    EqRack.cpp
     DesignPanel.cpp
     DeliverPanel.cpp
     Crate.cpp

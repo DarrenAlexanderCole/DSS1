@@ -46,7 +46,13 @@ private:
     juce::ToggleButton run, replace;
     juce::ToggleButton reverse;
     using Knob = juce::Slider;
-    Knob level, swing, length, decay, repeat, echoTime, echoAmount;
+    Knob level, swing, length, decay, repeat, echoTime, echoAmount, low, mid, high;
+    /// The steps' own tempo: SYNC (follow the track) or a BPM of their own, set with - + or by dragging it.
+    juce::ToggleButton sync;
+    juce::TextButton slower { "-1" }, faster { "+1" };
+    struct TempoField;
+    std::unique_ptr<TempoField> tempoField;
+    void setTempo (float bpm);
     /// The knobs, their names and their readouts, for painting.
     struct KnobInfo
     {

@@ -3,6 +3,7 @@
 #include "engine/Deck.h"
 #include "engine/Effects.h"
 #include "engine/Modular.h"
+#include "engine/GraphicEq.h"
 #include "engine/Sampler.h"
 #include "engine/TakePlayer.h"
 
@@ -27,6 +28,8 @@ public:
     engine::Effects& effects() noexcept { return fx; }
     /// The DELUXE rack (in front of the effects).
     engine::Modular& modular() noexcept { return rack; }
+    /// 20BAND$: the graphic EQ at the start of the chain.
+    engine::GraphicEq& graphicEq() noexcept { return eq; }
     engine::Sampler& sampler() noexcept { return pads; }
     /// Plays back the last recorded take (after the effects, so they aren't applied twice).
     engine::TakePlayer& takePlayer() noexcept { return take; }
@@ -70,6 +73,7 @@ private:
     engine::Deck previewDeck;
     engine::Effects fx;
     engine::Modular rack;
+    engine::GraphicEq eq;
     engine::Sampler pads;
     engine::TakePlayer take, preview;
     std::atomic<float> recordGain { 1.0f };

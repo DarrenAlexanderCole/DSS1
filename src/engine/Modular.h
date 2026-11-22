@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Biquad.h"
+
 #include <array>
 #include <atomic>
 #include <vector>
@@ -99,6 +101,10 @@ public:
         std::atomic<int> repeat { 0 };             // NOTE REPEAT: 0 off, 1 1/32, 2 1/32 triplet, 3 1/64, 4 1/128
         std::atomic<int> echoTime { 2 };           // SPACE ECHO time: 0 1/16, 1 1/8, 2 3/16, 3 1/4, 4 3/8 note
         std::atomic<float> echoAmount { 0.0f };    // SPACE ECHO: its level and feedback, 0 … 1
+        // The steps' own tempo and tone:
+        std::atomic<bool> follow { true };         // SYNC: run in time with the track (off: at `tempo`)
+        std::atomic<float> tempo { 120.0f };       // the steps' own BPM, when they don't follow the track
+        std::atomic<float> low { 0.0f }, mid { 0.0f }, high { 0.0f };  // their EQ, dB (±12)
         std::array<std::atomic<bool>, 16> on;
         std::array<std::atomic<int>, 16> slice;    // which sixteenth of the sample each step plays
         // From the audio thread:
@@ -206,6 +212,12 @@ private:
     std::array<std::vector<float>, 2> stepBuffer;
     int stepWrite = 0, stepTarget = 0, stepLastBeat = -1, stepLastStep = -1;
     int voiceSlice = -1, voicePos = 0;
+    // What the voice is playing, fixed when it starts (a new GRAB can't pull the sample out from under it).
+    int voiceStart = 0, voiceLength = 0, voicePlayed = 0, voiceRepeat = 0, voiceFade = 1;
+    double ownStepBeat = 0;  // the steps' own clock, when they don't follow the track
+    std::array<std::array<Biquad, 3>, 2> stepEq;
+    float eqLow = 0, eqMid = 0, eqHigh = 0;
+    bool eqFlat = true;
     // SPACE ECHO: a tape delay on the steps alone, its wobble and its darkening feedback.
     std::array<std::vector<float>, 2> echoLine;
     std::size_t echoWrite = 0;

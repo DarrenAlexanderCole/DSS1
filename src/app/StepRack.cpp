@@ -61,6 +61,26 @@ struct StepRack::Pad : public juce::TextButton
     float appear = 1;  // for the intro
 };
 
+/// The steps' BPM, in an amber window: drag up or down to change it (SYNC on: it shows SYNC).
+struct StepRack::TempoField : public juce::Component, public juce::SettableTooltipClient
+{
+    void paint (juce::Graphics& g) override
+    {
+        const auto following = following_ ? following_() : true;
+        hw::readout (g, following ? juce::String ("SYNC") : juce::String (tempo ? tempo() : 120.0f, 1), getLocalBounds().toFloat(), hw::vfd (17.0f));
+    }
+    void mouseDown (const juce::MouseEvent&) override { start = tempo ? tempo() : 120.0f; }
+    void mouseDrag (const juce::MouseEvent& e) override
+    {
+        if (setTempo && ! (following_ && following_()))
+            setTempo (start - static_cast<float> (e.getDistanceFromDragStartY()) * 0.25f);
+    }
+    std::function<float()> tempo;
+    std::function<bool()> following_;
+    std::function<void (float)> setTempo;
+    float start = 120;
+};
+
 StepRack::StepRack (engine::Modular& s) : sound (s), step (s.step)
 {
     setOpaque (true);
@@ -142,7 +162,10 @@ StepRack::StepRack (engine::Modular& s) : sound (s), step (s.step)
         k.onValueChange = [this, &k, send] { send (k.getValue()); repaint(); };
         addAndMakeVisible (k);
     };
-    setUp (level, 0, 1, 0.01, step.level.load(), "|||||", "How loud the steps play", [this] (double v) { step.level = static_cast<float> (v); });
+    setUp (low, -12, 12, 0.5, 0, "|||||", "The steps' LOW (shelf at 200 Hz), up to 12 dB up or down", [this] (double v) { step.low = static_cast<float> (v); });
+    setUp (mid, -12, 12, 0.5, 0, "|||||", "The steps' MID (1 kHz), up to 12 dB up or down", [this] (double v) { step.mid = static_cast<float> (v); });
+    setUp (high, -12, 12, 0.5, 0, "|||||", "The steps' HIGH (shelf at 4 kHz), up to 12 dB up or down", [this] (double v) { step.high = static_cast<float> (v); });
+    setUp (level, 0, 1, 0.01, step.level.load(), "|||||", "VOLUME: how loud the steps play (their own sample engine)", [this] (double v) { step.level = static_cast<float> (v); });
     setUp (swing, 0, 1, 0.01, 0, "|||||", "Every second step pushed late, for a looser groove", [this] (double v) { step.swing = static_cast<float> (v); });
     setUp (length, 0.1, 1, 0.01, 1, "|||||", "GATE LENGTH: how much of each slice plays (short: staccato)", [this] (double v) { step.gateLength = static_cast<float> (v); });
     setUp (decay, 0, 1, 0.01, 0, "|||||", "GATE DECAY: each step falls away, from flat to a short percussive hit", [this] (double v) { step.gateDecay = static_cast<float> (v); });
@@ -152,17 +175,58 @@ StepRack::StepRack (engine::Modular& s) : sound (s), step (s.step)
 
     const auto percent = [] (Knob& k, double scale) { return [&k, scale] { return juce::String (juce::roundToInt (k.getValue() * scale)) + "%"; }; };
     knobInfo = {
-        { &level, "LEVEL", percent (level, 100) },
+        { &level, "VOLUME", percent (level, 100) },
         { &swing, "SWING", percent (swing, 50) },
         { &length, "LENGTH", percent (length, 100) },
         { &decay, "DECAY", percent (decay, 100) },
         { &repeat, "RATE", [this] { const char* n[] { "OFF", "1/32", "1/32T", "1/64", "1/128" }; return juce::String (n[juce::jlimit (0, 4, juce::roundToInt (repeat.getValue()))]); } },
         { &echoTime, "TIME", [this] { const char* n[] { "1/16", "1/8", "3/16", "1/4", "3/8" }; return juce::String (n[juce::jlimit (0, 4, juce::roundToInt (echoTime.getValue()))]); } },
         { &echoAmount, "AMOUNT", percent (echoAmount, 100) },
+        { &low, "LOW", [this] { return juce::String (low.getValue(), std::abs (low.getValue() - std::round (low.getValue())) < 0.05 ? 0 : 1); } },
+        { &mid, "MID", [this] { return juce::String (mid.getValue(), std::abs (mid.getValue() - std::round (mid.getValue())) < 0.05 ? 0 : 1); } },
+        { &high, "HIGH", [this] { return juce::String (high.getValue(), std::abs (high.getValue() - std::round (high.getValue())) < 0.05 ? 0 : 1); } },
     };
+
+    // The steps' own tempo.
+    sync.setButtonText ("SYNC");
+    sync.getProperties().set ("onText", "ON");
+    sync.getProperties().set ("offText", "OWN BPM");
+    sync.setToggleState (step.follow.load(), juce::dontSendNotification);
+    sync.setTooltip ("SYNC on: the steps run in time with the track. Off: at their own BPM (set it beside)");
+    sync.onClick = [this] {
+        step.follow = sync.getToggleState();
+        tempoField->repaint();
+    };
+    addAndMakeVisible (sync);
+    tempoField = std::make_unique<TempoField>();
+    tempoField->tempo = [this] { return step.tempo.load(); };
+    tempoField->following_ = [this] { return step.follow.load(); };
+    tempoField->setTempo = [this] (float v) { setTempo (v); };
+    tempoField->setTooltip ("The steps' own BPM: drag up or down (with SYNC off)");
+    addAndMakeVisible (*tempoField);
+    for (auto* k : { &slower, &faster })
+    {
+        hwStyle (*k, KeyStyle::dark);
+        addAndMakeVisible (*k);
+    }
+    slower.setTooltip ("The steps' BPM down by 1 (turns SYNC off)");
+    faster.setTooltip ("The steps' BPM up by 1 (turns SYNC off)");
+    slower.onClick = [this] { setTempo (std::round (step.tempo.load()) - 1.0f); };
+    faster.onClick = [this] { setTempo (std::round (step.tempo.load()) + 1.0f); };
 
     setBeats (step.beats.load());
     refreshPads();
+}
+
+void StepRack::setTempo (float bpm)
+{
+    step.tempo = juce::jlimit (40.0f, 240.0f, bpm);
+    if (step.follow.load())
+    {
+        step.follow = false;
+        sync.setToggleState (false, juce::dontSendNotification);
+    }
+    tempoField->repaint();
 }
 
 StepRack::~StepRack() = default;
@@ -254,7 +318,7 @@ void StepRack::timerCallback()
     {
         // Everything but the pads fades up with the panel; the pads come up one after another.
         const auto panel = easeInOut (introProgress (panelStart, panelLength));
-        for (auto* c : std::initializer_list<juce::Component*> { &grab, &clear, &one, &two, &four, &reset, &run, &replace, &reverse, &level, &swing, &length, &decay, &repeat, &echoTime, &echoAmount })
+        for (auto* c : std::initializer_list<juce::Component*> { &grab, &clear, &one, &two, &four, &reset, &run, &replace, &reverse, &level, &swing, &length, &decay, &repeat, &echoTime, &echoAmount, &low, &mid, &high, &sync, &slower, &faster, tempoField.get() })
             c->setAlpha (panel);
         for (std::size_t i = 0; i < 16; ++i)
         {
@@ -310,8 +374,8 @@ void StepRack::resized()
     row = leftBay.getUnion (rightBay);
 
     auto l = leftBay.reduced (14, 12);
-    monitor = l.removeFromTop (108);
-    l.removeFromTop (12);
+    monitor = l.removeFromTop (96);
+    l.removeFromTop (8);
     auto keys = l.removeFromTop (30);
     grab.setBounds (keys.removeFromLeft (96));
     keys.removeFromLeft (10);
@@ -322,6 +386,14 @@ void StepRack::resized()
     }
     keys.removeFromLeft (6);
     clear.setBounds (keys.removeFromLeft (juce::jmin (84, keys.getWidth())));
+    l.removeFromTop (6);
+    auto tempoRow = l.removeFromTop (30);
+    sync.setBounds (tempoRow.removeFromLeft (120));
+    slower.setBounds (tempoRow.removeFromLeft (34).withSizeKeepingCentre (34, 24));
+    tempoRow.removeFromLeft (4);
+    tempoField->setBounds (tempoRow.removeFromLeft (84).withSizeKeepingCentre (84, 24));
+    tempoRow.removeFromLeft (4);
+    faster.setBounds (tempoRow.removeFromLeft (34).withSizeKeepingCentre (34, 24));
 
     // Right: the steps, their lights above, the controls below.
     auto r = rightBay.reduced (14, 10);
@@ -335,18 +407,18 @@ void StepRack::resized()
 
     // Under the steps: RUN, REPLACE and RESET, then the steps' own effects in their groups.
     auto controls = r;
-    auto switches = controls.removeFromLeft (128);
+    auto switches = controls.removeFromLeft (118);
     run.setBounds (switches.removeFromTop (30));
     replace.setBounds (switches.removeFromTop (30));
     reset.setBounds (switches.removeFromTop (28).withSizeKeepingCentre (84, 24).withX (switches.getX() + 4));
-    controls.removeFromLeft (10);
+    controls.removeFromLeft (6);
 
     groups.clear();
-    const auto knobW = 74;
+    const auto knobW = 56;
     const auto layGroup = [&] (const juce::String& name, std::initializer_list<juce::Component*> parts, int extra) {
         const auto width = static_cast<int> (parts.size()) * knobW + extra + 12;
         auto box = controls.removeFromLeft (width);
-        controls.removeFromLeft (10);
+        controls.removeFromLeft (6);
         groups.push_back ({ name, box });
         auto inner = box.reduced (6, 4);
         inner.removeFromTop (12);  // the group's name
@@ -363,9 +435,10 @@ void StepRack::resized()
         }
     };
     layGroup ("PLAY", { &level, &swing }, 0);
-    layGroup ("GATE", { &length, &decay, &reverse }, 118);
-    layGroup ("NOTE REPEAT", { &repeat }, 14);
+    layGroup ("GATE", { &length, &decay, &reverse }, 100);
+    layGroup ("REPEAT", { &repeat }, 0);
     layGroup ("SPACE ECHO", { &echoTime, &echoAmount }, 0);
+    layGroup ("EQ", { &low, &mid, &high }, 0);
 }
 
 void StepRack::paint (juce::Graphics& g)
@@ -385,7 +458,7 @@ void StepRack::paint (juce::Graphics& g)
         g.endTransparencyLayer();
     }
     g.beginTransparencyLayer (title);
-    hw::silk (g, "STEP", "SAMPLE SNATCHER  ·  GRAB A BEAT, PLAY IT IN 16 STEPS", titleArea);
+    hw::silk (g, "STEP", "SAMPLE SNATCHER: GRAB A BEAT, PLAY IT IN 16 STEPS", titleArea);
     g.endTransparencyLayer();
 
     // The case under the panel, as the old one slides away.
@@ -427,11 +500,11 @@ void StepRack::paint (juce::Graphics& g)
                 g.fillRect (inner.withX (inner.getX() + w * static_cast<float> (s)).withWidth (w));
             }
             g.setColour (hw::colour::amber.withAlpha (0.85f));
-            const auto mid = inner.getCentreY();
+            const auto middle = inner.getCentreY();
             for (std::size_t c = 0; c < outline.size(); ++c)
             {
                 const auto h = juce::jmin (1.0f, outline[c] * 1.4f) * inner.getHeight() * 0.48f;
-                g.fillRect (inner.getX() + static_cast<float> (c), mid - h, 1.0f, juce::jmax (1.0f, h * 2.0f));
+                g.fillRect (inner.getX() + static_cast<float> (c), middle - h, 1.0f, juce::jmax (1.0f, h * 2.0f));
             }
             for (int sl = 1; sl < slices; ++sl)
             {
@@ -439,7 +512,7 @@ void StepRack::paint (juce::Graphics& g)
                 g.setColour (hw::colour::amber.withAlpha (sl % 4 == 0 ? 0.45f : 0.18f));
                 g.fillRect (x, inner.getY(), 1.0f, inner.getHeight());
             }
-            hw::glowText (g, juce::String (step.beats.load()) + (step.beats.load() == 1 ? " BEAT" : " BEATS") + "  ·  " + juce::String (slices) + " SLICES",
+            hw::glowText (g, juce::String (step.beats.load()) + (step.beats.load() == 1 ? " BEAT" : " BEATS") + "  /  " + juce::String (slices) + " SLICES",
                           inner.removeFromTop (14.0f), hw::vfd (13.0f), hw::colour::amberMid, juce::Justification::topLeft);
         }
         else if (state == engine::Modular::Step::waiting)
@@ -479,7 +552,7 @@ void StepRack::paint (juce::Graphics& g)
         {
             const auto kb = k.knob->getBounds().toFloat();
             hw::silk (g, k.name, {}, kb.withHeight (12.0f).translated (0, -13.0f).expanded (18.0f, 0), juce::Justification::centred, 10.0f);
-            hw::readout (g, k.text(), kb.withY (kb.getBottom() + 1.0f).withSizeKeepingCentre (62.0f, 18.0f).withY (kb.getBottom() + 1.0f), hw::vfd (15.0f));
+            hw::readout (g, k.text(), kb.withY (kb.getBottom() + 1.0f).withSizeKeepingCentre (52.0f, 18.0f).withY (kb.getBottom() + 1.0f), hw::vfd (14.0f));
         }
         g.endTransparencyLayer();
     }

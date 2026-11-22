@@ -17,7 +17,14 @@ slides themselves (DSS1-V2-Beta-Slides-9x16.zip and DSS1-V2-Beta-Slides-16x9.zip
   it on or off, drag it to pick its slice. The steps have their own GATE (length, decay, reverse), NOTE REPEAT and
   SPACE ECHO.
 
-The guide, the slides and the videos (below) all cover them.
+- **20BAND$** (between DELIVER and the transport): a 20-band graphic EQ at the very start of the chain, before
+  FTWRK!, DELUXE and the effects. Twenty faders, half an octave apart (±12 dB), the curve on an amber screen,
+  OUTPUT, ON and FLAT.
+- **FTWRK! now has its own tempo and tone:** SYNC follows the track, or switch it off and set the steps' own BPM
+  (drag it, or -1 / +1). VOLUME and a 3-band EQ (LOW, MID, HIGH) for the steps alone.
+- **Fixed:** a crash when grabbing a new sample (or clearing it) while the steps were running.
+
+The guide covers all of it; the slides and videos show DELUXE and FTWRK!.
 
 ## Install
 

@@ -25,6 +25,7 @@ void AudioEngine::audioDeviceAboutToStart (juce::AudioIODevice* device)
     previewDeck.prepare (deviceRate, device->getCurrentBufferSizeSamples());
     fx.prepare (deviceRate, device->getCurrentBufferSizeSamples());
     rack.prepare (deviceRate, device->getCurrentBufferSizeSamples());
+    eq.prepare (deviceRate);
     pads.prepare (deviceRate);
     take.prepare (deviceRate);
     preview.prepare (deviceRate);
@@ -38,6 +39,7 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const*, int, fl
     previewDeck.render (outputs, numOutputs, numFrames);
     pads.render (outputs, juce::jmin (numOutputs, 2), numFrames);
     preview.render (outputs, juce::jmin (numOutputs, 2), numFrames);
+    eq.process (outputs, juce::jmin (numOutputs, 2), numFrames);
     rack.process (outputs, juce::jmin (numOutputs, 2), numFrames, previewDeck.position(), previewDeck.isPlaying());
     fx.process (outputs, juce::jmin (numOutputs, 2), numFrames);
     take.render (outputs, juce::jmin (numOutputs, 2), numFrames);

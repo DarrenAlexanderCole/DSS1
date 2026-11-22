@@ -147,7 +147,8 @@ void Modular::runMod (double barBeat, double beatsPerBar) noexcept
 void Modular::runStep (float* const* ch, int numChannels, int numFrames, const double* beats, double beatsPerBar) noexcept
 {
     auto& st = step;
-    if (stepBuffer[0].empty())
+    const auto capacity = static_cast<int> (stepBuffer[0].size());
+    if (capacity == 0 || echoLine[0].empty())
         return;
     if (st.clear.exchange (false))
     {
@@ -159,93 +160,136 @@ void Modular::runStep (float* const* ch, int numChannels, int numFrames, const d
     if (st.grab.exchange (false) && st.state.load() != Step::grabbing)
         st.state = Step::waiting;
 
-    const auto capacity = static_cast<int> (stepBuffer[0].size());
     const auto perSample = std::max (20.0f, bpm.load (std::memory_order_relaxed)) / 60.0 / rate;
+    const auto follow = st.follow.load (std::memory_order_relaxed);
+    const auto ownPerSample = std::clamp (st.tempo.load (std::memory_order_relaxed), 40.0f, 240.0f) / 60.0 / rate;
     const auto running = st.running.load (std::memory_order_relaxed) && st.state.load (std::memory_order_relaxed) == Step::ready;
     const auto replace = st.replace.load (std::memory_order_relaxed);
     const auto level = std::clamp (st.level.load (std::memory_order_relaxed), 0.0f, 1.0f);
     const auto swing = std::clamp (st.swing.load (std::memory_order_relaxed), 0.0f, 1.0f) * 0.5f;
-    const auto slices = std::max (1, st.slices.load (std::memory_order_relaxed));
-    const auto cutLength = st.length.load (std::memory_order_relaxed) / slices;
-    const auto fade = std::max (1, std::min (static_cast<int> (rate * 0.002), cutLength / 4));
-    const auto steps = std::clamp (static_cast<int> (std::lround (beatsPerBar * 4.0)), 1, 16);
+    const auto length = std::clamp (st.length.load (std::memory_order_relaxed), 0, capacity);
+    const auto slices = std::clamp (st.slices.load (std::memory_order_relaxed), 1, 16);
+    const auto cutLength = length / slices;
+    const auto steps = follow ? std::clamp (static_cast<int> (std::lround (beatsPerBar * 4.0)), 1, 16) : 16;
+    const auto bar = follow ? beatsPerBar : 4.0;
     const auto gateLength = std::clamp (st.gateLength.load (std::memory_order_relaxed), 0.1f, 1.0f);
     const auto gateDecay = std::clamp (st.gateDecay.load (std::memory_order_relaxed), 0.0f, 1.0f);
     const auto reverse = st.reverse.load (std::memory_order_relaxed);
     const auto division = repeatDivisions[static_cast<std::size_t> (std::clamp (st.repeat.load (std::memory_order_relaxed), 0, 4))];
-    const auto played = std::max (2 * fade + 1, static_cast<int> (static_cast<float> (cutLength) * gateLength));
-    const auto repeatLength = std::max (2 * fade + 1, cutLength / division);
     const auto echoSize = echoLine[0].size();
+    const auto echoBeat = follow ? perSample : ownPerSample;
     const auto echoTarget = static_cast<float> (std::min (static_cast<double> (echoSize) - rate * 0.02,
-        echoBeats[static_cast<std::size_t> (std::clamp (st.echoTime.load (std::memory_order_relaxed), 0, 4))] / perSample));
+        echoBeats[static_cast<std::size_t> (std::clamp (st.echoTime.load (std::memory_order_relaxed), 0, 4))] / echoBeat));
     const auto echoAmountTarget = std::clamp (st.echoAmount.load (std::memory_order_relaxed), 0.0f, 1.0f);
     if (echoDelay <= 0.0f)
         echoDelay = echoTarget;
     const auto echoCut = 1.0f - std::exp (-6.2831853f * 2800.0f / static_cast<float> (rate));
 
+    // The steps' EQ: new settings, new filters (once a block).
+    const auto lowDb = std::clamp (st.low.load (std::memory_order_relaxed), -12.0f, 12.0f);
+    const auto midDb = std::clamp (st.mid.load (std::memory_order_relaxed), -12.0f, 12.0f);
+    const auto highDb = std::clamp (st.high.load (std::memory_order_relaxed), -12.0f, 12.0f);
+    if (lowDb != eqLow || midDb != eqMid || highDb != eqHigh)
+    {
+        eqLow = lowDb;
+        eqMid = midDb;
+        eqHigh = highDb;
+        for (auto& f : stepEq)
+        {
+            f[0].set (Biquad::Kind::lowShelf, rate, 200.0, 0.7, eqLow);
+            f[1].set (Biquad::Kind::peak, rate, 1000.0, 0.7, eqMid);
+            f[2].set (Biquad::Kind::highShelf, rate, 4000.0, 0.7, eqHigh);
+        }
+        eqFlat = eqLow == 0.0f && eqMid == 0.0f && eqHigh == 0.0f;
+    }
+
     for (int i = 0; i < numFrames; ++i)
     {
         const auto beat = beats[i];
-        // Grabbing starts on the next beat, and takes the beats asked for.
+        // Grabbing starts on the track's next beat, and takes the beats asked for. It stops what's sounding: the
+        // sample is about to be written over.
         const auto whole = static_cast<int> (std::floor (beat));
         if (st.state.load (std::memory_order_relaxed) == Step::waiting && stepLastBeat >= 0 && whole != stepLastBeat)
         {
             stepWrite = 0;
             const auto beatsWanted = std::clamp (st.beats.load (std::memory_order_relaxed), 1, 4);
-            stepTarget = std::min (capacity, static_cast<int> (static_cast<double> (beatsWanted) / perSample));
+            stepTarget = std::clamp (static_cast<int> (static_cast<double> (beatsWanted) / perSample), 64, capacity);
+            st.length = 0;
             st.slices = beatsWanted * 4;
             st.state = Step::grabbing;
+            voiceSlice = -1;
         }
         stepLastBeat = whole;
         if (st.state.load (std::memory_order_relaxed) == Step::grabbing)
         {
-            for (int k = 0; k < 2; ++k)
-                stepBuffer[static_cast<std::size_t> (k)][static_cast<std::size_t> (stepWrite)] = ch[std::min (k, numChannels - 1)][i];
+            if (stepWrite >= 0 && stepWrite < capacity)
+                for (int k = 0; k < 2; ++k)
+                    stepBuffer[static_cast<std::size_t> (k)][static_cast<std::size_t> (stepWrite)] = ch[std::min (k, numChannels - 1)][i];
             if (++stepWrite >= stepTarget)
             {
-                st.length = stepTarget;
+                st.length = std::min (stepTarget, capacity);
                 st.state = Step::ready;
             }
             st.progress.store (static_cast<float> (stepWrite) / static_cast<float> (std::max (1, stepTarget)), std::memory_order_relaxed);
         }
 
-        // The sequencer: sixteenths across the bar, every second one pushed late by SWING.
+        // The sequencer: sixteenths across the bar (the track's, or its own at its own tempo), every second one
+        // pushed late by SWING.
+        double seqBeat = beat;
+        if (! follow)
+        {
+            ownStepBeat = std::fmod (ownStepBeat + ownPerSample, 4.0);
+            seqBeat = ownStepBeat;
+        }
+        else
+            ownStepBeat = std::fmod (std::max (0.0, beat), 4.0);
         stepRun += ((running ? 1.0f : 0.0f) - stepRun) * 0.002f;
-        const auto sixteenth = beat * 4.0;
+        const auto sixteenth = std::fmod (std::max (0.0, seqBeat), bar) * 4.0;
         const auto pair = std::floor (sixteenth / 2.0);
         const auto within = sixteenth - pair * 2.0;
-        const auto index = (static_cast<int> (pair) * 2 + (within >= 1.0 + swing ? 1 : 0)) % steps;
+        const auto index = std::clamp ((static_cast<int> (pair) * 2 + (within >= 1.0 + swing ? 1 : 0)) % steps, 0, 15);
         if (index != stepLastStep)
         {
             stepLastStep = index;
-            if (running && st.on[static_cast<std::size_t> (index)].load (std::memory_order_relaxed) && cutLength > 16)
+            if (running && st.on[static_cast<std::size_t> (index)].load (std::memory_order_relaxed) && cutLength > 64)
             {
+                // Everything the voice needs, fixed now.
                 voiceSlice = std::clamp (st.slice[static_cast<std::size_t> (index)].load (std::memory_order_relaxed), 0, 15) % slices;
+                voiceLength = cutLength;
+                voiceStart = voiceSlice * cutLength;
+                voiceFade = std::max (1, std::min (static_cast<int> (rate * 0.002), cutLength / 4));
+                voicePlayed = std::max (2 * voiceFade + 1, static_cast<int> (static_cast<float> (cutLength) * gateLength));
+                voiceRepeat = std::max (2 * voiceFade + 1, cutLength / division);
                 voicePos = 0;
             }
             st.playing.store (running ? index : -1, std::memory_order_relaxed);
         }
         float voice[2] { 0, 0 };
-        if (voiceSlice >= 0 && cutLength > 16)
+        if (voiceSlice >= 0 && voiceLength > 0)
         {
             // GATE: the slice plays for its length, falling away with DECAY. NOTE REPEAT starts it over and over
-            // within the step; REVERSE plays it backwards.
-            const auto inRepeat = voicePos % repeatLength;
-            const auto partEnd = std::min (repeatLength, played - (voicePos - inRepeat));
-            // 2 ms fades: in at each start, out at each repeat's end and at the gate's end.
-            const auto edge = std::min ({ inRepeat, partEnd - inRepeat, played - voicePos, fade });
-            auto window = static_cast<float> (std::max (0, edge)) / static_cast<float> (fade);
+            // within the step; REVERSE plays it backwards. 2 ms fades at every start and end.
+            const auto inRepeat = voicePos % voiceRepeat;
+            const auto partEnd = std::min (voiceRepeat, voicePlayed - (voicePos - inRepeat));
+            const auto edge = std::min ({ inRepeat, partEnd - inRepeat, voicePlayed - voicePos, voiceFade });
+            auto window = static_cast<float> (std::max (0, edge)) / static_cast<float> (voiceFade);
             if (gateDecay > 0.0f)
-                window *= std::pow (1.0f - static_cast<float> (voicePos) / static_cast<float> (played), gateDecay * 4.0f);
-            const auto offset = reverse ? cutLength - 1 - inRepeat : inRepeat;
-            const auto at = static_cast<std::size_t> (voiceSlice * cutLength + std::clamp (offset, 0, cutLength - 1));
+                window *= std::pow (std::max (0.0f, 1.0f - static_cast<float> (voicePos) / static_cast<float> (voicePlayed)), gateDecay * 4.0f);
+            const auto offset = std::clamp (reverse ? voiceLength - 1 - inRepeat : inRepeat, 0, voiceLength - 1);
+            const auto at = std::clamp (voiceStart + offset, 0, capacity - 1);
             for (int k = 0; k < 2; ++k)
-                voice[k] = stepBuffer[static_cast<std::size_t> (k)][at] * window;
-            if (++voicePos >= played)
+                voice[k] = stepBuffer[static_cast<std::size_t> (k)][static_cast<std::size_t> (at)] * window;
+            if (++voicePos >= voicePlayed)
                 voiceSlice = -1;
         }
-        for (auto& v : voice)
-            v *= level * stepRun;
+        for (std::size_t k = 0; k < 2; ++k)
+        {
+            auto v = voice[k] * level * stepRun;
+            if (! eqFlat)
+                for (auto& f : stepEq[k])
+                    v = f.process (v);
+            voice[k] = v;
+        }
 
         // SPACE ECHO: tape on the steps alone. Its time wobbles a little, and each repeat comes back darker and
         // a little driven.
@@ -258,7 +302,8 @@ void Modular::runStep (float* const* ch, int numChannels, int numFrames, const d
             if (echoWobble >= 1.0)
                 echoWobble -= 1.0;
             const auto wow = static_cast<float> (std::sin (6.283185307 * echoWobble)) * static_cast<float> (rate * 0.0012);
-            const auto readPos = static_cast<double> (echoWrite) - static_cast<double> (echoDelay + wow) + static_cast<double> (echoSize) * 2.0;
+            const auto delay = std::clamp (static_cast<double> (echoDelay + wow), 1.0, static_cast<double> (echoSize) - 2.0);
+            const auto readPos = static_cast<double> (echoWrite) - delay + static_cast<double> (echoSize);
             const auto i0 = static_cast<std::size_t> (readPos) % echoSize;
             const auto frac = static_cast<float> (readPos - std::floor (readPos));
             for (std::size_t k = 0; k < 2; ++k)

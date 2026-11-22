@@ -19,6 +19,9 @@ public:
 
     /// Called with 0 … 4 when a stage key is pressed.
     std::function<void (int)> onStage;
+    /// 20BAND$ pressed: show (true) or hide the graphic EQ.
+    std::function<void (bool)> onEq;
+    void setEqShown (bool shown) { eqKey.setToggleState (shown, juce::dontSendNotification); }
     void setStage (int index);
 
     static constexpr int preferredHeight = 256;
@@ -35,10 +38,11 @@ private:
     juce::ToggleButton vuPad { "PAD" };
     TempoSteps beatSteps { session, 4 };  ///< the bar's four beats, beside the BPM
     std::array<juce::TextButton, 5> stageKeys;
+    juce::TextButton eqKey { "20BAND$" };
     juce::TextButton startKey { "|<" }, backKey { "<<" }, forwardKey { ">>" }, cueKey { "CUE" }, playKey { "PLAY" };
     bool cueWasDown = false;
 
-    juce::Rectangle<int> brandArea, meterArea, displayArea, stageArea, transportArea;
+    juce::Rectangle<int> brandArea, meterArea, displayArea, stageArea, transportArea, eqArea;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Header)
 };
