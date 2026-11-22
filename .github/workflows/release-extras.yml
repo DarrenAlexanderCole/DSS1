@@ -9,6 +9,9 @@ on:
       tag:
         description: "Release tag, e.g. v2.1.0-beta.1"
         required: true
+      title:
+        description: "New title for the release (empty: keep it)"
+        required: false
 
 permissions:
   contents: write
@@ -22,7 +25,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.inputs.tag }}
+          TITLE: ${{ github.event.inputs.title }}
         run: |
           gh release upload "$TAG" docs/DSS1-V2-Beta-Guide.pdf --clobber
           for f in docs/media/*; do [ -f "$f" ] && gh release upload "$TAG" "$f" --clobber; done
           gh release edit "$TAG" --notes-file docs/BETA.md
+          if [ -n "$TITLE" ]; then gh release edit "$TAG" --title "$TITLE"; fi

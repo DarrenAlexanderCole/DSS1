@@ -58,12 +58,12 @@ jobs:
             gh release create "$TAG" "DSS1-${TAG}.dmg" \
               --target "$GITHUB_SHA" \
               --latest \
-              --title "DSS1 V2 ${LABEL}" \
+              --title "DSS1 V2.1 ${LABEL}" \
               --notes-file docs/BETA.md
           else
             gh release create "$TAG" "DSS1-${TAG}.dmg" \
               --target "$GITHUB_SHA" \
               --prerelease \
-              --title "DSS1 V2 test build ${TAG}" \
+              --title "DSS1 V2.1 test build ${TAG}" \
               --notes-file docs/TEST-BUILD.md
           fi
