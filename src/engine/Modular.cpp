@@ -21,6 +21,8 @@ void Modular::prepare (double sampleRate, int maxBlock)
         h.assign (static_cast<std::size_t> (sampleRate * 6.0), 0.0f);  // a 1/2-note slice at 40 BPM, and room
     for (auto& l : driftLine)
         l.assign (static_cast<std::size_t> (sampleRate * 0.1), 0.0f);
+    for (auto& b : stepBuffer)
+        b.assign (static_cast<std::size_t> (sampleRate * 4.0 * 60.0 / 40.0), 0.0f);  // four beats at 40 BPM
     for (auto& l : fmLine)
         l.assign (static_cast<std::size_t> (sampleRate * 0.02), 0.0f);
     if (waves.empty())
@@ -140,6 +142,96 @@ void Modular::runMod (double barBeat, double beatsPerBar) noexcept
     modOffset[kind][which] = modValue * depth * knobRange[kind][which];
 }
 
+void Modular::runStep (float* const* ch, int numChannels, int numFrames, const double* beats, double beatsPerBar) noexcept
+{
+    auto& st = step;
+    if (stepBuffer[0].empty())
+        return;
+    if (st.clear.exchange (false))
+    {
+        st.state = Step::empty;
+        st.length = 0;
+        st.slices = 0;
+        voiceSlice = -1;
+    }
+    if (st.grab.exchange (false) && st.state.load() != Step::grabbing)
+        st.state = Step::waiting;
+
+    const auto capacity = static_cast<int> (stepBuffer[0].size());
+    const auto perSample = std::max (20.0f, bpm.load (std::memory_order_relaxed)) / 60.0 / rate;
+    const auto running = st.running.load (std::memory_order_relaxed) && st.state.load (std::memory_order_relaxed) == Step::ready;
+    const auto replace = st.replace.load (std::memory_order_relaxed);
+    const auto level = std::clamp (st.level.load (std::memory_order_relaxed), 0.0f, 1.0f);
+    const auto swing = std::clamp (st.swing.load (std::memory_order_relaxed), 0.0f, 1.0f) * 0.5f;
+    const auto slices = std::max (1, st.slices.load (std::memory_order_relaxed));
+    const auto cutLength = st.length.load (std::memory_order_relaxed) / slices;
+    const auto fade = std::max (1, std::min (static_cast<int> (rate * 0.002), cutLength / 4));
+    const auto steps = std::clamp (static_cast<int> (std::lround (beatsPerBar * 4.0)), 1, 16);
+
+    for (int i = 0; i < numFrames; ++i)
+    {
+        const auto beat = beats[i];
+        // Grabbing starts on the next beat, and takes the beats asked for.
+        const auto whole = static_cast<int> (std::floor (beat));
+        if (st.state.load (std::memory_order_relaxed) == Step::waiting && stepLastBeat >= 0 && whole != stepLastBeat)
+        {
+            stepWrite = 0;
+            const auto beatsWanted = std::clamp (st.beats.load (std::memory_order_relaxed), 1, 4);
+            stepTarget = std::min (capacity, static_cast<int> (static_cast<double> (beatsWanted) / perSample));
+            st.slices = beatsWanted * 4;
+            st.state = Step::grabbing;
+        }
+        stepLastBeat = whole;
+        if (st.state.load (std::memory_order_relaxed) == Step::grabbing)
+        {
+            for (int k = 0; k < 2; ++k)
+                stepBuffer[static_cast<std::size_t> (k)][static_cast<std::size_t> (stepWrite)] = ch[std::min (k, numChannels - 1)][i];
+            if (++stepWrite >= stepTarget)
+            {
+                st.length = stepTarget;
+                st.state = Step::ready;
+            }
+            st.progress.store (static_cast<float> (stepWrite) / static_cast<float> (std::max (1, stepTarget)), std::memory_order_relaxed);
+        }
+
+        // The sequencer: sixteenths across the bar, every second one pushed late by SWING.
+        stepRun += ((running ? 1.0f : 0.0f) - stepRun) * 0.002f;
+        const auto sixteenth = beat * 4.0;
+        const auto pair = std::floor (sixteenth / 2.0);
+        const auto within = sixteenth - pair * 2.0;
+        const auto index = (static_cast<int> (pair) * 2 + (within >= 1.0 + swing ? 1 : 0)) % steps;
+        if (index != stepLastStep)
+        {
+            stepLastStep = index;
+            if (running && st.on[static_cast<std::size_t> (index)].load (std::memory_order_relaxed) && cutLength > 16)
+            {
+                voiceSlice = std::clamp (st.slice[static_cast<std::size_t> (index)].load (std::memory_order_relaxed), 0, 15) % slices;
+                voicePos = 0;
+            }
+            st.playing.store (running ? index : -1, std::memory_order_relaxed);
+        }
+        float voice[2] { 0, 0 };
+        if (voiceSlice >= 0 && cutLength > 16)
+        {
+            const auto edge = std::min ({ voicePos, cutLength - voicePos, fade });
+            const auto window = static_cast<float> (edge) / static_cast<float> (fade);
+            const auto at = static_cast<std::size_t> (voiceSlice * cutLength + voicePos);
+            for (int k = 0; k < 2; ++k)
+                voice[k] = stepBuffer[static_cast<std::size_t> (k)][at] * window;
+            if (++voicePos >= cutLength)
+                voiceSlice = -1;
+        }
+        if (stepRun > 1.0e-4f || voiceSlice >= 0)
+        {
+            const auto track = replace ? 1.0f - stepRun : 1.0f;
+            for (int k = 0; k < numChannels; ++k)
+                ch[k][i] = ch[k][i] * track + voice[k] * level * stepRun;
+        }
+    }
+    if (! running)
+        st.playing.store (-1, std::memory_order_relaxed);
+}
+
 float Modular::random() noexcept
 {
     noiseSeed = noiseSeed * 1664525u + 1013904223u;
@@ -173,7 +265,10 @@ void Modular::process (float* const* channels, int numChannels, int numFrames, d
     }
     ownBeat = std::fmod (beat + perSample * numFrames, perBar);
 
-    // MOD first: it moves the other modules' knobs for this block.
+    // STEP first: it grabs the music as it comes in, and its sequence goes through the modules after it.
+    runStep (channels, numChannels, numFrames, beatBuffer.data(), perBar);
+
+    // MOD: it moves the other modules' knobs for this block.
     runMod (beatBuffer[0], perBar);
 
     // The modules, in slot order.
@@ -286,8 +381,8 @@ void Modular::runSlicer (float* const* ch, int numChannels, int numFrames, const
 
     for (int i = 0; i < numFrames; ++i)
     {
-        const auto step = static_cast<int> (std::floor (beats[i] * stepsPerBeat)) % std::max (1, steps);
-        const bool open = ((pattern >> (15 - (step % 16))) & 1u) != 0;
+        const auto at = static_cast<int> (std::floor (beats[i] * stepsPerBeat)) % std::max (1, steps);
+        const bool open = ((pattern >> (15 - (at % 16))) & 1u) != 0;
         const auto target = open ? 1.0f : 0.0f;
         gate += (target - gate) * (target > gate ? attack : release);
         slicerDepth += (depthTarget - slicerDepth) * 0.0015f;

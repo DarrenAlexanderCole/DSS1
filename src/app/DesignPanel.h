@@ -3,6 +3,7 @@
 #include "Crate.h"
 #include "BeatScope.h"
 #include "DeluxeRack.h"
+#include "StepRack.h"
 #include "Session.h"
 
 #include <juce_data_structures/juce_data_structures.h>
@@ -113,8 +114,14 @@ private:
     /// DELUXE: the modular rack over the effects unit, and the key that flips to it.
     DeluxeRack deluxe { session.modular() };
     DeluxeKey deluxeKey;
+    /// STEP: the sample snatcher's sequencer over the effects unit, and its key (at the other end).
+    StepRack stepRack { session.modular() };
+    DeluxeKey stepKey { "STEP", "STEP: flip the effects into a sample snatcher: grab 1, 2 or 4 beats and play them in 16 steps" };
     juce::Rectangle<int> bayRow;  // the classic bays, together
     void toggleDeluxe();
+    void toggleStep();
+    /// A picture of what's showing over the bays now (classic, DELUXE or STEP), without the keys' glow.
+    juce::Image bayPicture();
 
     XyPad pad;
     juce::ToggleButton holdButton { "HOLD" };

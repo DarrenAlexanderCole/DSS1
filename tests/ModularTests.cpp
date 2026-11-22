@@ -298,3 +298,46 @@ TEST_CASE ("Deluxe rack: MOD moves another module's knob in time", "[modular]")
     run (still, quiet);
     REQUIRE (quiet.l == before);
 }
+
+TEST_CASE ("Deluxe rack: STEP grabs a beat on the beat and plays its slices in 16 steps", "[modular]")
+{
+    Modular m;
+    m.prepare (rate, 256);
+    m.bpm = 120.0f;
+    auto& st = m.step;
+    st.beats = 1;
+    st.grab = true;
+    st.level = 1.0f;
+
+    // A ramp; GRAB waits for the next beat, then takes one beat of it.
+    auto s = ramp (beatsToFrames (3, 120));
+    const auto dry = s.l;
+    run (m, s);
+    REQUIRE (st.state.load() == Modular::Step::ready);
+    REQUIRE (st.slices.load() == 4);
+    const auto beat = beatsToFrames (1, 120);
+    REQUIRE (st.length.load() == static_cast<int> (beat));
+    // It began on beat 2 (the first beat line after GRAB): the sample is the music from there.
+    REQUIRE (m.stepSample (0)[100] == Catch::Approx (dry[beat + 100]).margin (1.0e-4));
+
+    // RUN, REPLACE: silence in, the steps out. Step 2 (the second sixteenth) plays slice 2.
+    st.running = true;
+    st.replace = true;
+    Stereo out (beatsToFrames (4, 120));
+    run (m, out);
+    const auto sixteenth = beat / 4;
+    const auto at = 3 * beat + sixteenth + sixteenth / 2;  // the middle of a second sixteenth, once faded in
+    REQUIRE (out.l[at] == Catch::Approx (m.stepSample (0)[sixteenth + sixteenth / 2]).margin (2.0e-3));
+
+    // A step switched off stays quiet.
+    st.on[1] = false;
+    Stereo off (beatsToFrames (2, 120));
+    run (m, off);
+    REQUIRE (std::abs (off.l[beat + sixteenth + sixteenth / 2]) < 1.0e-4f);
+
+    // CLEAR: empty again.
+    st.clear = true;
+    Stereo after (512);
+    run (m, after);
+    REQUIRE (st.state.load() == Modular::Step::empty);
+}

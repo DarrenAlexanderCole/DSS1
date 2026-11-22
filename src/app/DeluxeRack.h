@@ -17,7 +17,8 @@ namespace dss1::ui
 class DeluxeKey : public juce::Button, private juce::Timer
 {
 public:
-    DeluxeKey();
+    explicit DeluxeKey (const juce::String& label = "DELUXE",
+                        const juce::String& tip = "DELUXE: flip the effects into a modular rack of remix modules (everything starts turned down)");
     void paintButton (juce::Graphics&, bool over, bool down) override;
 
 private:
@@ -36,6 +37,9 @@ class DeluxeRack : public juce::Component, private juce::Timer
 {
 public:
     explicit DeluxeRack (engine::Modular& sound);
+
+    /// Room at the left of the effects header for the STEP key (the titles start after it).
+    static constexpr int stepKeySpace = 196;
     ~DeluxeRack() override;
 
     /// Shows the rack over the effects unit. classicBays is a picture of the classic bays, and where they were
@@ -54,6 +58,16 @@ private:
     void layoutModules (bool immediately);
     void move (int slot, int by);
     void allToZero();
+
+    // Patches: the chain's order, every module's switches and knobs, and what MOD moves, saved by name in the
+    // settings file.
+    std::unique_ptr<juce::XmlElement> capture() const;
+    void restore (const juce::XmlElement& patch);
+    void askToSave();
+    void showPatches();
+    bool anythingOn() const;
+    int patchNumber = 0;
+    juce::String patchName { "INIT" };
     // Carrying a module by its grip.
     void grab (Module&, float x);
     void carry (Module&, float x);

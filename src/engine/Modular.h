@@ -69,6 +69,39 @@ public:
     /// tempo can change along the track); pass beatFrames <= 0 when there's no grid.
     void setSync (double anchorFrame, double beatFrames, int beatInBar, int beatsPerBar) noexcept;
 
+    /// STEP, the sample snatcher: GRAB takes the next 1, 2 or 4 beats of what's playing (from the next beat),
+    /// cuts them into sixteenths, and a 16-step sequencer plays them back in time. Message thread sets these;
+    /// the audio thread does the rest.
+    struct Step
+    {
+        Step()
+        {
+            for (int i = 0; i < 16; ++i)
+            {
+                on[static_cast<std::size_t> (i)] = true;
+                slice[static_cast<std::size_t> (i)] = i;
+            }
+        }
+        enum State { empty = 0, waiting, grabbing, ready };
+        std::atomic<int> beats { 1 };             // how much GRAB takes: 1, 2 or 4 beats
+        std::atomic<bool> grab { false };          // request: grab (from the next beat)
+        std::atomic<bool> clear { false };         // request: throw the sample away
+        std::atomic<bool> running { false };       // RUN
+        std::atomic<bool> replace { false };       // REPLACE: the track goes quiet while it runs
+        std::atomic<float> level { 0.8f }, swing { 0.0f };
+        std::array<std::atomic<bool>, 16> on;
+        std::array<std::atomic<int>, 16> slice;    // which sixteenth of the sample each step plays
+        // From the audio thread:
+        std::atomic<int> state { empty };
+        std::atomic<int> slices { 0 };             // sixteenths in the sample (4, 8 or 16)
+        std::atomic<int> length { 0 };             // frames in the sample
+        std::atomic<int> playing { -1 };           // the step sounding now (-1: none)
+        std::atomic<float> progress { 0.0f };      // how far through grabbing, 0 … 1
+    };
+    Step step;
+    /// The grabbed sample, a channel of it (read it only while step.state is `ready`).
+    const std::vector<float>& stepSample (int channel) const noexcept { return stepBuffer[static_cast<std::size_t> (channel & 1)]; }
+
     // --- Audio thread ----------------------------------------------------------------------------------------
 
     void prepare (double sampleRate, int maxBlock);
@@ -159,6 +192,11 @@ private:
     void runMultiTap (float* const* ch, int numChannels, int numFrames) noexcept;
     void runLadder (float* const* ch, int numChannels, int numFrames) noexcept;
     float random() noexcept;
+    void runStep (float* const* ch, int numChannels, int numFrames, const double* beats, double beatsPerBar) noexcept;
+    std::array<std::vector<float>, 2> stepBuffer;
+    int stepWrite = 0, stepTarget = 0, stepLastBeat = -1, stepLastStep = -1;
+    int voiceSlice = -1, voicePos = 0;
+    float stepRun = 0;
     /// A knob's value with MOD's movement added (audio thread).
     float knob (Kind kind, int which) const noexcept;
     void runMod (double barBeat, double beatsPerBar) noexcept;

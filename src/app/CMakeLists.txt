@@ -54,6 +54,7 @@ target_sources(DSS1 PRIVATE
     AudioEngine.cpp
     CatalogPanel.cpp
     DeluxeRack.cpp
+    StepRack.cpp
     DesignPanel.cpp
     DeliverPanel.cpp
     Crate.cpp

@@ -1,5 +1,6 @@
 #include "DeluxeRack.h"
 #include "Hardware.h"
+#include "Settings.h"
 #include "Theme.h"
 
 #include <cmath>
@@ -77,11 +78,11 @@ namespace
 
 // --- The DELUXE key -----------------------------------------------------------------------------------------
 
-DeluxeKey::DeluxeKey() : juce::Button ("DELUXE")
+DeluxeKey::DeluxeKey (const juce::String& label, const juce::String& tip) : juce::Button (label)
 {
     setClickingTogglesState (true);
     setMouseCursor (juce::MouseCursor::PointingHandCursor);
-    setTooltip ("DELUXE: flip the effects into a modular rack of remix modules (everything starts turned down)");
+    setTooltip (tip);
     startTimerHz (30);
 }
 
@@ -119,12 +120,12 @@ void DeluxeKey::paintButton (juce::Graphics& g, bool over, bool down)
         g.fillRoundedRectangle (key, 3.0f);
         g.setFont (hw::brand (15.0f));
         g.setColour (juce::Colour (0xff2a1203));
-        g.drawText ("DELUXE", key.withTrimmedRight (18.0f), juce::Justification::centred);
+        g.drawText (getButtonText(), key.withTrimmedRight (18.0f), juce::Justification::centred);
     }
     else
     {
         const auto ink = hw::colour::amberMid.interpolatedWith (hw::colour::amber, breath * 0.8f + (over ? 0.2f : 0.0f));
-        hw::glowText (g, "DELUXE", key.withTrimmedRight (18.0f), hw::brand (15.0f), ink, juce::Justification::centred);
+        hw::glowText (g, getButtonText(), key.withTrimmedRight (18.0f), hw::brand (15.0f), ink, juce::Justification::centred);
     }
     hw::led (g, { key.getRight() - 13.0f, key.getCentreY() }, 4.0f, on ? hw::colour::playGreen : hw::colour::amber, on || breath > 0.35f);
     hw::glass (g, key, 3.0f);
@@ -215,6 +216,19 @@ struct DeluxeRack::Module : public juce::Component, private juce::Timer
         right.setTooltip ("Move this module later in the chain");
         if (isMod)
             startTimerHz (30);
+    }
+
+    /// Sets the switches and knobs (from a patch).
+    void apply (bool on, bool modeOn, double a, double b)
+    {
+        power.setToggleState (on, juce::dontSendNotification);
+        mode.setToggleState (modeOn, juce::dontSendNotification);
+        knobs[0].setValue (a, juce::dontSendNotification);
+        knobs[1].setValue (b, juce::dontSendNotification);
+        send();
+        if (isMod)
+            updateTarget();
+        repaint();
     }
 
     void toZero()
@@ -401,10 +415,15 @@ DeluxeRack::DeluxeRack (engine::Modular& s) : sound (s)
         hwStyle (*k, KeyStyle::cream);
         addAndMakeVisible (*k);
     }
-    savePatch.setTooltip ("Save this chain and its settings as a patch (coming with the sound engine)");
-    patches.setTooltip ("Your saved patches (coming with the sound engine)");
-    zero.setTooltip ("Turn every module off and every knob back down");
+    savePatch.setTooltip ("Save the chain's order and every switch and knob as a patch");
+    patches.setTooltip ("Your saved patches: load one, or delete one");
+    zero.setTooltip ("Turn every module off and every knob back down (back to INIT)");
     zero.onClick = [this] { allToZero(); };
+    savePatch.onClick = [this] { askToSave(); };
+    patches.onClick = [this] { showPatches(); };
+    for (auto& m : modules)
+        for (auto* b : { static_cast<juce::Button*> (&m->power), static_cast<juce::Button*> (&m->mode) })
+            b->onStateChange = [this] { repaint (patchWindow.expanded (4)); };
 }
 
 DeluxeRack::~DeluxeRack() = default;
@@ -650,10 +669,189 @@ void DeluxeRack::drop (Module& m)
     startTimerHz (60);
 }
 
+bool DeluxeRack::anythingOn() const
+{
+    for (const auto& m : modules)
+        if (m->power.getToggleState())
+            return true;
+    return false;
+}
+
+namespace
+{
+    constexpr auto patchesKey = "deluxePatches";
+
+    std::unique_ptr<juce::XmlElement> savedPatches()
+    {
+        if (auto xml = appSettings().getXmlValue (patchesKey))
+            return xml;
+        return std::make_unique<juce::XmlElement> ("PATCHES");
+    }
+}
+
+std::unique_ptr<juce::XmlElement> DeluxeRack::capture() const
+{
+    auto patch = std::make_unique<juce::XmlElement> ("PATCH");
+    juce::StringArray slots;
+    for (auto k : order)
+        slots.add (juce::String (k));
+    patch->setAttribute ("order", slots.joinIntoString (","));
+    patch->setAttribute ("modTarget", sound.modTarget.load());
+    patch->setAttribute ("modShape", sound.modShape.load());
+    for (std::size_t k = 0; k < modules.size(); ++k)
+    {
+        const auto& m = *modules[k];
+        auto* e = patch->createNewChildElement ("MODULE");
+        e->setAttribute ("kind", static_cast<int> (k));
+        e->setAttribute ("on", m.power.getToggleState());
+        e->setAttribute ("mode", m.mode.getToggleState());
+        e->setAttribute ("a", m.knobs[0].getValue());
+        e->setAttribute ("b", m.knobs[1].getValue());
+    }
+    return patch;
+}
+
+void DeluxeRack::restore (const juce::XmlElement& patch)
+{
+    sound.modTarget = patch.getIntAttribute ("modTarget", engine::Modular::ladder * 2);
+    sound.modShape = juce::jlimit (0, 3, patch.getIntAttribute ("modShape", 0));
+    for (auto* e : patch.getChildWithTagNameIterator ("MODULE"))
+    {
+        const auto k = e->getIntAttribute ("kind", -1);
+        if (k >= 0 && k < static_cast<int> (modules.size()))
+            modules[static_cast<std::size_t> (k)]->apply (e->getBoolAttribute ("on"), e->getBoolAttribute ("mode"),
+                                                          e->getDoubleAttribute ("a"), e->getDoubleAttribute ("b"));
+    }
+    // The order, if it names every module once.
+    std::vector<int> next;
+    for (const auto& t : juce::StringArray::fromTokens (patch.getStringAttribute ("order"), ",", ""))
+        next.push_back (t.getIntValue());
+    auto sorted = next;
+    std::sort (sorted.begin(), sorted.end());
+    bool valid = sorted.size() == order.size();
+    for (std::size_t i = 0; valid && i < sorted.size(); ++i)
+        valid = sorted[i] == static_cast<int> (i);
+    if (valid && next != order)
+    {
+        order = next;
+        layoutModules (false);
+        startTimerHz (60);
+    }
+    repaint();
+}
+
+void DeluxeRack::askToSave()
+{
+    auto* w = new juce::AlertWindow ("SAVE PATCH", "Name this patch. Saving with the name of a patch you have replaces it.",
+                                     juce::MessageBoxIconType::NoIcon);
+    w->addTextEditor ("name", patchNumber > 0 ? patchName : "PATCH " + juce::String (savedPatches()->getNumChildElements() + 1));
+    w->addButton ("SAVE", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    w->addButton ("CANCEL", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+    w->enterModalState (true, juce::ModalCallbackFunction::create ([this, w] (int result) {
+        const auto name = w->getTextEditorContents ("name").trim().substring (0, 24);
+        if (result != 1 || name.isEmpty())
+            return;
+        auto all = savedPatches();
+        auto patch = capture();
+        patch->setAttribute ("name", name);
+        int number = 0;
+        for (auto* e : all->getChildIterator())
+        {
+            ++number;
+            if (e->getStringAttribute ("name").equalsIgnoreCase (name))
+            {
+                all->replaceChildElement (e, patch.release());
+                patchNumber = number;
+                break;
+            }
+        }
+        if (patch != nullptr)
+        {
+            all->addChildElement (patch.release());
+            patchNumber = all->getNumChildElements();
+        }
+        patchName = name;
+        appSettings().setValue (patchesKey, all.get());
+        repaint (patchWindow.expanded (4));
+    }), true);
+}
+
+void DeluxeRack::showPatches()
+{
+    auto all = savedPatches();
+    juce::PopupMenu menu, remove;
+    menu.addSectionHeader ("PATCHES");
+    int n = 0;
+    for (auto* e : all->getChildIterator())
+    {
+        ++n;
+        const auto label = juce::String (n).paddedLeft ('0', 2) + "   " + e->getStringAttribute ("name");
+        menu.addItem (n, label, true, n == patchNumber);
+        remove.addItem (1000 + n, label);
+    }
+    if (n == 0)
+        menu.addItem (-1, "No patches yet: press SAVE PATCH", false);
+    menu.addSeparator();
+    menu.addItem (999, "INIT (everything off and down)");
+    if (n > 0)
+        menu.addSubMenu ("Delete", remove);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&patches), [this] (int r) {
+        if (r == 0)
+            return;
+        auto list = savedPatches();
+        if (r == 999)
+        {
+            allToZero();
+            return;
+        }
+        if (r > 1000)
+        {
+            if (auto* e = list->getChildElement (r - 1001))
+            {
+                list->removeChildElement (e, true);
+                appSettings().setValue (patchesKey, list.get());
+                if (patchNumber == r - 1000)
+                {
+                    patchNumber = 0;
+                    patchName = "INIT";
+                }
+                else if (patchNumber > r - 1000)
+                    --patchNumber;
+                repaint (patchWindow.expanded (4));
+            }
+            return;
+        }
+        if (auto* e = list->getChildElement (r - 1))
+        {
+            restore (*e);
+            patchNumber = r;
+            patchName = e->getStringAttribute ("name");
+            repaint (patchWindow.expanded (4));
+        }
+    });
+}
+
 void DeluxeRack::allToZero()
 {
     for (auto& m : modules)
         m->toZero();
+    sound.modTarget = engine::Modular::ladder * 2;
+    sound.modShape = 0;
+    for (auto& m : modules)
+        if (m->isMod)
+            m->updateTarget();
+    patchNumber = 0;
+    patchName = "INIT";
+    std::vector<int> init (modules.size());
+    for (std::size_t i = 0; i < init.size(); ++i)
+        init[i] = static_cast<int> (i);
+    if (init != order)
+    {
+        order = init;
+        layoutModules (false);
+        startTimerHz (60);
+    }
+    repaint (patchWindow.expanded (4));
 }
 
 void DeluxeRack::resized()
@@ -665,7 +863,7 @@ void DeluxeRack::resized()
     row = area;
 
     // The patch bar: the patch window and its keys, after the title.
-    auto bar = header.withTrimmedLeft (300).withTrimmedRight (210).withY (header.getY() + 11).withHeight (24);
+    auto bar = header.withTrimmedLeft (stepKeySpace + 250).withTrimmedRight (210).withY (header.getY() + 11).withHeight (24);
     patchWindow = bar.removeFromLeft (juce::jmin (280, bar.getWidth() / 2));
     bar.removeFromLeft (18);
     for (auto* k : { &savePatch, &patches, &zero })
@@ -685,7 +883,7 @@ void DeluxeRack::paint (juce::Graphics& g)
     g.fillRect (b.withTop (b.getBottom() - 1.0f));
 
     // The title: EFFECTS fades to DELUXE.
-    const auto titleArea = b.reduced (ear + 30.0f, 0).withTop (b.getY() + 14.0f).withHeight (18.0f);
+    const auto titleArea = b.reduced (ear + 30.0f, 0).withTrimmedLeft (stepKeySpace).withTop (b.getY() + 14.0f).withHeight (18.0f);
     const auto title = easeInOut (introProgress (120, 600));
     if (title < 1.0f)
     {
@@ -715,8 +913,10 @@ void DeluxeRack::paint (juce::Graphics& g)
         }
         else
         {
-            hw::glowText (g, "PATCH 00   INIT", w.reduced (10.0f, 0), hw::vfd (18.0f), hw::colour::amber);
-            hw::glowText (g, "PASSIVE", w.reduced (10.0f, 0), hw::vfd (16.0f), hw::colour::amberMid, juce::Justification::centredRight);
+            hw::glowText (g, "PATCH " + juce::String (patchNumber).paddedLeft ('0', 2) + "   " + patchName.toUpperCase(),
+                          w.reduced (10.0f, 0).withTrimmedRight (72.0f), hw::vfd (18.0f), hw::colour::amber);
+            hw::glowText (g, anythingOn() ? "LIVE" : "PASSIVE", w.reduced (10.0f, 0), hw::vfd (16.0f), hw::colour::amberMid,
+                          juce::Justification::centredRight);
         }
         hw::glass (g, w, 3.0f);
         g.endTransparencyLayer();

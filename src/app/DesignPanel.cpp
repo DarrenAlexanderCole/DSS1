@@ -316,9 +316,24 @@ DesignPanel::DesignPanel (Session& s, Crate& c) : session (s), crate (c), fx (s.
     addChildComponent (deluxe);
     deluxeKey.onClick = [this] { toggleDeluxe(); };
     addAndMakeVisible (deluxeKey);
+    addChildComponent (stepRack);
+    stepKey.onClick = [this] { toggleStep(); };
+    addAndMakeVisible (stepKey);
 
     updateRecorderKeys();
     startTimerHz (30);
+}
+
+juce::Image DesignPanel::bayPicture()
+{
+    const auto scale = juce::jmax (1.0f, static_cast<float> (juce::Desktop::getInstance().getDisplays().getDisplayForRect (getScreenBounds())->scale));
+    // The keys' glow reaches into the bays: keep it out of the picture.
+    deluxeKey.setVisible (false);
+    stepKey.setVisible (false);
+    auto picture = createComponentSnapshot (bayRow.expanded (2), true, scale);
+    deluxeKey.setVisible (true);
+    stepKey.setVisible (true);
+    return picture;
 }
 
 void DesignPanel::toggleDeluxe()
@@ -327,17 +342,41 @@ void DesignPanel::toggleDeluxe()
     static bool introPlayed = false;
     if (deluxeKey.getToggleState())
     {
-        const auto scale = juce::jmax (1.0f, static_cast<float> (juce::Desktop::getInstance().getDisplays().getDisplayForRect (getScreenBounds())->scale));
-        deluxeKey.setVisible (false);  // its glow reaches into the bays: keep it out of the picture
-        auto picture = createComponentSnapshot (bayRow.expanded (2), true, scale);
-        deluxeKey.setVisible (true);
+        auto picture = bayPicture();
+        if (stepRack.isVisible())
+        {
+            stepRack.close();
+            stepKey.setToggleState (false, juce::dontSendNotification);
+        }
         deluxe.setBounds (effectsUnit);
         deluxe.open (picture, bayRow.expanded (2) - effectsUnit.getPosition(), ! introPlayed);
         introPlayed = true;
         deluxeKey.toFront (false);
+        stepKey.toFront (false);
     }
     else
         deluxe.close();
+}
+
+void DesignPanel::toggleStep()
+{
+    static bool introPlayed = false;
+    if (stepKey.getToggleState())
+    {
+        auto picture = bayPicture();
+        if (deluxe.isVisible())
+        {
+            deluxe.close();
+            deluxeKey.setToggleState (false, juce::dontSendNotification);
+        }
+        stepRack.setBounds (effectsUnit);
+        stepRack.open (picture, bayRow.expanded (2) - effectsUnit.getPosition(), ! introPlayed);
+        introPlayed = true;
+        deluxeKey.toFront (false);
+        stepKey.toFront (false);
+    }
+    else
+        stepRack.close();
 }
 
 DesignPanel::~DesignPanel()
@@ -737,7 +776,7 @@ void DesignPanel::paint (juce::Graphics& g)
         g.fillRect (b.withTop (b.getBottom() - 1.0f));
     }
 
-    hw::silk (g, "EFFECTS", "PLAY OVER EVERYTHING YOU HEAR", effectsUnit.reduced (hw::RackUnit::earWidth + 30, 0).withTop (effectsUnit.getY() + 14).withHeight (18).toFloat());
+    hw::silk (g, "EFFECTS", "PLAY OVER EVERYTHING YOU HEAR", effectsUnit.reduced (hw::RackUnit::earWidth + 30, 0).withTrimmedLeft (DeluxeRack::stepKeySpace).withTop (effectsUnit.getY() + 14).withHeight (18).toFloat());
 
     // Module bays.
     for (const auto& r : { filterArea, echoArea, reverbArea, compArea })
@@ -863,6 +902,8 @@ void DesignPanel::resized()
     compArea = area;
     bayRow = filterArea.getUnion (compArea);
     deluxe.setBounds (effectsUnit);
+    stepRack.setBounds (effectsUnit);
+    stepKey.setBounds (effectsUnit.getX() + hw::RackUnit::earWidth + 30 - 8, effectsUnit.getY() + 3, 180, 42);
     deluxeKey.setBounds (effectsUnit.getRight() - hw::RackUnit::earWidth - 30 - 200 + 8, effectsUnit.getY() + 3, 200, 42);
 
     const auto layBay = [&] (juce::Rectangle<int> bay, juce::ToggleButton& on, std::initializer_list<int> knobIndices,
