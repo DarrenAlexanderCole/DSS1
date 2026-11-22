@@ -26,7 +26,7 @@ def card(shot, name):
     d.rounded_rectangle((cx - 230, 150, cx + 230, 222), 36, fill=RED)
     d.text((cx, 186), 'NOW IN BETA TESTING', font=F(BOLD, 38), fill=CREAM, anchor='mm')
     d.text((cx, 275), 'DSS1', font=F(BRAND, 150), fill=CREAM, anchor='ma')
-    d.text((cx, 470), 'DIGITAL SAMPLE STATION  ·  V2', font=F(BOLD, 42), fill=AMBER, anchor='ma')
+    d.text((cx, 470), 'DIGITAL SAMPLE STATION  ·  V2.1', font=F(BOLD, 42), fill=AMBER, anchor='ma')
     # The screen.
     pic = Image.open(os.path.join(SHOTS, shot)).convert('RGB').crop((128, 50, 1472, 1030))
     pw = W - 100
@@ -45,7 +45,7 @@ def card(shot, name):
         d.text((cx, yy), line, font=F(MED, 56), fill=CREAM, anchor='ma')
         yy += 72
     yy += 16
-    for line in ['Sort · Prep · Shape · Chop · Deliver', 'Rekordbox · Serato · MPC']:
+    for line in ['Sort · Prep · Shape · Chop · Deliver', 'New: DELUXE modular rack · FTWRK! steps']:
         d.text((cx, yy), line, font=F(MED, 42), fill=SOFT, anchor='ma')
         yy += 54
     yy += 30
@@ -59,6 +59,6 @@ def card(shot, name):
     return path
 
 
-for shot, name in [('05_chop.png', 'Chop'), ('02_catalog.png', 'Catalog'), ('03_prep.png', 'Prep'),
+for shot, name in [('07_deluxe.png', 'Deluxe'), ('08_ftwrk.png', 'FTWRK'), ('05_chop.png', 'Chop'), ('02_catalog.png', 'Catalog'), ('03_prep.png', 'Prep'),
                    ('04_listen.png', 'Listen-Design'), ('06_deliver.png', 'Deliver'), ('01_cover.png', 'Dust-Cover')]:
     print(card(shot, name))

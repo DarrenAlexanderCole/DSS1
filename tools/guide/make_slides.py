@@ -96,7 +96,7 @@ def footer(img, text='github.com/DarrenAlexanderCole/DSS1'):
     d = ImageDraw.Draw(img)
     d.line((70, H - 150, W - 70, H - 150), fill=(60, 52, 46), width=2)
     d.text((70, H - 115), text, font=F(MED, 30), fill=SOFT)
-    d.text((W - 70, H - 115), 'V2 BETA', font=F(BOLD, 30), fill=AMBER, anchor='ra')
+    d.text((W - 70, H - 115), 'V2.1 BETA', font=F(BOLD, 30), fill=AMBER, anchor='ra')
 
 
 slides = []
@@ -116,12 +116,12 @@ for line in ['Sort it. Prep it. Shape it.', 'Chop it. Deliver it.']:
     d.text((W // 2, yy), line, font=F(MED, 46), fill=SOFT, anchor='ma')
     yy += 64
 d.rounded_rectangle((W // 2 - 260, H - 330, W // 2 + 260, H - 230), 50, fill=AMBER)
-d.text((W // 2, H - 280), 'V2 BETA  ·  macOS', font=F(BOLD, 44), fill=BG, anchor='mm')
+d.text((W // 2, H - 280), 'V2.1 BETA  ·  macOS', font=F(BOLD, 44), fill=BG, anchor='mm')
 slides.append(img)
 
 # 2. Catalog
 img = base()
-y = header(img, '1 / 5', 'Your music, sorted.', 'Catalog')
+y = header(img, '1 / 7', 'Your music, sorted.', 'Catalog')
 y = framed(img, crop('02_catalog.png', (150, 400, 1450, 810)), y)
 bullets(img, [('Drop in', 'files, folders or record-pool zips.'),
               ('BPM, key, loudness', 'and the beat grid are worked out for you.'),
@@ -132,7 +132,7 @@ slides.append(img)
 
 # 3. Prep
 img = base()
-y = header(img, '2 / 5', 'Cues, loops and the grid.', 'Prep')
+y = header(img, '2 / 7', 'Cues, loops and the grid.', 'Prep')
 y = framed(img, crop('03_prep.png', (150, 385, 1450, 600)), y)
 y = framed(img, crop('03_prep.png', (150, 640, 1180, 870)), y + 30)
 bullets(img, [('Hot cues A–H,', 'memory cues and saved loops.'),
@@ -143,7 +143,7 @@ slides.append(img)
 
 # 4. Listen / Design
 img = base()
-y = header(img, '3 / 5', 'Shape the sound.', 'Listen / Design')
+y = header(img, '3 / 7', 'Shape the sound.', 'Listen / Design')
 y = framed(img, crop('04_listen.png', (150, 340, 1470, 580)).crop((0, 0, 700, 240)), y)
 y = framed(img, crop('04_listen.png', (150, 340, 1470, 580)).crop((610, 0, 1320, 240)), y + 30)
 bullets(img, [('ECHO:', 'PING, TAPE, DUCK, FREEZE.'),
@@ -153,9 +153,32 @@ bullets(img, [('ECHO:', 'PING, TAPE, DUCK, FREEZE.'),
 footer(img)
 slides.append(img)
 
+# New in 2.1: DELUXE
+img = base()
+y = header(img, '4 / 7', 'A modular remix rack.', 'DELUXE  ·  new in 2.1')
+y = framed(img, crop('07_deluxe.png', (126, 340, 1474, 560)).crop((0, 0, 700, 220)), y)
+y = framed(img, crop('07_deluxe.png', (126, 340, 1474, 560)).crop((648, 0, 1348, 220)), y + 30)
+bullets(img, [('One press', 'flips the effects into eight modules.'),
+              ('STUTTER, SLICER, NOISE,', 'WAVETABLE, DRIFT, MULTI-TAP, LADDER.'),
+              ('MOD', 'moves any knob in time with the music.'),
+              ('Drag to reorder,', 'save patches. Starts turned down.')], y + 60, 38)
+footer(img)
+slides.append(img)
+
+# New in 2.1: FTWRK!
+img = base()
+y = header(img, '5 / 7', 'Grab a beat. Play it in 16 steps.', 'FTWRK!  ·  new in 2.1')
+y = framed(img, crop('08_ftwrk.png', (126, 340, 1474, 560)).crop((0, 0, 700, 220)), y)
+y = framed(img, crop('08_ftwrk.png', (126, 340, 1474, 560)).crop((648, 0, 1348, 220)), y + 30)
+bullets(img, [('GRAB', '1, 2 or 4 beats of what\'s playing.'),
+              ('16 steps', 'in time with the track: click, drag, swing.'),
+              ('Its own effects:', 'gate, reverse, note repeat, space echo.')], y + 60, 38)
+footer(img)
+slides.append(img)
+
 # 5. Chop
 img = base()
-y = header(img, '4 / 5', 'Chop anything onto 128 pads.', 'Chop')
+y = header(img, '6 / 7', 'Chop anything onto 128 pads.', 'Chop')
 y = framed(img, crop('05_chop.png', (150, 375, 1450, 560)), y)
 y = framed(img, crop('05_chop.png', (150, 590, 640, 900)), y + 30, 640)
 bullets(img, [('Tap an empty pad', 'to mark a slice; tap it again to play it.'),
@@ -166,7 +189,7 @@ slides.append(img)
 
 # 6. Deliver
 img = base()
-y = header(img, '5 / 5', 'Send it to your setup.', 'Deliver')
+y = header(img, '7 / 7', 'Send it to your setup.', 'Deliver')
 y = framed(img, crop('06_deliver.png', (150, 420, 1450, 760)), y)
 bullets(img, [('Rekordbox:', 'one XML with cues, loops, grids and notes.'),
               ('Serato:', 'tagged copies, cues and loops inside.'),

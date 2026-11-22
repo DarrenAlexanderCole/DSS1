@@ -110,7 +110,7 @@ img = base()
 right_shot(img, crop('05_chop.png'))
 d = ImageDraw.Draw(img)
 d.rounded_rectangle((L, 120, L + 430, 186), 33, fill=RED)
-d.text((L + 215, 153), 'V2 BETA  ·  macOS', font=F(BOLD, 34), fill=CREAM, anchor='mm')
+d.text((L + 215, 153), 'V2.1 BETA  ·  macOS', font=F(BOLD, 34), fill=CREAM, anchor='mm')
 d.text((L, 225), 'DSS1', font=F(BRAND, 150), fill=CREAM)
 d.text((L + 6, 420), 'DIGITAL SAMPLE STATION', font=F(BOLD, 40), fill=AMBER)
 y = 500
@@ -124,25 +124,34 @@ for line in ['Sort it. Prep it. Shape it.', 'Chop it. Deliver it.']:
 footer(img)
 slides.append(img)
 
-slides.append(feature('1 / 5', 'Catalog', 'Your music, sorted.', [
+slides.append(feature('1 / 7', 'Catalog', 'Your music, sorted.', [
     ('Drop in', 'files, folders or record-pool zips.'),
     ('BPM, key, loudness', 'and the beat grid are worked out for you.'),
     ('Notes', 'on every track, and they travel to Rekordbox.'),
     ('Never changed:', 'your music files stay exactly as they are.')], crop('02_catalog.png')))
-slides.append(feature('2 / 5', 'Prep', 'Cues, loops and the grid.', [
+slides.append(feature('2 / 7', 'Prep', 'Cues, loops and the grid.', [
     ('Hot cues A–H,', 'memory cues and saved loops.'),
     ('Loops resize live', 'as you turn the LOOP knob.'),
     ('Fix the grid:', 'beat 1, nudge, half/double, tempo changes.')], crop('03_prep.png')))
-slides.append(feature('3 / 5', 'Listen / Design', 'Shape the sound.', [
+slides.append(feature('3 / 7', 'Listen / Design', 'Shape the sound.', [
     ('ECHO:', 'PING, TAPE, DUCK, FREEZE.'),
     ('REVERB:', 'GATE and HALO shimmer.'),
     ('COMP:', 'opto with EQ, plus DRIVE, PUNCH, SQUASH, CRUSH.'),
     ('Record', 'what you hear, then send it straight to Chop.')], crop('04_listen.png')))
-slides.append(feature('4 / 5', 'Chop', 'Chop anything onto 128 pads.', [
+slides.append(feature('4 / 7', 'DELUXE  ·  new in 2.1', 'A modular remix rack.', [
+    ('One press', 'flips the effects into eight modules.'),
+    ('STUTTER, SLICER, NOISE,', 'WAVETABLE, DRIFT, MULTI-TAP, LADDER.'),
+    ('MOD', 'moves any knob in time with the music.'),
+    ('Drag to reorder,', 'save patches. Starts turned down.')], crop('07_deluxe.png')))
+slides.append(feature('5 / 7', 'FTWRK!  ·  new in 2.1', 'Grab a beat. Play it in 16 steps.', [
+    ('GRAB', '1, 2 or 4 beats of what\'s playing.'),
+    ('16 steps', 'in time with the track: click, drag, swing.'),
+    ('Its own effects:', 'gate, reverse, note repeat, space echo.')], crop('08_ftwrk.png')))
+slides.append(feature('6 / 7', 'Chop', 'Chop anything onto 128 pads.', [
     ('Tap an empty pad', 'to mark a slice; tap it again to play it.'),
     ('Each pad:', 'gain, tune, attack, fade, reverse.'),
     ('Keyboard or MIDI', 'pads (Akai MPC, MPD, MPK). 0 stops all.')], crop('05_chop.png')))
-slides.append(feature('5 / 5', 'Deliver', 'Send it to your setup.', [
+slides.append(feature('7 / 7', 'Deliver', 'Send it to your setup.', [
     ('Rekordbox:', 'one XML with cues, loops, grids and notes.'),
     ('Serato:', 'tagged copies, cues and loops inside.'),
     ('Chop banks', 'save as WAVs, ready for your MPC.')], crop('06_deliver.png')))
