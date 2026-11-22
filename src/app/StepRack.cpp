@@ -123,18 +123,43 @@ StepRack::StepRack (engine::Modular& s) : sound (s), step (s.step)
         addAndMakeVisible (*t);
     }
 
-    level.setRange (0.0, 1.0, 0.01);
-    level.setValue (step.level.load(), juce::dontSendNotification);
-    level.setDoubleClickReturnValue (true, 0.8);
-    hwScale (level, "0|||||10");
-    level.onValueChange = [this] { step.level = static_cast<float> (level.getValue()); repaint(); };
-    swing.setRange (0.0, 1.0, 0.01);
-    swing.setValue (0.0, juce::dontSendNotification);
-    swing.setDoubleClickReturnValue (true, 0.0);
-    hwScale (swing, "0|||||MAX");
-    swing.onValueChange = [this] { step.swing = static_cast<float> (swing.getValue()); repaint(); };
-    for (auto* k : { &level, &swing })
-        addAndMakeVisible (*k);
+    reverse.setButtonText ("REVERSE");
+    reverse.setTooltip ("Every slice plays backwards");
+    reverse.getProperties().set ("onText", "ON");
+    reverse.getProperties().set ("offText", "OFF");
+    reverse.onClick = [this] { step.reverse = reverse.getToggleState(); };
+    addAndMakeVisible (reverse);
+
+    const auto setUp = [this] (Knob& k, double min, double max, double interval, double value, const char* scale, const char* tip,
+                               std::function<void (double)> send) {
+        k.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+        k.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+        k.setRange (min, max, interval);
+        k.setValue (value, juce::dontSendNotification);
+        k.setDoubleClickReturnValue (true, value);
+        k.setTooltip (tip);
+        hwScale (k, scale);
+        k.onValueChange = [this, &k, send] { send (k.getValue()); repaint(); };
+        addAndMakeVisible (k);
+    };
+    setUp (level, 0, 1, 0.01, step.level.load(), "|||||", "How loud the steps play", [this] (double v) { step.level = static_cast<float> (v); });
+    setUp (swing, 0, 1, 0.01, 0, "|||||", "Every second step pushed late, for a looser groove", [this] (double v) { step.swing = static_cast<float> (v); });
+    setUp (length, 0.1, 1, 0.01, 1, "|||||", "GATE LENGTH: how much of each slice plays (short: staccato)", [this] (double v) { step.gateLength = static_cast<float> (v); });
+    setUp (decay, 0, 1, 0.01, 0, "|||||", "GATE DECAY: each step falls away, from flat to a short percussive hit", [this] (double v) { step.gateDecay = static_cast<float> (v); });
+    setUp (repeat, 0, 4, 1, 0, "|||||", "NOTE REPEAT: each step fires again and again within itself (rolls)", [this] (double v) { step.repeat = juce::roundToInt (v); });
+    setUp (echoTime, 0, 4, 1, 2, "|||||", "SPACE ECHO time, in time with the music", [this] (double v) { step.echoTime = juce::roundToInt (v); });
+    setUp (echoAmount, 0, 1, 0.01, 0, "|||||", "SPACE ECHO: tape echo on the steps alone (level and feedback)", [this] (double v) { step.echoAmount = static_cast<float> (v); });
+
+    const auto percent = [] (Knob& k, double scale) { return [&k, scale] { return juce::String (juce::roundToInt (k.getValue() * scale)) + "%"; }; };
+    knobInfo = {
+        { &level, "LEVEL", percent (level, 100) },
+        { &swing, "SWING", percent (swing, 50) },
+        { &length, "LENGTH", percent (length, 100) },
+        { &decay, "DECAY", percent (decay, 100) },
+        { &repeat, "RATE", [this] { const char* n[] { "OFF", "1/32", "1/32T", "1/64", "1/128" }; return juce::String (n[juce::jlimit (0, 4, juce::roundToInt (repeat.getValue()))]); } },
+        { &echoTime, "TIME", [this] { const char* n[] { "1/16", "1/8", "3/16", "1/4", "3/8" }; return juce::String (n[juce::jlimit (0, 4, juce::roundToInt (echoTime.getValue()))]); } },
+        { &echoAmount, "AMOUNT", percent (echoAmount, 100) },
+    };
 
     setBeats (step.beats.load());
     refreshPads();
@@ -178,8 +203,8 @@ void StepRack::readSample()
 {
     // The monitor's outline: the loudest sample under each pixel column.
     outline.clear();
-    const auto length = step.length.load();
-    if (step.state.load() != engine::Modular::Step::ready || length <= 0)
+    const auto frames = step.length.load();
+    if (step.state.load() != engine::Modular::Step::ready || frames <= 0)
         return;
     const auto columns = juce::jmax (1, monitor.getWidth() - 16);
     const auto& l = sound.stepSample (0);
@@ -187,8 +212,8 @@ void StepRack::readSample()
     outline.resize (static_cast<std::size_t> (columns), 0.0f);
     for (int c = 0; c < columns; ++c)
     {
-        const auto from = static_cast<std::size_t> (static_cast<long long> (length) * c / columns);
-        const auto to = static_cast<std::size_t> (static_cast<long long> (length) * (c + 1) / columns);
+        const auto from = static_cast<std::size_t> (static_cast<long long> (frames) * c / columns);
+        const auto to = static_cast<std::size_t> (static_cast<long long> (frames) * (c + 1) / columns);
         float peak = 0;
         for (auto i = from; i < to && i < l.size(); ++i)
             peak = juce::jmax (peak, std::abs (l[i]), std::abs (r[i]));
@@ -229,7 +254,7 @@ void StepRack::timerCallback()
     {
         // Everything but the pads fades up with the panel; the pads come up one after another.
         const auto panel = easeInOut (introProgress (panelStart, panelLength));
-        for (auto* c : std::initializer_list<juce::Component*> { &grab, &clear, &one, &two, &four, &reset, &run, &replace, &level, &swing })
+        for (auto* c : std::initializer_list<juce::Component*> { &grab, &clear, &one, &two, &four, &reset, &run, &replace, &reverse, &level, &swing, &length, &decay, &repeat, &echoTime, &echoAmount })
             c->setAlpha (panel);
         for (std::size_t i = 0; i < 16; ++i)
         {
@@ -306,19 +331,41 @@ void StepRack::resized()
     const auto padW = (padRow.getWidth() - 15 * gap) / 16;
     for (std::size_t i = 0; i < 16; ++i)
         pads[i]->setBounds (padRow.getX() + static_cast<int> (i) * (padW + gap) + (i >= 8 ? 0 : 0), padRow.getY(), padW, padRow.getHeight());
-    r.removeFromTop (14);
+    r.removeFromTop (10);
+
+    // Under the steps: RUN, REPLACE and RESET, then the steps' own effects in their groups.
     auto controls = r;
-    run.setBounds (controls.removeFromLeft (130).withHeight (34));
-    replace.setBounds (controls.removeFromLeft (150).withHeight (34));
-    reset.setBounds (controls.removeFromLeft (90).withSizeKeepingCentre (84, 28).withY (controls.getY() + 3));
-    controls.removeFromLeft (40);
-    auto knobCell = [&controls] { auto c = controls.removeFromLeft (110); return c; };
-    for (auto* k : { &level, &swing })
-    {
-        auto c = knobCell();
-        k->setBounds (c.withTrimmedTop (16).withHeight (46).withSizeKeepingCentre (46, 46).withY (c.getY() + 16));
+    auto switches = controls.removeFromLeft (128);
+    run.setBounds (switches.removeFromTop (30));
+    replace.setBounds (switches.removeFromTop (30));
+    reset.setBounds (switches.removeFromTop (28).withSizeKeepingCentre (84, 24).withX (switches.getX() + 4));
+    controls.removeFromLeft (10);
+
+    groups.clear();
+    const auto knobW = 74;
+    const auto layGroup = [&] (const juce::String& name, std::initializer_list<juce::Component*> parts, int extra) {
+        const auto width = static_cast<int> (parts.size()) * knobW + extra + 12;
+        auto box = controls.removeFromLeft (width);
         controls.removeFromLeft (10);
-    }
+        groups.push_back ({ name, box });
+        auto inner = box.reduced (6, 4);
+        inner.removeFromTop (12);  // the group's name
+        for (auto* p : parts)
+        {
+            if (p == &reverse)
+            {
+                reverse.setBounds (inner.removeFromLeft (extra).withSizeKeepingCentre (extra, 34));
+                continue;
+            }
+            auto cell = inner.removeFromLeft (knobW);
+            cell.removeFromTop (12);  // the knob's name
+            p->setBounds (cell.removeFromTop (38).withSizeKeepingCentre (38, 38));
+        }
+    };
+    layGroup ("PLAY", { &level, &swing }, 0);
+    layGroup ("GATE", { &length, &decay, &reverse }, 118);
+    layGroup ("NOTE REPEAT", { &repeat }, 14);
+    layGroup ("SPACE ECHO", { &echoTime, &echoAmount }, 0);
 }
 
 void StepRack::paint (juce::Graphics& g)
@@ -422,13 +469,17 @@ void StepRack::paint (juce::Graphics& g)
                      lit ? hw::colour::amber : hw::colour::amberDim, lit);
         }
 
-        // Knob labels and readouts.
-        for (const auto& [k, name, text] : { std::tuple { &level, "LEVEL", juce::String (juce::roundToInt (level.getValue() * 100)) + "%" },
-                                             std::tuple { &swing, "SWING", juce::String (juce::roundToInt (swing.getValue() * 50)) + "%" } })
+        // The groups of the steps' own controls, each knob's name and readout.
+        for (const auto& [name, box] : groups)
         {
-            const auto kb = k->getBounds().toFloat();
-            hw::silk (g, name, {}, kb.withHeight (14.0f).translated (0, -16.0f).expanded (20.0f, 0), juce::Justification::centred, 11.0f);
-            hw::readout (g, text, kb.withX (kb.getRight() + 8.0f).withWidth (58.0f).withSizeKeepingCentre (58.0f, 22.0f), hw::vfd (17.0f));
+            hw::bay (g, box.toFloat());
+            hw::silk (g, name, {}, box.toFloat().reduced (8.0f, 3.0f).withHeight (12.0f), juce::Justification::centredLeft, 10.5f);
+        }
+        for (const auto& k : knobInfo)
+        {
+            const auto kb = k.knob->getBounds().toFloat();
+            hw::silk (g, k.name, {}, kb.withHeight (12.0f).translated (0, -13.0f).expanded (18.0f, 0), juce::Justification::centred, 10.0f);
+            hw::readout (g, k.text(), kb.withY (kb.getBottom() + 1.0f).withSizeKeepingCentre (62.0f, 18.0f).withY (kb.getBottom() + 1.0f), hw::vfd (15.0f));
         }
         g.endTransparencyLayer();
     }

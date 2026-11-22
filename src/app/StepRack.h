@@ -44,8 +44,19 @@ private:
     std::array<std::unique_ptr<Pad>, 16> pads;
     juce::TextButton grab { "GRAB" }, clear { "CLEAR" }, one { "1" }, two { "2" }, four { "4" }, reset { "RESET" };
     juce::ToggleButton run, replace;
-    juce::Slider level { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox },
-                 swing { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox };
+    juce::ToggleButton reverse;
+    using Knob = juce::Slider;
+    Knob level, swing, length, decay, repeat, echoTime, echoAmount;
+    /// The knobs, their names and their readouts, for painting.
+    struct KnobInfo
+    {
+        Knob* knob;
+        const char* name;
+        std::function<juce::String()> text;
+    };
+    std::vector<KnobInfo> knobInfo;
+    /// The groups of controls under the steps: PLAY, GATE, NOTE REPEAT, SPACE ECHO.
+    std::vector<std::pair<juce::String, juce::Rectangle<int>>> groups;
     juce::Rectangle<int> header, row, leftBay, rightBay, monitor, ledRow;
 
     // The grabbed sample's outline for the monitor (peaks per pixel column), read once it's ready.

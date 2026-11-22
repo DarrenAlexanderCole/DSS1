@@ -21,6 +21,8 @@ void Modular::prepare (double sampleRate, int maxBlock)
         h.assign (static_cast<std::size_t> (sampleRate * 6.0), 0.0f);  // a 1/2-note slice at 40 BPM, and room
     for (auto& l : driftLine)
         l.assign (static_cast<std::size_t> (sampleRate * 0.1), 0.0f);
+    for (auto& l : echoLine)
+        l.assign (static_cast<std::size_t> (sampleRate * 3.0), 0.0f);  // a dotted 1/4 at 40 BPM, and the wobble
     for (auto& b : stepBuffer)
         b.assign (static_cast<std::size_t> (sampleRate * 4.0 * 60.0 / 40.0), 0.0f);  // four beats at 40 BPM
     for (auto& l : fmLine)
@@ -167,6 +169,19 @@ void Modular::runStep (float* const* ch, int numChannels, int numFrames, const d
     const auto cutLength = st.length.load (std::memory_order_relaxed) / slices;
     const auto fade = std::max (1, std::min (static_cast<int> (rate * 0.002), cutLength / 4));
     const auto steps = std::clamp (static_cast<int> (std::lround (beatsPerBar * 4.0)), 1, 16);
+    const auto gateLength = std::clamp (st.gateLength.load (std::memory_order_relaxed), 0.1f, 1.0f);
+    const auto gateDecay = std::clamp (st.gateDecay.load (std::memory_order_relaxed), 0.0f, 1.0f);
+    const auto reverse = st.reverse.load (std::memory_order_relaxed);
+    const auto division = repeatDivisions[static_cast<std::size_t> (std::clamp (st.repeat.load (std::memory_order_relaxed), 0, 4))];
+    const auto played = std::max (2 * fade + 1, static_cast<int> (static_cast<float> (cutLength) * gateLength));
+    const auto repeatLength = std::max (2 * fade + 1, cutLength / division);
+    const auto echoSize = echoLine[0].size();
+    const auto echoTarget = static_cast<float> (std::min (static_cast<double> (echoSize) - rate * 0.02,
+        echoBeats[static_cast<std::size_t> (std::clamp (st.echoTime.load (std::memory_order_relaxed), 0, 4))] / perSample));
+    const auto echoAmountTarget = std::clamp (st.echoAmount.load (std::memory_order_relaxed), 0.0f, 1.0f);
+    if (echoDelay <= 0.0f)
+        echoDelay = echoTarget;
+    const auto echoCut = 1.0f - std::exp (-6.2831853f * 2800.0f / static_cast<float> (rate));
 
     for (int i = 0; i < numFrames; ++i)
     {
@@ -213,19 +228,58 @@ void Modular::runStep (float* const* ch, int numChannels, int numFrames, const d
         float voice[2] { 0, 0 };
         if (voiceSlice >= 0 && cutLength > 16)
         {
-            const auto edge = std::min ({ voicePos, cutLength - voicePos, fade });
-            const auto window = static_cast<float> (edge) / static_cast<float> (fade);
-            const auto at = static_cast<std::size_t> (voiceSlice * cutLength + voicePos);
+            // GATE: the slice plays for its length, falling away with DECAY. NOTE REPEAT starts it over and over
+            // within the step; REVERSE plays it backwards.
+            const auto inRepeat = voicePos % repeatLength;
+            const auto partEnd = std::min (repeatLength, played - (voicePos - inRepeat));
+            // 2 ms fades: in at each start, out at each repeat's end and at the gate's end.
+            const auto edge = std::min ({ inRepeat, partEnd - inRepeat, played - voicePos, fade });
+            auto window = static_cast<float> (std::max (0, edge)) / static_cast<float> (fade);
+            if (gateDecay > 0.0f)
+                window *= std::pow (1.0f - static_cast<float> (voicePos) / static_cast<float> (played), gateDecay * 4.0f);
+            const auto offset = reverse ? cutLength - 1 - inRepeat : inRepeat;
+            const auto at = static_cast<std::size_t> (voiceSlice * cutLength + std::clamp (offset, 0, cutLength - 1));
             for (int k = 0; k < 2; ++k)
                 voice[k] = stepBuffer[static_cast<std::size_t> (k)][at] * window;
-            if (++voicePos >= cutLength)
+            if (++voicePos >= played)
                 voiceSlice = -1;
         }
-        if (stepRun > 1.0e-4f || voiceSlice >= 0)
+        for (auto& v : voice)
+            v *= level * stepRun;
+
+        // SPACE ECHO: tape on the steps alone. Its time wobbles a little, and each repeat comes back darker and
+        // a little driven.
+        echoMix += (echoAmountTarget - echoMix) * 0.0015f;
+        echoDelay += (echoTarget - echoDelay) * 0.0003f;
+        float echoed[2] { 0, 0 };
+        if (echoMix > 1.0e-4f)
+        {
+            echoWobble += 0.7 / rate;
+            if (echoWobble >= 1.0)
+                echoWobble -= 1.0;
+            const auto wow = static_cast<float> (std::sin (6.283185307 * echoWobble)) * static_cast<float> (rate * 0.0012);
+            const auto readPos = static_cast<double> (echoWrite) - static_cast<double> (echoDelay + wow) + static_cast<double> (echoSize) * 2.0;
+            const auto i0 = static_cast<std::size_t> (readPos) % echoSize;
+            const auto frac = static_cast<float> (readPos - std::floor (readPos));
+            for (std::size_t k = 0; k < 2; ++k)
+            {
+                const auto& line = echoLine[k];
+                const auto back = line[i0] + (line[(i0 + 1) % echoSize] - line[i0]) * frac;
+                echoTone[k] += (back - echoTone[k]) * echoCut;
+                echoed[k] = echoTone[k];
+                echoLine[k][echoWrite] = std::tanh ((voice[k] + echoTone[k] * 0.78f * echoMix) * 1.2f) / 1.2f;
+            }
+        }
+        else
+            for (std::size_t k = 0; k < 2; ++k)
+                echoLine[k][echoWrite] = voice[k];
+        echoWrite = (echoWrite + 1) % echoSize;
+
+        if (stepRun > 1.0e-4f || voiceSlice >= 0 || echoMix > 1.0e-4f)
         {
             const auto track = replace ? 1.0f - stepRun : 1.0f;
             for (int k = 0; k < numChannels; ++k)
-                ch[k][i] = ch[k][i] * track + voice[k] * level * stepRun;
+                ch[k][i] = ch[k][i] * track + voice[k] + echoed[k] * echoMix * 0.85f;
         }
     }
     if (! running)

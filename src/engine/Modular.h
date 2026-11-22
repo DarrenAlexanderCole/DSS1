@@ -57,6 +57,9 @@ public:
     std::atomic<int> modShape { 0 };
     /// MOD's output right now, -1 … 1 (for its light).
     std::atomic<float> modNow { 0.0f };
+    /// NOTE REPEAT's divisions of a step, and SPACE ECHO's times in beats.
+    static constexpr std::array<int, 5> repeatDivisions { 1, 2, 3, 4, 8 };
+    static constexpr std::array<double, 5> echoBeats { 0.25, 0.5, 0.75, 1.0, 1.5 };
     static constexpr std::array<double, 8> modBeats { 0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0 };
     /// Each knob's full range, by kind and knob (what MOD's depth is a fraction of).
     static constexpr std::array<std::array<float, 2>, kinds> knobRange { { { 4, 1 }, { 7, 1 }, { 1, 1 }, { 1, 1 }, { 1, 1 }, { 4, 1 }, { 1, 1 }, { 7, 1 } } };
@@ -89,6 +92,13 @@ public:
         std::atomic<bool> running { false };       // RUN
         std::atomic<bool> replace { false };       // REPLACE: the track goes quiet while it runs
         std::atomic<float> level { 0.8f }, swing { 0.0f };
+        // The steps' own effects (they touch only the steps, never the track):
+        std::atomic<float> gateLength { 1.0f };    // GATE LENGTH: how much of each slice plays, 0.1 … 1
+        std::atomic<float> gateDecay { 0.0f };     // GATE DECAY: 0 flat … 1 a short, percussive fall
+        std::atomic<bool> reverse { false };       // REVERSE: each slice plays backwards
+        std::atomic<int> repeat { 0 };             // NOTE REPEAT: 0 off, 1 1/32, 2 1/32 triplet, 3 1/64, 4 1/128
+        std::atomic<int> echoTime { 2 };           // SPACE ECHO time: 0 1/16, 1 1/8, 2 3/16, 3 1/4, 4 3/8 note
+        std::atomic<float> echoAmount { 0.0f };    // SPACE ECHO: its level and feedback, 0 … 1
         std::array<std::atomic<bool>, 16> on;
         std::array<std::atomic<int>, 16> slice;    // which sixteenth of the sample each step plays
         // From the audio thread:
@@ -196,6 +206,12 @@ private:
     std::array<std::vector<float>, 2> stepBuffer;
     int stepWrite = 0, stepTarget = 0, stepLastBeat = -1, stepLastStep = -1;
     int voiceSlice = -1, voicePos = 0;
+    // SPACE ECHO: a tape delay on the steps alone, its wobble and its darkening feedback.
+    std::array<std::vector<float>, 2> echoLine;
+    std::size_t echoWrite = 0;
+    std::array<float, 2> echoTone {};
+    double echoWobble = 0;
+    float echoDelay = 0, echoMix = 0;
     float stepRun = 0;
     /// A knob's value with MOD's movement added (audio thread).
     float knob (Kind kind, int which) const noexcept;

@@ -116,7 +116,7 @@ private:
     DeluxeKey deluxeKey;
     /// STEP: the sample snatcher's sequencer over the effects unit, and its key (at the other end).
     StepRack stepRack { session.modular() };
-    DeluxeKey stepKey { "STEP", "STEP: flip the effects into a sample snatcher: grab 1, 2 or 4 beats and play them in 16 steps" };
+    DeluxeKey stepKey { "FTWRK!", "FTWRK!: flip the effects into STEP, the sample snatcher: grab 1, 2 or 4 beats and play them in 16 steps" };
     juce::Rectangle<int> bayRow;  // the classic bays, together
     void toggleDeluxe();
     void toggleStep();

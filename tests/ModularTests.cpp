@@ -341,3 +341,71 @@ TEST_CASE ("Deluxe rack: STEP grabs a beat on the beat and plays its slices in 1
     run (m, after);
     REQUIRE (st.state.load() == Modular::Step::empty);
 }
+
+TEST_CASE ("Deluxe rack: STEP's gate, repeat, reverse and space echo", "[modular]")
+{
+    const auto grabbed = [] (Modular& m) {
+        m.prepare (rate, 256);
+        m.bpm = 120.0f;
+        m.step.beats = 1;
+        m.step.grab = true;
+        m.step.level = 1.0f;
+        auto s = ramp (beatsToFrames (3, 120));
+        run (m, s);
+        REQUIRE (m.step.state.load() == Modular::Step::ready);
+        m.step.running = true;
+        m.step.replace = true;
+    };
+    const auto beat = beatsToFrames (1, 120);
+    const auto sixteenth = beat / 4;
+
+    SECTION ("GATE LENGTH: half the slice plays, then quiet until the next step")
+    {
+        Modular m;
+        grabbed (m);
+        m.step.gateLength = 0.5f;
+        Stereo out (beatsToFrames (4, 120));
+        run (m, out);
+        const auto stepStart = 3 * beat + sixteenth;
+        REQUIRE (std::abs (out.l[stepStart + sixteenth / 4]) > 0.001f);
+        REQUIRE (std::abs (out.l[stepStart + sixteenth * 3 / 4]) < 1.0e-4f);
+    }
+    SECTION ("REVERSE: the slice backwards")
+    {
+        Modular m;
+        grabbed (m);
+        m.step.reverse = true;
+        Stereo out (beatsToFrames (4, 120));
+        run (m, out);
+        const auto stepStart = 3 * beat + sixteenth;  // step 2: slice 2
+        const auto x = sixteenth / 3;
+        REQUIRE (out.l[stepStart + x] == Catch::Approx (m.stepSample (0)[sixteenth + sixteenth - 1 - x]).margin (2.0e-3));
+    }
+    SECTION ("NOTE REPEAT: the start of the slice again and again")
+    {
+        Modular m;
+        grabbed (m);
+        m.step.repeat = 3;  // a quarter of a step
+        Stereo out (beatsToFrames (4, 120));
+        run (m, out);
+        const auto stepStart = 3 * beat + sixteenth;
+        const auto quarter = sixteenth / 4;
+        REQUIRE (out.l[stepStart + quarter / 2] == Catch::Approx (out.l[stepStart + quarter + quarter / 2]).margin (2.0e-3));
+    }
+    SECTION ("SPACE ECHO: the steps come back after they stop, in range")
+    {
+        Modular m;
+        grabbed (m);
+        m.step.echoAmount = 1.0f;
+        Stereo out (beatsToFrames (4, 120));
+        run (m, out);
+        m.step.running = false;
+        m.step.replace = false;
+        Stereo tail (beatsToFrames (1, 120));
+        run (m, tail);
+        REQUIRE (rms (tail.l, beatsToFrames (0.25, 120)) > 0.005f);
+        // Full feedback on a full-level sample: it builds, but stays bounded (the tape saturates).
+        for (auto v : out.l)
+            REQUIRE (std::abs (v) <= 2.0f);
+    }
+}
