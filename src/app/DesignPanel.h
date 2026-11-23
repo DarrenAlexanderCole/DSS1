@@ -135,7 +135,7 @@ private:
     juce::TextButton recordButton { "REC" }, playTakeButton { "PLAY" }, saveTakeButton { "SAVE" }, discardButton { "DISCARD" },
         toChopButton { "TO CHOP" }, revealButton { "SHOW TAKES" };
     juce::File savedTake;  // the last take saved
-    // The recorder's input pad: -10, -20 or -50 dB (one at a time, or none).
+    // The recorder's input pad: -1, -3 or -10 dB (one at a time, or none).
     std::array<juce::ToggleButton, 3> padSwitches;
     void setRecordPad (int which);
     BeatScope scope;

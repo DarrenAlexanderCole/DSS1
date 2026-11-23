@@ -216,7 +216,7 @@ s.append(Paragraph('The recorder', h2))
 s += bullets([
     '<b>REC</b> records what you hear, effects and all. Then <b>PLAY</b> it back, <b>SAVE</b> it (Music → DSS1 Recordings, '
     'and into the Catalog) or <b>DISCARD</b> it. <b>TO CHOP</b> saves it and opens it on the Chop screen.',
-    '<b>-10 / -20 / -50</b> lower what the recorder takes in; turn <b>MONITOR</b> on to hear exactly what\'s going onto the take.',
+    '<b>-1 / -3 / -10</b> (dB) lower what the recorder takes in, for hot sources; turn <b>MONITOR</b> on to hear exactly what\'s going onto the take.',
     'The <b>XY pad</b> sweeps the filter (left/right) and adds echo (up) while you hold it.',
 ])
 s.append(PageBreak())

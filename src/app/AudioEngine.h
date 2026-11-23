@@ -40,7 +40,7 @@ public:
     /// Peaks of what's being recorded, one per audio block, for drawing the take as it records. Call from the
     /// message thread: appends the peaks since the last call to `into`.
     void drainRecordedPeaks (std::vector<float>& into);
-    /// The recorder's input pad: what's recorded is this many dB lower (0, -10, -20, -50). What you hear isn't.
+    /// The recorder's input pad: what's recorded is this many dB lower (0, -1, -3, -10). What you hear isn't.
     void setRecordPad (float db) { recordGain.store (juce::Decibels::decibelsToGain (db, -100.0f)); }
     /// MONITOR: you hear exactly what the recorder takes (the input pad applied to what you hear), so you can
     /// judge the take's level before you commit to it.

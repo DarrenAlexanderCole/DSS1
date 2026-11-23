@@ -288,7 +288,7 @@ DesignPanel::DesignPanel (Session& s, Crate& c) : session (s), crate (c), fx (s.
     for (auto* b : { &playTakeButton, &saveTakeButton, &discardButton, &toChopButton })
         addAndMakeVisible (b);
     // Input pad for the recorder: turns down what's recorded (not what you hear), for hot sources.
-    const char* padNames[] { "-10", "-20", "-50" };
+    const char* padNames[] { "-1", "-3", "-10" };
     for (int i = 0; i < 3; ++i)
     {
         auto& padSwitch = padSwitches[static_cast<std::size_t> (i)];
@@ -561,7 +561,7 @@ void DesignPanel::toggleRecording()
 
 void DesignPanel::setRecordPad (int which)
 {
-    constexpr float dbs[] { -10.0f, -20.0f, -50.0f };
+    constexpr float dbs[] { -1.0f, -3.0f, -10.0f };
     which = juce::jlimit (-1, 2, which);
     for (int i = 0; i < 3; ++i)
         padSwitches[static_cast<std::size_t> (i)].setToggleState (i == which, juce::dontSendNotification);

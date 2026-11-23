@@ -23,6 +23,7 @@ slides themselves (DSS1-V2-Beta-Slides-9x16.zip and DSS1-V2-Beta-Slides-16x9.zip
 - **FTWRK! now has its own tempo and tone:** SYNC follows the track, or switch it off and set the steps' own BPM
   (drag it, or -1 / +1). VOLUME and a 3-band EQ (LOW, MID, HIGH) for the steps alone.
 - **Fixed:** a crash when grabbing a new sample (or clearing it) while the steps were running.
+- **The recorder's input pads** are now -1, -3 and -10 dB (gentler steps for hot sources).
 
 The guide covers all of it; the slides and videos show DELUXE and FTWRK!.
 
